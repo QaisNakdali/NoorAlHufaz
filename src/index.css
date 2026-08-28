@@ -1,1 +1,161 @@
 @import "tailwindcss";
+
+@theme {
+  --font-display: "Baloo Bhaijaan 2", "IBM Plex Sans Arabic", sans-serif;
+  --font-body: "IBM Plex Sans Arabic", "Baloo Bhaijaan 2", sans-serif;
+
+  --color-grape-50: #f7f2ff;
+  --color-grape-100: #efe5ff;
+  --color-grape-200: #e2d0ff;
+  --color-grape-300: #ccafff;
+  --color-grape-400: #b28aff;
+  --color-grape-500: #9a64f6;
+  --color-grape-600: #8448e6;
+  --color-grape-700: #6d33c6;
+  --color-grape-800: #56289d;
+  --color-grape-900: #401e74;
+  --color-grape-950: #2a124f;
+
+  --color-ink: #322153;
+  --color-gold-300: #ffe08a;
+  --color-gold-400: #ffd75e;
+  --color-gold-500: #f7b733;
+  --color-gold-600: #dd9511;
+  --color-mint-400: #3edc97;
+  --color-mint-600: #0fa06a;
+  --color-coral-400: #ff8fa8;
+  --color-coral-500: #f75f80;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-grape-50);
+  color: var(--color-ink);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: #d9c2ff;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #efe5ff;
+}
+::-webkit-scrollbar-thumb {
+  background: #c9afff;
+  border-radius: 999px;
+  border: 2px solid #efe5ff;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b18cff;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* ===== keyframes ===== */
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+@keyframes drift-x {
+  from { transform: translateX(-10vw); }
+  to { transform: translateX(110vw); }
+}
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.55) translateY(14px); }
+  70% { transform: scale(1.06) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(26px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-22px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes shine-sweep {
+  from { transform: translateX(160%) skewX(-18deg); }
+  to { transform: translateX(-220%) skewX(-18deg); }
+}
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 24px 4px rgba(247, 183, 51, 0.35); }
+  50% { box-shadow: 0 0 52px 14px rgba(247, 183, 51, 0.6); }
+}
+@keyframes ring-rotate {
+  to { transform: rotate(360deg); }
+}
+@keyframes bar-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 28px 0; }
+}
+@keyframes bounce-soft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.anim-floaty { animation: floaty 4s ease-in-out infinite; }
+.anim-twinkle { animation: twinkle 2.6s ease-in-out infinite; }
+.anim-pop { animation: pop-in 0.5s cubic-bezier(0.22, 1.4, 0.36, 1) both; }
+.anim-slide-up { animation: slide-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-slide-down { animation: slide-down 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-wiggle { animation: wiggle 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
+.anim-glow { animation: glow-pulse 1.8s ease-in-out infinite; }
+.anim-ring { animation: ring-rotate 6s linear infinite; }
+.anim-fade { animation: fade-in 0.4s ease both; }
+.anim-bounce-soft { animation: bounce-soft 2.2s ease-in-out infinite; }
+
+.card-shine {
+  position: relative;
+  overflow: hidden;
+}
+.card-shine::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  width: 42%;
+  right: 0;
+  background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(160%) skewX(-18deg);
+  pointer-events: none;
+}
+.card-shine:hover::after {
+  animation: shine-sweep 0.9s ease forwards;
+}
+
+.xp-fill {
+  background-image: linear-gradient(90deg, #8448e6, #b28aff), repeating-linear-gradient(45deg, rgba(255,255,255,0.22) 0 10px, transparent 10px 20px);
+  background-blend-mode: overlay;
+  background-size: 100% 100%, 28px 28px;
+  animation: bar-stripes 1.2s linear infinite;
+}
+
+.dashed-border {
+  background-image: linear-gradient(90deg, #c9afff 55%, transparent 45%), linear-gradient(90deg, #c9afff 55%, transparent 45%), linear-gradient(0deg, #c9afff 55%, transparent 45%), linear-gradient(0deg, #c9afff 55%, transparent 45%);
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  background-size: 14px 2px, 14px 2px, 2px 14px, 2px 14px;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+}
