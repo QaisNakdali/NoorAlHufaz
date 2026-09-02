@@ -68,6 +68,18 @@ export default function ExplainerModal({ onClose }: { onClose: () => void }) {
                 مستواك يرتفع بـ<b className="text-grape-600">نقاط الخبرة</b> التي تجمعها من الكشف كل يوم. كل مستوى جديد يعطيك{" "}
                 <b className="text-gold-600">٢٥ عملة</b> هدية، ويقرّبك من لقب أجمل!
               </p>
+              <div className="rounded-xl border-2 border-grape-300 bg-white p-3">
+                <p className="mb-1.5 font-display text-sm font-extrabold text-ink">شريط المستوى بجانب اسمك في الكشف</p>
+                <div className="mb-2 flex items-center gap-2">
+                  <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-grape-100">
+                    <div className="xp-fill h-full rounded-full" style={{ width: "65%" }} />
+                  </div>
+                  <span className="shrink-0 text-[10px] font-extrabold text-grape-500">٦٥/١٠٠</span>
+                </div>
+                <p className="text-[11px] font-bold leading-5 text-grape-700/70">
+                  هذا الشريط يمتلئ كلما زادت نقاطك، ويبيّن كم بقي لك لتصل للمستوى التالي. لما يمتلئ تمامًا ترتقي لمستوى جديد ويبدأ شريط جديد!
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <Stat icon="user" title="مجرد الحضور" value={`+${ar(ATTEND_XP)} نقاط`} color="border-mint-400/50 bg-mint-400/15 text-mint-600" />
                 <Stat icon="book" title="تسميع الحفظ" value={`+${ar(RECITE_XP)} نقاط`} color="border-grape-400/50 bg-grape-600/10 text-grape-600" />

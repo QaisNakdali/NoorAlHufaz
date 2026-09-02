@@ -152,7 +152,8 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
   const { markDay, removeHeart, removeStudent, setMode, setTab } = useApp();
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
-  const { level } = levelInfo(s.xp);
+  const { level, into, need } = levelInfo(s.xp);
+  const levelPct = Math.max(4, Math.round((into / need) * 100));
   const checkedCount = DAYS.reduce((n, d) => n + DAY_PARTS.filter((p) => s.days[d.key][p.key]).length, 0);
 
   return (
@@ -178,6 +179,18 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
               {noHearts && (
                 <span className="anim-wiggle rounded-md bg-coral-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">نفدت!</span>
               )}
+            </div>
+            {/* شريط المستوى — يمتلئ كلما زادت نقاطه */}
+            <div className="mt-2" title={`المستوى ${ar(level)} — باقي ${ar(need - into)} نقطة للمستوى التالي`}>
+              <div className="flex items-center gap-1.5">
+                <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-grape-100">
+                  <div
+                    className="xp-fill h-full rounded-full transition-[width] duration-700 ease-out"
+                    style={{ width: levelPct + "%" }}
+                  />
+                </div>
+                <span className="shrink-0 text-[9px] font-extrabold text-grape-500">{ar(into)}/{ar(need)}</span>
+              </div>
             </div>
             <p className="mt-1 text-[10px] font-bold text-grape-700/55">
               {noHearts ? "يجمع العملات فقط — اشترِ له قلبًا من متجره" : "من يخالف آداب الحلقة يخسر قلبًا"}
@@ -237,11 +250,20 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
         </div>
 
         {/* نقاط الأسبوع والإجراءات */}
-        <div className={`flex items-center justify-between gap-3 border-t-2 px-4 py-3 lg:w-56 lg:shrink-0 lg:flex-col lg:justify-center lg:border-s-2 lg:border-t-0 lg:py-4 ${noHearts ? "border-slate-200" : "border-grape-100"} ${fade}`}>
-          <div className={`rounded-2xl border-2 px-5 py-2 text-center ${s.weekXp > 0 ? "border-gold-500/60 bg-gold-400/20" : "border-grape-100 bg-grape-50"}`}>
-            <p className="font-display text-2xl font-extrabold leading-7 text-gold-600">+{ar(s.weekXp)}</p>
-            <p className="text-[10px] font-bold text-grape-700/60">نقاط الأسبوع · {ar(checkedCount)}/١٢ خانة</p>
+        <div className={`flex items-center justify-between gap-3 border-t-2 px-4 py-3 lg:w-64 lg:shrink-0 lg:flex-col lg:justify-center lg:border-s-2 lg:border-t-0 lg:py-4 ${noHearts ? "border-slate-200" : "border-grape-100"} ${fade}`}>
+          <div className="flex items-stretch gap-2">
+            <div className={`flex-1 rounded-2xl border-2 px-4 py-2 text-center ${s.weekXp > 0 ? "border-gold-500/60 bg-gold-400/20" : "border-grape-100 bg-grape-50"}`}>
+              <p className="font-display text-xl font-extrabold leading-6 text-gold-600">+{ar(s.weekXp)}</p>
+              <p className="text-[9px] font-bold text-grape-700/60">نقاط الأسبوع</p>
+            </div>
+            <div className={`flex-1 rounded-2xl border-2 px-4 py-2 text-center ${s.weekCoins > 0 ? "border-grape-400/60 bg-grape-600/10" : "border-grape-100 bg-grape-50"}`}>
+              <p className="flex items-center justify-center gap-1 font-display text-xl font-extrabold leading-6 text-grape-600">
+                <Coin className="h-4 w-4" />+{ar(s.weekCoins)}
+              </p>
+              <p className="text-[9px] font-bold text-grape-700/60">عملات الأسبوع</p>
+            </div>
           </div>
+          <p className="text-[9px] font-bold text-grape-700/50 lg:-mt-1">{ar(checkedCount)}/١٢ خانة مسجلة</p>
           <div className="flex items-center gap-1.5">
             <button
               type="button"

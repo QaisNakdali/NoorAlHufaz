@@ -99,6 +99,10 @@ export default function CeremonyPanel() {
     AWARDS_META.filter((m) => isRealPick(ceremonyPicks[m.key])).length +
     CHAMPION_TIERS.filter((t) => isRealPick(ceremonyPicks[t.key])).length;
 
+  /* إلغاء بطولات الأسبوع لهذا الأسبوع (تُضبط المراكز الثلاثة على "لا أحد") */
+  const champsCanceled = CHAMPION_TIERS.every((t) => ceremonyPicks[t.key] === "none");
+  const toggleChamps = () => CHAMPION_TIERS.forEach((t) => setCeremonyPick(t.key, champsCanceled ? null : "none"));
+
   useEffect(() => {
     if (!armWeek) return;
     const t = window.setTimeout(() => setArmWeek(false), 3500);
@@ -211,17 +215,44 @@ export default function CeremonyPanel() {
       </div>
 
       {/* ===== أبطال الأسبوع — المراكز الثلاثة ===== */}
-      <div className="anim-slide-up card-shine mt-4 rounded-3xl border-2 border-gold-500/50 bg-gradient-to-b from-gold-400/15 to-white p-4">
+      <div
+        className={`anim-slide-up card-shine mt-4 rounded-3xl border-2 p-4 transition-all ${
+          champsCanceled
+            ? "border-grape-100 bg-grape-50/60 opacity-75 saturate-50"
+            : "border-gold-500/50 bg-gradient-to-b from-gold-400/15 to-white"
+        }`}
+      >
         <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gold-500 text-white shadow-[0_3px_0_#b57a0a]">
+          <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${champsCanceled ? "bg-grape-100 text-grape-400" : "bg-gold-500 text-white shadow-[0_3px_0_#b57a0a]"}`}>
             <Icon name="trophy" className="h-6 w-6" strokeWidth={2.1} />
           </span>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <p className="font-display text-lg font-extrabold leading-6 text-ink">أبطال الأسبوع — المراكز الثلاثة</p>
             <p className="text-[11px] font-bold text-grape-700/65">الأول +٣٠ · الثاني +٢٠ · الثالث +١٠ عملة — البطولة استحقاق لأسبوع مكتمل فقط</p>
           </div>
+          <button
+            type="button"
+            onClick={toggleChamps}
+            title={champsCanceled ? "إعادة بطولات الأسبوع إلى الحفل" : "إلغاء بطولات الأسبوع لهذا الأسبوع"}
+            className={`flex shrink-0 items-center gap-1 rounded-xl border-2 px-2.5 py-1.5 text-[11px] font-extrabold transition-all active:scale-95 ${
+              champsCanceled
+                ? "border-mint-600/60 bg-mint-400/15 text-mint-600 hover:bg-mint-400/30"
+                : "border-coral-400/50 bg-white text-coral-500 hover:bg-coral-500 hover:text-white"
+            }`}
+          >
+            <Icon name={champsCanceled ? "refresh" : "x"} className="h-3.5 w-3.5" strokeWidth={3} />
+            {champsCanceled ? "استعادة" : "إلغاء"}
+          </button>
         </div>
 
+        {champsCanceled && (
+          <p className="anim-fade mt-3 rounded-2xl bg-grape-50 px-3 py-2 text-center text-xs font-bold text-grape-400">
+            لن تُسلَّم بطولات الأسبوع في حفل هذا الأسبوع
+          </p>
+        )}
+
+        {!champsCanceled && (
+        <>
         {/* شروط البطولة */}
         <div className="mt-3 rounded-2xl border-2 border-gold-500/30 bg-white/85 p-3">
           <p className="mb-2 flex items-center gap-1.5 font-display text-xs font-extrabold text-gold-600">
@@ -322,6 +353,8 @@ export default function CeremonyPanel() {
             );
           })}
         </div>
+        </>
+        )}
       </div>
 
       {/* ===== الجوائز الفردية ===== */}
@@ -329,19 +362,39 @@ export default function CeremonyPanel() {
         {AWARDS_META.map((m, i) => {
           const k = m.key as keyof CeremonyPicks;
           const value = ceremonyPicks[k] ?? "";
-          const winner = value === "none" ? null : students.find((s) => s.id === value);
+          const canceled = value === "none";
+          const winner = canceled ? null : students.find((s) => s.id === value);
           return (
-            <div key={m.key} className="anim-slide-up card-shine rounded-3xl border-2 border-grape-200 bg-white p-4" style={{ animationDelay: `${i * 70}ms` }}>
+            <div
+              key={m.key}
+              className={`anim-slide-up card-shine rounded-3xl border-2 p-4 transition-all ${
+                canceled ? "border-grape-100 bg-grape-50/60 opacity-75 saturate-50" : "border-grape-200 bg-white"
+              }`}
+              style={{ animationDelay: `${i * 70}ms` }}
+            >
               <div className="flex items-center gap-3">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gold-400/25 text-gold-600">
+                <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${canceled ? "bg-grape-100 text-grape-400" : "bg-gold-400/25 text-gold-600"}`}>
                   <Icon name={m.icon} className="h-6 w-6" strokeWidth={2.1} />
                 </span>
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <p className="font-display text-lg font-extrabold leading-6 text-ink">{m.title}</p>
                   <p className="text-[11px] font-bold text-grape-700/65">
                     {m.desc} · جائزة +{ar(m.coins)} عملة{m.key === "improved" ? " وترفع المستوى" : ""}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setCeremonyPick(k, canceled ? null : "none")}
+                  title={canceled ? "إعادة الجائزة إلى الحفل" : "إلغاء هذه الجائزة لهذا الأسبوع"}
+                  className={`flex shrink-0 items-center gap-1 rounded-xl border-2 px-2.5 py-1.5 text-[11px] font-extrabold transition-all active:scale-95 ${
+                    canceled
+                      ? "border-mint-600/60 bg-mint-400/15 text-mint-600 hover:bg-mint-400/30"
+                      : "border-coral-400/50 bg-white text-coral-500 hover:bg-coral-500 hover:text-white"
+                  }`}
+                >
+                  <Icon name={canceled ? "refresh" : "x"} className="h-3.5 w-3.5" strokeWidth={3} />
+                  {canceled ? "استعادة" : "إلغاء"}
+                </button>
               </div>
               <div className="mt-3 flex items-center gap-2">
                 <select

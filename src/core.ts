@@ -81,6 +81,18 @@ export function weekXpOf(days: WeekDays): number {
   return total;
 }
 
+/** عملات الأسبوع = مجموع عملات كل الخانات المسجلة */
+export function weekCoinsOf(days: WeekDays): number {
+  let total = 0;
+  for (const d of DAYS) {
+    const e = days[d.key];
+    if (e.a) total += ATTEND_COINS;
+    if (e.h) total += RECITE_COINS;
+    if (e.r) total += RECITE_COINS;
+  }
+  return total;
+}
+
 export type Student = {
   id: string;
   name: string;
@@ -89,6 +101,7 @@ export type Student = {
   heartsLostWeek: number;
   xp: number;
   weekXp: number; // نقاط هذا الأسبوع من الكشف
+  weekCoins: number; // عملات هذا الأسبوع من الكشف
   coins: number;
   days: WeekDays;
   inventory: string[]; // ids خصائص البروفايل المملوكة
@@ -406,6 +419,7 @@ export function seedStudents(): Student[] {
       heartsLostWeek: 0,
       xp,
       weekXp: weekXpOf(days),
+      weekCoins: weekCoinsOf(days),
       coins,
       days,
       inventory: look.inventory ?? [],

@@ -29,6 +29,7 @@ import {
   seedStudents,
   TRIP_COIN_REWARD,
   uid,
+  weekCoinsOf,
   weekXpOf,
   type BgKind,
   type CeremonyPicks,
@@ -126,6 +127,7 @@ function normStudent(s: Student): Student {
     ...s,
     days: out,
     weekXp: weekXpOf(out),
+    weekCoins: weekCoinsOf(out),
     hearts: typeof s.hearts === "number" ? Math.max(0, Math.min(MAX_HEARTS, s.hearts)) : MAX_HEARTS,
     heartsLostWeek: s.heartsLostWeek ?? 0,
     inventory: Array.isArray(s.inventory) ? s.inventory : [],
@@ -292,6 +294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           heartsLostWeek: 0,
           xp: 0,
           weekXp: 0,
+          weekCoins: 0,
           coins: 10, // هدية ترحيب
           days: emptyWeekDays(),
           inventory: [],
@@ -342,7 +345,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             leveledName = student.name;
             leveledTo = leveled;
           }
-          return { ...student, days, weekXp: weekXpOf(days), coins: Math.max(0, student.coins + coinDelta) };
+          return { ...student, days, weekXp: weekXpOf(days), weekCoins: weekCoinsOf(days), coins: Math.max(0, student.coins + coinDelta) };
         })
       );
 
@@ -788,7 +791,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // أسبوع جديد: كشف نظيف — والقلوب تبقى كما هي (تُستعاد بالشراء أو بمنحة المعلم فقط)
     setWeek((w) => w + 1);
     setWeekNameState("");
-    setStudents((ss) => ss.map((s) => ({ ...s, days: emptyWeekDays(), weekXp: 0, heartsLostWeek: 0 })));
+    setStudents((ss) => ss.map((s) => ({ ...s, days: emptyWeekDays(), weekXp: 0, weekCoins: 0, heartsLostWeek: 0 })));
     setCeremonyPicks({});
     setTripOn(false);
     setTripDay(null);
