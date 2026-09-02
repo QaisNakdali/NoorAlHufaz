@@ -46,9 +46,25 @@ import {
   type WeekLog,
 } from "./core";
 import { sfx, setSoundEnabled } from "./sound";
+import {
+  cloudLoad,
+  cloudSave,
+  CLOUD_PULL_INTERVAL_SEC,
+  CLOUD_SKIP_PHOTOS,
+  errMsg,
+  isCloudEnabled,
+} from "./cloudSync";
 
 export type ToastKind = "xp" | "coin" | "level" | "award" | "error" | "success" | "heart";
 export type Toast = { id: number; kind: ToastKind; msg: string };
+
+/* حالة المزامنة السحابية كما تظهر في الشريط العلوي */
+export type CloudInfo = {
+  enabled: boolean;
+  status: "off" | "idle" | "syncing" | "ok" | "error";
+  lastSyncAt: number | null;
+  lastError: string | null;
+};
 
 type State = {
   students: Student[];
@@ -107,6 +123,10 @@ type Ctx = State & {
   showCeremony: boolean;
   startCeremony: () => void;
   closeCeremony: () => void;
+
+  /* المزامنة السحابية */
+  cloud: CloudInfo;
+  syncNow: () => void;
 };
 
 const KEY = "noor-huffaz-v3";
@@ -147,57 +167,62 @@ function normStudent(s: Student): Student {
   };
 }
 
+/** تطبيع حزمة البيانات المحفوظة — تُستخدم للحفظ المحلي وللقادم من السحابة معًا */
+function stateFromPartial(p: Partial<State> | null | undefined): State {
+  if (!p || typeof p !== "object") p = {};
+  const students = Array.isArray(p.students) ? (p.students as Student[]).map(normStudent) : seedStudents();
+  return {
+    students,
+    week: typeof p.week === "number" ? p.week : 1,
+    weekName: typeof p.weekName === "string" ? p.weekName : "",
+    weeksLog: Array.isArray(p.weeksLog) ? (p.weeksLog as WeekLog[]) : [],
+    sound: p.sound !== false,
+    ceremonyPicks: p.ceremonyPicks ?? {},
+    tripOn: !!p.tripOn,
+    tripDay: (p.tripDay as TripDay | null) ?? null,
+    tripAttendees: Array.isArray(p.tripAttendees) ? (p.tripAttendees as string[]) : [],
+    showNewProducts: p.showNewProducts !== false,
+    products:
+      Array.isArray(p.products) && p.products.length
+        ? (p.products as ShopItem[]).map((it) => {
+            // ترحيل قيم خلفيات البطاقة القديمة إلى الألوان الجديدة
+            const withBg =
+              it.slot === "cardbg" && it.value && BG_MIGRATION[it.value]
+                ? { ...it, value: BG_MIGRATION[it.value] }
+                : it;
+            if (withBg.kind) return withBg.kind === "external" ? { ...withBg, repeatable: true } : withBg;
+            // نموذج قديم: حوّل حقل cosmetic إلى kind/slot/value
+            const legacy = withBg as ShopItem & { cosmetic?: string | null };
+            if (legacy.cosmetic === "crown") return { ...withBg, kind: "cosmetic", slot: "crown", value: "gold" };
+            if (legacy.cosmetic) return { ...withBg, kind: "cosmetic", slot: "frame", value: legacy.cosmetic };
+            return { ...withBg, kind: "external", repeatable: true };
+          })
+        : DEFAULT_SHOP_ITEMS,
+  };
+}
+
 function loadPersist(): State {
   try {
     const raw = localStorage.getItem(KEY);
+    if (raw) return stateFromPartial(JSON.parse(raw) as Partial<State>);
+  } catch {
+    /* تجاهل */
+  }
+  return stateFromPartial(null);
+}
+
+/** رقم النسخة المحفوظ محليًا (يُستخدم للمزامنة) */
+function readStoredRev(): number {
+  try {
+    const raw = localStorage.getItem(KEY);
     if (raw) {
-      const p = JSON.parse(raw) as Partial<State>;
-      const students = Array.isArray(p.students) ? (p.students as Student[]).map(normStudent) : seedStudents();
-      return {
-        students,
-        week: typeof p.week === "number" ? p.week : 1,
-        weekName: typeof p.weekName === "string" ? p.weekName : "",
-        weeksLog: Array.isArray(p.weeksLog) ? (p.weeksLog as WeekLog[]) : [],
-        sound: p.sound !== false,
-        ceremonyPicks: p.ceremonyPicks ?? {},
-        tripOn: !!p.tripOn,
-        tripDay: (p.tripDay as TripDay | null) ?? null,
-        tripAttendees: Array.isArray(p.tripAttendees) ? (p.tripAttendees as string[]) : [],
-        showNewProducts: p.showNewProducts !== false,
-        products:
-          Array.isArray(p.products) && p.products.length
-            ? (p.products as ShopItem[]).map((it) => {
-                // ترحيل قيم خلفيات البطاقة القديمة إلى الألوان الجديدة
-                const withBg =
-                  it.slot === "cardbg" && it.value && BG_MIGRATION[it.value]
-                    ? { ...it, value: BG_MIGRATION[it.value] }
-                    : it;
-                if (withBg.kind) return withBg.kind === "external" ? { ...withBg, repeatable: true } : withBg;
-                // نموذج قديم: حوّل حقل cosmetic إلى kind/slot/value
-                const legacy = withBg as ShopItem & { cosmetic?: string | null };
-                if (legacy.cosmetic === "crown") return { ...withBg, kind: "cosmetic", slot: "crown", value: "gold" };
-                if (legacy.cosmetic) return { ...withBg, kind: "cosmetic", slot: "frame", value: legacy.cosmetic };
-                return { ...withBg, kind: "external", repeatable: true };
-              })
-            : DEFAULT_SHOP_ITEMS,
-      };
+      const p = JSON.parse(raw) as { __rev?: number };
+      if (typeof p.__rev === "number") return p.__rev;
     }
   } catch {
     /* تجاهل */
   }
-  return {
-    students: seedStudents(),
-    week: 1,
-    weekName: "",
-    weeksLog: [],
-    sound: true,
-    ceremonyPicks: {},
-    tripOn: false,
-    tripDay: null,
-    tripAttendees: [],
-    showNewProducts: true,
-    products: DEFAULT_SHOP_ITEMS,
-  };
+  return 0;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -229,42 +254,167 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [showCeremony, setShowCeremony] = useState(false);
   const timers = useRef<number[]>([]);
 
-  // حفظ
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        KEY,
-        JSON.stringify({
-          students,
-          week,
-          weekName,
-          weeksLog,
-          sound,
-          ceremonyPicks,
-          products,
-          showNewProducts,
-          tripOn,
-          tripDay,
-          tripAttendees,
-        })
-      );
-    } catch {
-      /* تجاهل */
-    }
-  }, [students, week, weekName, weeksLog, sound, ceremonyPicks, products, showNewProducts, tripOn, tripDay, tripAttendees]);
-
-  useEffect(() => {
-    setSoundEnabled(sound);
-  }, [sound]);
-
-  useEffect(() => () => timers.current.forEach((t) => clearTimeout(t)), []);
-
   const toast = useCallback((kind: ToastKind, msg: string) => {
     const id = toastSeq++;
     setToasts((ts) => [...ts.slice(-3), { id, kind, msg }]);
     const t = window.setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== id)), 3200);
     timers.current.push(t);
   }, []);
+
+  /* ===== المزامنة السحابية ===== */
+  const cloudEnabled = isCloudEnabled();
+  const [cloud, setCloud] = useState<CloudInfo>({
+    enabled: cloudEnabled,
+    status: cloudEnabled ? "idle" : "off",
+    lastSyncAt: null,
+    lastError: null,
+  });
+  const revRef = useRef(0); // رقم نسخة البيانات المحلية
+  const lastPushedRev = useRef(0); // آخر نسخة رُفعت للسحابة
+  const cloudDataRef = useRef<State | null>(null); // مرآة البيانات لأغراض الرفع
+  const pushTimer = useRef<number | null>(null);
+  const firstSave = useRef(true);
+
+  /** رفع نسخة إلى السحابة */
+  const pushCloud = useCallback(async (rev: number, force = false) => {
+    if (!isCloudEnabled()) return;
+    const data = cloudDataRef.current;
+    if (!data) return;
+    if (!force && rev <= lastPushedRev.current) return;
+    setCloud((c) => ({ ...c, status: "syncing" }));
+    try {
+      await cloudSave({ rev, data });
+      lastPushedRev.current = rev;
+      setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
+    } catch (e) {
+      setCloud((c) => ({ ...c, status: "error", lastError: errMsg(e) }));
+    }
+  }, []);
+
+  /** تطبيق حزمة قادمة من السحابة على الحالة */
+  const applyRemote = useCallback((remote: State) => {
+    // عند تخطي الصور سحابيًا: نحتفظ بصور هذا الجهاز بدل استبدالها بفراغ
+    if (CLOUD_SKIP_PHOTOS) {
+      const localStudents = cloudDataRef.current?.students ?? [];
+      remote = {
+        ...remote,
+        students: remote.students.map((rs) => {
+          const local = localStudents.find((ls) => ls.id === rs.id);
+          return local?.photo ? { ...rs, photo: local.photo } : rs;
+        }),
+      };
+    }
+    setStudents(remote.students);
+    setWeek(remote.week);
+    setWeekNameState(remote.weekName);
+    setWeeksLog(remote.weeksLog);
+    setSound(remote.sound);
+    setCeremonyPicks(remote.ceremonyPicks);
+    setProducts(remote.products);
+    setShowNewProducts(remote.showNewProducts);
+    setTripOn(remote.tripOn);
+    setTripDay(remote.tripDay);
+    setTripAttendees(remote.tripAttendees);
+  }, []);
+
+  /** سحب أحدث نسخة من السحابة وتطبيقها إن كانت أحدث من المحلية */
+  const pullCloud = useCallback(
+    async (announce: boolean) => {
+      if (!isCloudEnabled()) return;
+      setCloud((c) => (c.status === "error" ? c : { ...c, status: "syncing" }));
+      try {
+        const remote = await cloudLoad();
+        if (remote && remote.rev > revRef.current) {
+          const norm = stateFromPartial(remote.data as Partial<State>);
+          revRef.current = remote.rev;
+          lastPushedRev.current = remote.rev;
+          applyRemote(norm);
+          if (announce) toast("success", "تم جلب تحديثات جديدة من السحابة");
+        } else if (!remote && revRef.current > 0) {
+          // السحابة فارغة ولدينا بيانات حقيقية — ننشر نسختنا
+          await pushCloud(revRef.current, true);
+          return; // pushCloud حدّث الحالة بالفعل
+        }
+        setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
+      } catch (e) {
+        setCloud((c) => ({ ...c, status: "error", lastError: errMsg(e) }));
+      }
+    },
+    [applyRemote, pushCloud, toast]
+  );
+
+  // حفظ محلي + رفع سحابي عند كل تغيير
+  useEffect(() => {
+    const persistData: State = {
+      students,
+      week,
+      weekName,
+      weeksLog,
+      sound,
+      ceremonyPicks,
+      products,
+      showNewProducts,
+      tripOn,
+      tripDay,
+      tripAttendees,
+    };
+
+    // النسخة السحابية: تُحذف الصور إن طُلب ذلك للتقليل من الحجم
+    cloudDataRef.current = CLOUD_SKIP_PHOTOS
+      ? { ...persistData, students: persistData.students.map((s) => ({ ...s, photo: null })) }
+      : persistData;
+
+    if (firstSave.current) {
+      // أول تشغيل: نحفظ محليًا فقط ونقرأ رقم النسخة المخزون
+      firstSave.current = false;
+      revRef.current = readStoredRev();
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current }));
+      } catch {
+        /* تجاهل */
+      }
+      return;
+    }
+
+    // تعديل حقيقي: نرفع رقم النسخة ونحفظ ونجدول رفعًا سحابيًا
+    const newRev = Date.now();
+    revRef.current = newRev;
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: newRev }));
+    } catch {
+      /* تجاهل */
+    }
+    if (isCloudEnabled()) {
+      if (pushTimer.current) window.clearTimeout(pushTimer.current);
+      pushTimer.current = window.setTimeout(() => void pushCloud(newRev), 1500);
+    }
+  }, [students, week, weekName, weeksLog, sound, ceremonyPicks, products, showNewProducts, tripOn, tripDay, tripAttendees, pushCloud]);
+
+  // سحب دوري من السحابة لمزامنة بقية الأجهزة
+  useEffect(() => {
+    if (!cloudEnabled) return;
+    let cancelled = false;
+    void pullCloud(false);
+    const iv = window.setInterval(() => {
+      if (!cancelled) void pullCloud(true);
+    }, Math.max(15, CLOUD_PULL_INTERVAL_SEC) * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(iv);
+    };
+  }, [cloudEnabled, pullCloud]);
+
+  /** مزامنة فورية يدوية (سحب ثم رفع) */
+  const syncNow = useCallback(() => {
+    if (!cloudEnabled) return;
+    void pullCloud(true).then(() => void pushCloud(revRef.current, revRef.current > lastPushedRev.current));
+  }, [cloudEnabled, pullCloud, pushCloud]);
+
+  useEffect(() => {
+    setSoundEnabled(sound);
+  }, [sound]);
+
+  useEffect(() => () => timers.current.forEach((t) => clearTimeout(t)), []);
 
   const update = useCallback((id: string, fn: (s: Student) => Student) => {
     setStudents((ss) => ss.map((s) => (s.id === id ? fn(s) : s)));
@@ -850,6 +1000,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     showCeremony,
     startCeremony,
     closeCeremony,
+    cloud,
+    syncNow,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

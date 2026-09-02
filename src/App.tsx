@@ -40,6 +40,53 @@ function Logo() {
   );
 }
 
+/* مؤشر المزامنة السحابية — يعرض حالة الاتصال ويُحدّث يدويًا عند الضغط */
+function CloudChip() {
+  const { cloud, syncNow } = useApp();
+  if (!cloud.enabled) {
+    return (
+      <span
+        title="الحفظ محلي على هذا الجهاز فقط. لتفعيل المزامنة بين الهواتف ضع رابط API في ملف src/cloudSync.ts"
+        className="flex cursor-help items-center gap-1.5 rounded-full border-2 border-grape-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-grape-400"
+      >
+        <Icon name="cloudOff" className="h-4 w-4" strokeWidth={2.2} />
+        <span className="hidden sm:inline">محلي</span>
+      </span>
+    );
+  }
+  const t = cloud.lastSyncAt
+    ? new Date(cloud.lastSyncAt).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" })
+    : null;
+  const busy = cloud.status === "syncing";
+  return (
+    <button
+      type="button"
+      onClick={syncNow}
+      title={
+        busy
+          ? "جارٍ المزامنة..."
+          : cloud.status === "error"
+          ? `خطأ: ${cloud.lastError ?? ""} — اضغط لإعادة المحاولة`
+          : t
+          ? `آخر مزامنة ${t} — اضغط للتحديث الآن`
+          : "اضغط للمزامنة الآن"
+      }
+      className={`flex items-center gap-1.5 rounded-full border-2 px-2.5 py-1.5 text-[11px] font-extrabold transition-all active:scale-95 ${
+        cloud.status === "error"
+          ? "border-coral-400/60 bg-white text-coral-500 hover:bg-coral-50"
+          : busy
+          ? "border-grape-300 bg-white text-grape-500"
+          : "border-mint-400/60 bg-white text-mint-600 hover:bg-mint-400/10"
+      }`}
+    >
+      <Icon name="cloud" className={`h-4 w-4 ${busy ? "animate-pulse" : ""}`} strokeWidth={2.2} />
+      <span className="hidden sm:inline">
+        {busy ? "مزامنة..." : cloud.status === "error" ? "خطأ" : t ? `متزامن ${t}` : "سحابي"}
+      </span>
+    </button>
+  );
+}
+
 function Nav() {
   const { tab, setTab, mode, setMode, sound, toggleSound } = useApp();
   const [explainOpen, setExplainOpen] = useState(false);
@@ -65,6 +112,7 @@ function Nav() {
           </nav>
         )}
         <div className="ms-auto flex items-center gap-2">
+          <CloudChip />
           {mode === "student" && (
             <span className="hidden items-center gap-1.5 rounded-full bg-grape-100 px-3 py-1.5 text-xs font-bold text-grape-600 sm:flex">
               <Icon name="eye" className="h-4 w-4" strokeWidth={2.2} />
