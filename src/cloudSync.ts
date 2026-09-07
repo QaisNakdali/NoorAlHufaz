@@ -26,11 +26,11 @@
    ══════════════════════════════════════════════════════════════════════ */
 
 /* ────────────── ضع رابطك هنا ────────────── */
-export const CLOUD_URL = "";
+export const CLOUD_URL = "https://api.jsonbin.io/v3/b/6a9845b5da38895dfe301732";
 
 /* رؤوس الطلب — ضع هنا مفتاح JSONBin (X-Master-Key) إن كان مطلوبًا */
 export const CLOUD_HEADERS: Record<string, string> = {
-  // "X-Master-Key": "$2a$10$xxxxxxxxxxxxxxxxxxxxxxxx",
+  "X-Master-Key": "$2a$10$ye4iE7eu0edA.xBwFOWMqOU0FF2.CGxdGEMT/bQg4Wq9h8/atioou",
 };
 
 /* فعّلها (true) إن تجاوزت بياناتك حد الخدمة المجانية:
