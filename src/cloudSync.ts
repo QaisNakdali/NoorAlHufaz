@@ -38,11 +38,11 @@ export const CLOUD_HEADERS: Record<string, string> = {
 export const CLOUD_SKIP_PHOTOS = false;
 
 /* كل كم ثانية يسحب كل جهاز أحدث نسخة من السحابة؟ */
-export const CLOUD_PULL_INTERVAL_SEC = 45;
+export const CLOUD_PULL_INTERVAL_SEC = 3;
 
 /* ────────────── ما بعد هذا السطر لا يحتاج تعديلًا ────────────── */
 
-export const isCloudEnabled = (): boolean => CLOUD_URL.trim().length > 0;
+export const isCloudEnabled = (): boolean => true;
 
 export type CloudPayload = { rev: number; data: unknown };
 
