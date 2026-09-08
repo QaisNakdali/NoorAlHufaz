@@ -38,10 +38,9 @@ export const CLOUD_HEADERS: Record<string, string> = {
 export const CLOUD_SKIP_PHOTOS = false;
 
 /* كل كم ثانية يسحب كل جهاز أحدث نسخة من السحابة؟ */
-export const CLOUD_PULL_INTERVAL_SEC = 3;
+export const CLOUD_PULL_INTERVAL_SEC = 20;
 
 /* ────────────── ما بعد هذا السطر لا يحتاج تعديلًا ────────────── */
-
 export const isCloudEnabled = (): boolean => true;
 
 export type CloudPayload = { rev: number; data: unknown };
@@ -66,6 +65,11 @@ async function request(url: string, init: RequestInit): Promise<Response> {
 
 /** جلب أحدث نسخة من السحابة — تعيد null إذا كان المستودع فارغًا */
 export async function cloudLoad(): Promise<CloudPayload | null> {
+  // إلغاء السحب إذا كان التابلت مقفلاً أو المتصفح بالخلفية توفيراً للباقة
+  if (typeof document !== "undefined" && document.hidden) {
+    return null;
+  }
+
   const res = await request(isJsonBin ? `${CLOUD_URL}/latest` : CLOUD_URL, {
     method: "GET",
     headers: { ...CLOUD_HEADERS, Accept: "application/json" },
