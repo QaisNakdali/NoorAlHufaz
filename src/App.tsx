@@ -27,16 +27,16 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 function Logo() {
   return (
-    <div className="flex shrink-0 items-center gap-2.5">
+    <div className="flex items-center gap-2.5">
       <span className="anim-wiggle inline-block">
-        <svg viewBox="0 0 24 24" className="h-8 w-8 drop-shadow-[0_3px_0_rgba(86,40,157,0.35)] sm:h-10 sm:w-10">
+        <svg viewBox="0 0 24 24" className="h-11 w-11 drop-shadow-[0_3px_0_rgba(86,40,157,0.35)]">
           <rect width="24" height="24" rx="7" fill="#8448e6" />
           <path d="M12 3.5l2.4 5.2 5.6.9-4 4.1.9 5.8-4.9-2.7-4.9 2.7.9-5.8-4-4.1 5.6-.9z" fill="#ffd75e" />
         </svg>
       </span>
       <span className="leading-tight">
-        <span className="block font-display text-lg font-extrabold text-ink sm:text-xl">نور الحفّاظ</span>
-        <span className="hidden text-[9px] font-bold tracking-wide text-grape-500 min-[420px]:block">نحفظ · نلعب · نرتقي</span>
+        <span className="block font-display text-xl font-extrabold text-ink sm:text-2xl">نور الحفّاظ</span>
+        <span className="hidden text-[10px] font-bold tracking-wide text-grape-500 min-[420px]:block">نحفظ · نلعب · نرتقي</span>
       </span>
     </div>
   );
@@ -94,16 +94,16 @@ function Nav() {
   const [explainOpen, setExplainOpen] = useState(false);
   return (
     <header className="sticky top-0 z-40 border-b-2 border-grape-200/70 bg-grape-50/85 backdrop-blur-md">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-2.5 sm:px-6">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
         <Logo />
         {mode === "teacher" && (
-          <nav className="order-3 mt-2 flex w-full items-center gap-1.5 overflow-x-auto pb-1 sm:order-none sm:mt-0 sm:ms-2 sm:w-auto sm:flex-1 sm:pb-0">
+          <nav className="order-3 flex w-full items-center gap-1.5 overflow-x-auto pb-1 sm:order-none sm:ms-2 sm:w-auto sm:flex-1 sm:pb-0">
             {TABS.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => { sfx.click(); setTab(t.id); }}
-                className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-1.5 font-display text-xs font-extrabold transition-all active:scale-95 sm:px-3.5 sm:text-sm ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-3.5 py-2 font-display text-sm font-extrabold transition-all active:scale-95 ${
                   tab === t.id ? "bg-grape-600 text-white shadow-[0_4px_0_#56289d]" : "text-grape-600 hover:bg-white hover:shadow-sm"
                 }`}
               >
@@ -113,7 +113,7 @@ function Nav() {
             ))}
           </nav>
         )}
-        <div className="ms-auto flex shrink-0 items-center gap-2">
+        <div className="ms-auto flex items-center gap-2">
           <CloudChip />
           {mode === "student" && (
             <span className="hidden items-center gap-1.5 rounded-full bg-grape-100 px-3 py-1.5 text-xs font-bold text-grape-600 sm:flex">
