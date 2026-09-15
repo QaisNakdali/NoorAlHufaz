@@ -12,6 +12,7 @@ import Register from "./components/Register";
 import StoreTab from "./components/Store";
 import StudentView from "./components/StudentView";
 import TermFinale from "./components/TermFinale";
+import StatisticsPage from "./components/Statistics";
 import { Coin, HeartIcon, Icon } from "./components/ui";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -19,6 +20,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "store", label: "المتجر", icon: "store" },
   { id: "deliveries", label: "التسليمات", icon: "gift" },
   { id: "board", label: "المتصدرون", icon: "trophy" },
+  { id: "stats", label: "الإحصائيات", icon: "chart" },
   { id: "ceremony", label: "الحفل", icon: "sparkle" },
   { id: "term", label: "ختام الترم", icon: "flag" },
 ];
@@ -213,6 +215,8 @@ function Shell() {
           <Deliveries />
         ) : tab === "board" ? (
           <Leaderboard />
+        ) : tab === "stats" ? (
+          <StatisticsPage />
         ) : tab === "term" ? (
           <TermFinale />
         ) : (

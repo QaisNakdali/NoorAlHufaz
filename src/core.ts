@@ -93,6 +93,22 @@ export function weekCoinsOf(days: WeekDays): number {
   return total;
 }
 
+/* ========== أنواع سجل الحفظ التفصيلي ========== */
+/** سجل حفظ تفصيلي لكل جلسة تسميع */
+export type MemorizationRecord = {
+  id: string;
+  studentId: string;
+  surahName: string;        // اسم السورة
+  fromVerse: number;        // من الآية
+  toVerse: number;          // إلى الآية
+  versesCount: number;      // عدد الآيات المحفوظة (toVerse - fromVerse + 1)
+  date: string;             // ISO date string
+  dayKey: DayKey;           // اليوم الذي تم فيه الحفظ
+  success: boolean;         // هل أتم التسميع بنجاح
+  notes?: string;           // ملاحظات اختيارية
+  createdAt: number;        // timestamp للإضافة
+};
+
 export type Student = {
   id: string;
   name: string;
@@ -111,6 +127,7 @@ export type Student = {
   glow?: GlowKind | null;
   cardBg?: BgKind | null;
   awards: AwardRec[];
+  memorizationRecords?: MemorizationRecord[]; // سجل الحفظ التفصيلي (جديد)
 };
 
 export type ShopItem = {
@@ -391,8 +408,169 @@ export type WeekLog = {
 };
 
 /* ---------- الواجهات ---------- */
-export type Tab = "register" | "store" | "deliveries" | "board" | "ceremony" | "term";
+export type Tab = "register" | "store" | "deliveries" | "board" | "ceremony" | "term" | "stats";
 export type Mode = "teacher" | "student";
+
+/* ========== دوال مساعدة لسجل الحفظ والتحليلات ========== */
+
+/** الحصول على آخر سجل حفظ للطالب */
+export const getLastMemorizationRecord = (s: Student): MemorizationRecord | null => {
+  const records = s.memorizationRecords ?? [];
+  if (records.length === 0) return null;
+  return [...records].sort((a, b) => b.createdAt - a.createdAt)[0];
+};
+
+/** ملخص مستوى الحفظ الحالي للطالب */
+export const getMemorizationSummary = (s: Student): string => {
+  const last = getLastMemorizationRecord(s);
+  if (!last) return "";
+  return `${last.surahName} ${ar(last.fromVerse)}-${ar(last.toVerse)}`;
+};
+
+/** حساب إجمالي الآيات المحفوظة من السجلات */
+export const getTotalVersesMemorized = (s: Student): number => {
+  const records = s.memorizationRecords ?? [];
+  return records.reduce((sum, r) => sum + r.versesCount, 0);
+};
+
+/** حساب عدد جلسات الحفظ الناجحة */
+export const getSuccessfulSessionsCount = (s: Student): number => {
+  const records = s.memorizationRecords ?? [];
+  return records.filter(r => r.success).length;
+};
+
+/** تحليل أداء الطالب خلال فترة زمنية */
+export type PeriodAnalysis = {
+  totalVerses: number;
+  sessionsCount: number;
+  successfulSessions: number;
+  failedSessions: number;
+  successRate: number; // نسبة النجاح
+  averageVersesPerSession: number; // متوسط الآيات في الجلسة
+  activeDays: number; // عدد الأيام التي كان فيها حفظ
+  bestDay: { date: string; verses: number } | null; // أفضل يوم
+  trend: "improving" | "stable" | "declining" | "insufficient-data"; // الاتجاه
+};
+
+/** تحليل حفظ الطالب خلال فترة معينة */
+export function analyzeMemorizationPeriod(
+  records: MemorizationRecord[],
+  startDate: Date,
+  endDate: Date
+): PeriodAnalysis {
+  const filtered = records.filter(r => {
+    const d = new Date(r.date);
+    return d >= startDate && d <= endDate;
+  });
+
+  if (filtered.length === 0) {
+    return {
+      totalVerses: 0,
+      sessionsCount: 0,
+      successfulSessions: 0,
+      failedSessions: 0,
+      successRate: 0,
+      averageVersesPerSession: 0,
+      activeDays: 0,
+      bestDay: null,
+      trend: "insufficient-data",
+    };
+  }
+
+  const totalVerses = filtered.reduce((sum, r) => sum + r.versesCount, 0);
+  const successfulSessions = filtered.filter(r => r.success).length;
+  const failedSessions = filtered.filter(r => !r.success).length;
+  const successRate = filtered.length > 0 ? (successfulSessions / filtered.length) * 100 : 0;
+  const averageVersesPerSession = filtered.length > 0 ? totalVerses / filtered.length : 0;
+
+  // تجميع حسب التاريخ
+  const byDate: Record<string, number> = {};
+  filtered.forEach(r => {
+    const day = r.date.split("T")[0];
+    byDate[day] = (byDate[day] ?? 0) + r.versesCount;
+  });
+
+  const activeDays = Object.keys(byDate).length;
+  let bestDay: { date: string; verses: number } | null = null;
+  for (const [date, verses] of Object.entries(byDate)) {
+    if (!bestDay || verses > bestDay.verses) {
+      bestDay = { date, verses };
+    }
+  }
+
+  // حساب الاتجاه بمقارنة النصف الأول بالنصف الثاني من الفترة
+  let trend: PeriodAnalysis["trend"] = "insufficient-data";
+  if (filtered.length >= 4) {
+    const sorted = [...filtered].sort((a, b) => a.createdAt - b.createdAt);
+    const mid = Math.floor(sorted.length / 2);
+    const firstHalf = sorted.slice(0, mid);
+    const secondHalf = sorted.slice(mid);
+
+    const firstAvg = firstHalf.reduce((s, r) => s + r.versesCount, 0) / firstHalf.length;
+    const secondAvg = secondHalf.reduce((s, r) => s + r.versesCount, 0) / secondHalf.length;
+
+    const diff = secondAvg - firstAvg;
+    const threshold = firstAvg * 0.2; // 20% تغيير
+
+    if (diff > threshold) trend = "improving";
+    else if (diff < -threshold) trend = "declining";
+    else trend = "stable";
+  }
+
+  return {
+    totalVerses,
+    sessionsCount: filtered.length,
+    successfulSessions,
+    failedSessions,
+    successRate,
+    averageVersesPerSession,
+    activeDays,
+    bestDay,
+    trend,
+  };
+}
+
+/** تحليل الأسبوع الحالي */
+export function analyzeCurrentWeek(records: MemorizationRecord[]): PeriodAnalysis {
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0 = Sunday
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - dayOfWeek);
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 6);
+  endOfWeek.setHours(23, 59, 59, 999);
+
+  return analyzeMemorizationPeriod(records, startOfWeek, endOfWeek);
+}
+
+/** تحليل الشهر الحالي */
+export function analyzeCurrentMonth(records: MemorizationRecord[]): PeriodAnalysis {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  return analyzeMemorizationPeriod(records, startOfMonth, endOfMonth);
+}
+
+/** مقارنة بين أسبوعين */
+export function compareWeeks(
+  records: MemorizationRecord[],
+  week1Start: Date,
+  week1End: Date,
+  week2Start: Date,
+  week2End: Date
+): { week1Avg: number; week2Avg: number; improvement: number } {
+  const analysis1 = analyzeMemorizationPeriod(records, week1Start, week1End);
+  const analysis2 = analyzeMemorizationPeriod(records, week2Start, week2End);
+
+  return {
+    week1Avg: analysis1.averageVersesPerSession,
+    week2Avg: analysis2.averageVersesPerSession,
+    improvement: analysis2.averageVersesPerSession - analysis1.averageVersesPerSession,
+  };
+}
 
 /* ---------- الطلاب التجريبيون ---------- */
 export function seedStudents(): Student[] {
@@ -429,6 +607,7 @@ export function seedStudents(): Student[] {
       glow: look.glow ?? null,
       cardBg: look.cardBg ?? null,
       awards,
+      memorizationRecords: [],
     };
   };
   return [

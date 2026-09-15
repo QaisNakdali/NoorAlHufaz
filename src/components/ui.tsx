@@ -41,6 +41,11 @@ const PATHS: Record<string, string> = {
   cloudOff: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9zM3 3l18 18",
   rainbow: "M4 18a8 8 0 0 1 16 0M7.5 18a4.5 4.5 0 0 1 9 0M11 18a1 1 0 0 1 2 0",
   badge: "M12 2l2.4 4.8L20 8l-4 4 1 5.6L12 15l-5 2.6L8 12 4 8l5.6-1.2z",
+  alert: "M12 9v4M12 17h.01M10.3 3.8L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0z",
+  chart: "M3 3v18h18M18 17V9M13 17V5M8 17v-3",
+  search: "M21 21l-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0z",
+  trendingUp: "M3 17l6-6 4 4 7-7M14 7h6v6",
+  trendingDown: "M3 7l6 6 4-4 7 7M14 17h6v-6",
 };
 
 export function Icon({
