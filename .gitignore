@@ -1,5 +1,86 @@
+```gitignore
+# Dependencies
 node_modules/
-.next/
+
+# Build outputs
 dist/
 build/
+target/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.env
+.env.*
+.env.local
+
+# Logs
 *.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Compressed
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+
+# MyPy
+.mypy_cache/
+__pycache__/
+
+# PyTest
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Environment specific
+.env.local
+.env.*
+
+# Compiled binary files
+*.exe
+*.dll
+*.so
+*.a
+*.o
+*.obj
+*.out
+```
