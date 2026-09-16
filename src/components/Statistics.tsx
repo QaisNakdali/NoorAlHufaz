@@ -638,7 +638,7 @@ function NeedsAttentionList({ students }: { students: Student[] }) {
             </div>
             <button
               type="button"
-              onClick={() => {}}
+              onClick={() => openStudentProfile(student.id)}
               className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-extrabold text-white transition hover:bg-grape-700"
             >
               عرض الملف
@@ -654,11 +654,19 @@ export default function StatisticsPage() {
   const { students, setMode, setTab } = useApp();
   const [filter, setFilter] = useState<"all" | "needs-attention" | "excellent">("all");
   
+  // عند التحميل، تحقق مما إذا كان هناك طالب محدد للعرض
+  useEffect(() => {
+    const viewStudentId = localStorage.getItem('noor-huffaz-view-student');
+    if (viewStudentId && students.some(s => s.id === viewStudentId)) {
+      localStorage.removeItem('noor-huffaz-view-student');
+      setMode("student");
+    }
+  }, [students, setMode]);
+  
   const openStudentProfile = (studentId: string) => {
     // حفظ معرّف الطالب المحدد في localStorage لفتحه في وضع العرض
     localStorage.setItem('noor-huffaz-view-student', studentId);
     setMode("student");
-    setTab("register"); // أو يمكن إنشاء تبويب خاص بالبروفايل
   };
   
   const overallStats = useMemo(() => {
