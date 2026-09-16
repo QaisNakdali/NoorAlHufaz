@@ -651,8 +651,15 @@ function NeedsAttentionList({ students }: { students: Student[] }) {
 }
 
 export default function StatisticsPage() {
-  const { students } = useApp();
+  const { students, setMode, setTab } = useApp();
   const [filter, setFilter] = useState<"all" | "needs-attention" | "excellent">("all");
+  
+  const openStudentProfile = (studentId: string) => {
+    // حفظ معرّف الطالب المحدد في localStorage لفتحه في وضع العرض
+    localStorage.setItem('noor-huffaz-view-student', studentId);
+    setMode("student");
+    setTab("register"); // أو يمكن إنشاء تبويب خاص بالبروفايل
+  };
   
   const overallStats = useMemo(() => {
     return students.map(student => {
