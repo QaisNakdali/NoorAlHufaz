@@ -92,9 +92,16 @@ export default function StudentView() {
   const [shopOpen, setShopOpen] = useState(false);
   const [bagOpen, setBagOpen] = useState(false);
 
+  // عند التحميل، تحقق مما إذا كان هناك طالب محدد للعرض من localStorage
   useEffect(() => {
-    if (!sorted.some((s) => s.id === activeId)) setActiveId(sorted[0]?.id ?? null);
-  }, [sorted, activeId]);
+    const viewStudentId = localStorage.getItem('noor-huffaz-view-student');
+    if (viewStudentId && sorted.some(s => s.id === viewStudentId)) {
+      setActiveId(viewStudentId);
+      localStorage.removeItem('noor-huffaz-view-student');
+    } else if (!sorted.some((s) => s.id === activeId)) {
+      setActiveId(sorted[0]?.id ?? null);
+    }
+  }, [sorted]);
 
   const s = sorted.find((x) => x.id === activeId) ?? null;
   const { level, legend } = s ? levelInfo(s.xp) : { level: 1, legend: 0 };
