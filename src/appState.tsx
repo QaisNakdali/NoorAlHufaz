@@ -161,6 +161,7 @@ function normStudent(s: Student): Student {
           memorizationVerses: Math.max(0, Number(item.memorizationVerses ?? 0) || 0),
           reviewVerses: Math.max(0, Number(item.reviewVerses ?? 0) || 0),
           memorizationLines: Math.max(0, Number(item.memorizationLines ?? 0) || 0),
+          reviewLines: Math.max(0, Number(item.reviewLines ?? 0) || 0),
         };
       }
       return normalized;
@@ -520,8 +521,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const lastHeard = turningOn && (part === "h" || part === "r")
             ? {
                 ...(s.lastHeard ?? {}),
-                ...(part === "h" && ward.memorization ? { memorization: { text: ward.memorization, verses: ward.memorizationVerses, day: dayLabel, at: Date.now() } } : {}),
-                ...(part === "r" && ward.review ? { review: { text: ward.review, verses: ward.reviewVerses, day: dayLabel, at: Date.now() } } : {}),
+                ...(part === "h" && ward.memorization ? { memorization: { text: ward.memorization, verses: ward.memorizationVerses, lines: ward.memorizationLines, day: dayLabel, at: Date.now() } } : {}),
+                ...(part === "r" && ward.review ? { review: { text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines, day: dayLabel, at: Date.now() } } : {}),
               }
             : s.lastHeard;
           return { ...student, days, lastHeard, weekXp: weekXpOf(days), weekCoins: weekCoinsOf(days), coins: Math.max(0, student.coins + coinDelta) };
@@ -553,6 +554,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           memorizationVerses: Math.max(0, Number(ward.memorizationVerses) || 0),
           reviewVerses: Math.max(0, Number(ward.reviewVerses) || 0),
           memorizationLines: Math.max(0, Number(ward.memorizationLines) || 0),
+          reviewLines: Math.max(0, Number(ward.reviewLines) || 0),
         } } }
       : s));
   }, []);

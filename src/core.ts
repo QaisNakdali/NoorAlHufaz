@@ -54,10 +54,11 @@ export type DailyWard = {
   memorizationVerses: number;
   reviewVerses: number;
   memorizationLines: number;
+  reviewLines: number;
 };
 export type WeeklyWard = Record<DayKey, DailyWard>;
 
-export type LastHeardEntry = { text: string; verses: number; day: string; at: number };
+export type LastHeardEntry = { text: string; verses: number; lines?: number; day: string; at: number };
 export type LastHeard = { memorization?: LastHeardEntry; review?: LastHeardEntry };
 
 export const DAYS: { key: DayKey; label: string }[] = [
@@ -84,7 +85,7 @@ export function emptyWeekDays(): WeekDays {
 }
 
 export function emptyWeeklyWard(): WeeklyWard {
-  const mk = (): DailyWard => ({ memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0 });
+  const mk = (): DailyWard => ({ memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 });
   return { sun: mk(), mon: mk(), tue: mk(), wed: mk() };
 }
 
