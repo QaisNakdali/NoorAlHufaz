@@ -30,3 +30,146 @@ svg:not([width]):not([height]):not(.h-):not(.w-) {
 button svg, a svg {
   pointer-events: none;
 }
+
+/* ===== تصميم عصري للأطفال بألوان بنفسجية مريحة ===== */
+
+/* خلفية متدرجة متحركة */
+body {
+  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 50%, #ddd6fe 100%);
+  min-height: 100vh;
+}
+
+/* تحسين شكل البطاقات */
+.rounded-\[22px\], .rounded-2xl {
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.15);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rounded-\[22px\]:hover, .rounded-2xl:hover {
+  box-shadow: 0 8px 25px rgba(139, 92, 246, 0.25);
+  transform: translateY(-2px);
+}
+
+/* تأثيرات ناعمة للأزرار */
+button {
+  transition: all 0.2s ease;
+}
+
+button:hover {
+  filter: brightness(1.05);
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+/* شريط علوي بتصميم زجاجي */
+header {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ألوان مريحة للعين */
+.bg-grape-600 {
+  background-color: #7c3aed;
+}
+
+.bg-grape-50 {
+  background-color: #f5f3ff;
+}
+
+.text-grape-600 {
+  color: #7c3aed;
+}
+
+/* تحسين شكل النصوص */
+.font-display {
+  letter-spacing: 0.01em;
+}
+
+/* تأثير لمعان على العناصر المميزة */
+.anim-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.anim-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    left: 100%;
+  }
+}
+
+/* شريط التمرير المخصص */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f5f3ff;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #a78bfa;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8b5cf6;
+}
+
+/* منع تداخل العناصر */
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+.gap-1\.5, .gap-2, .gap-2\.5, .gap-3, .gap-4 {
+  flex-shrink: 0;
+}
+
+/* تحسين عرض الأيقونات */
+.icon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* تأثيرات خاصة للأطفال */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes bounce-soft {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.anim-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.anim-bounce-soft {
+  animation: bounce-soft 2s ease-in-out infinite;
+}
+
+.anim-twinkle {
+  animation: twinkle 1.5s ease-in-out infinite;
+}
