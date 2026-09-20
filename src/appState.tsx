@@ -158,8 +158,9 @@ function normStudent(s: Student): Student {
         if (item) normalized[d.key] = {
           memorization: String(item.memorization ?? ""),
           review: String(item.review ?? ""),
-          amount: Math.max(0, Number(item.amount) || 0),
-          unit: item.unit === "pages" ? "pages" : "lines",
+          memorizationVerses: Math.max(0, Number(item.memorizationVerses ?? 0) || 0),
+          reviewVerses: Math.max(0, Number(item.reviewVerses ?? 0) || 0),
+          memorizationLines: Math.max(0, Number(item.memorizationLines ?? 0) || 0),
         };
       }
       return normalized;
@@ -514,7 +515,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
             leveledName = student.name;
             leveledTo = leveled;
           }
-          return { ...student, days, weekXp: weekXpOf(days), weekCoins: weekCoinsOf(days), coins: Math.max(0, student.coins + coinDelta) };
+          const dayLabel = DAYS.find((d) => d.key === day)?.label ?? "";
+          const ward = s.ward[day];
+          const lastHeard = turningOn && (part === "h" || part === "r")
+            ? {
+                ...(s.lastHeard ?? {}),
+                ...(part === "h" && ward.memorization ? { memorization: { text: ward.memorization, verses: ward.memorizationVerses, day: dayLabel, at: Date.now() } } : {}),
+                ...(part === "r" && ward.review ? { review: { text: ward.review, verses: ward.reviewVerses, day: dayLabel, at: Date.now() } } : {}),
+              }
+            : s.lastHeard;
+          return { ...student, days, lastHeard, weekXp: weekXpOf(days), weekCoins: weekCoinsOf(days), coins: Math.max(0, student.coins + coinDelta) };
         })
       );
 
@@ -538,7 +548,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateWard = useCallback((id: string, day: DayKey, ward: DailyWard) => {
     setStudents((ss) => ss.map((s) => s.id === id
-      ? { ...s, ward: { ...s.ward, [day]: { ...ward, amount: Math.max(0, Number(ward.amount) || 0) } } }
+      ? { ...s, ward: { ...s.ward, [day]: {
+          ...ward,
+          memorizationVerses: Math.max(0, Number(ward.memorizationVerses) || 0),
+          reviewVerses: Math.max(0, Number(ward.reviewVerses) || 0),
+          memorizationLines: Math.max(0, Number(ward.memorizationLines) || 0),
+        } } }
       : s));
   }, []);
 
