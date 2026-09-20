@@ -294,6 +294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const cloudDataRef = useRef<State | null>(null); // مرآة البيانات لأغراض الرفع
   const pushTimer = useRef<number | null>(null);
   const firstSave = useRef(true);
+  const isRemoteUpdate = useRef(false); // علامة: هل التغيير الحالي قادم من السحابة؟
 
   /** رفع نسخة إلى السحابة */
   const pushCloud = useCallback(async (rev: number, force = false) => {
@@ -330,6 +331,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }),
       };
     }
+    // علامة: التحديث قادم من السحابة — لا نُطلق عملية رفع إرجاعية
+    isRemoteUpdate.current = true;
     setStudents(remote.students);
     setWeek(remote.week);
     setWeekNameState(remote.weekName);
@@ -341,6 +344,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTripOn(remote.tripOn);
     setTripDay(remote.tripDay);
     setTripAttendees(remote.tripAttendees);
+    // إزالة العلامة بعد دورة React واحدة
+    setTimeout(() => { isRemoteUpdate.current = false; }, 0);
   }, []);
 
   /** سحب أحدث نسخة من السحابة وتطبيقها إن كانت أحدث من المحلية */
@@ -402,6 +407,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // إذا كان التحديث قادمًا من السحابة: نحفظ محليًا فقط ولا نرفع مرة أخرى
+    if (isRemoteUpdate.current) {
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current }));
+      } catch {
+        /* تجاهل */
+      }
+      return;
+    }
+
     // تعديل حقيقي: نرفع رقم النسخة ونحفظ ونجدول رفعًا سحابيًا
     const newRev = Date.now();
     revRef.current = newRev;
@@ -421,11 +436,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!cloudEnabled) return;
     void pullCloud(false);
     return subscribeCloud((remote) => {
+      // قاعدة: السحابة هي المصدر الوحيد للحقائق — نقبل التحديث إذا كان أحدث
       if (remote.rev <= revRef.current) return;
       const normalized = stateFromPartial(remote.data as Partial<State>);
       revRef.current = remote.rev;
       lastPushedRev.current = remote.rev;
       cloudDataRef.current = normalized;
+      // applyRemote سيُطلق isRemoteUpdate ليمنع الرفع الإرجاعي
       applyRemote(normalized);
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
     });

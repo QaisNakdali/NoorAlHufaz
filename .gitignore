@@ -1,7 +1,97 @@
-# Build artifacts
+```
+# Dependencies
+node_modules/
+
+# Build outputs
 dist/
 build/
-node_modules/
-.vercel/
+target/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.env
+.env.local
+.env.*
+.env.local.*
+.env.prod.*
+.env.production.*
+.env.test.*
+.env.testing.*
+.env.dev.*
+.env.development.*
+.env.staging.*
+.env.preview.*
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# Logs
 *.log
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Thumbs.db:encryptable
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.tmp
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+
+# Environment specific
+.env
+.env.local
+.env.*
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# TypeScript/JavaScript build artifacts
+*.js.map
+*.tsbuildinfo
+```
