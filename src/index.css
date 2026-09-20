@@ -99,6 +99,88 @@ button:hover svg, a:hover svg {
    تصميم جديد احترافي وتفاعلي للأطفال
    ============================================ */
 
+/* إصلاح مشاكل التداخل في الشريط العلوي والصفحات */
+header.sticky {
+  z-index: 40;
+}
+
+header .flex-wrap {
+  row-gap: 0.75rem; /* gap-3 */
+}
+
+/* منع تداخل الأزرار في الشريط العلوي */
+header .gap-2 {
+  column-gap: 0.5rem;
+}
+
+/* تحسين عرض شريط التنقل */
+nav.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+nav.overflow-x-auto::-webkit-scrollbar {
+  height: 6px;
+}
+
+nav.overflow-x-auto::-webkit-scrollbar-thumb {
+  background-color: #c4b5fd;
+  border-radius: 999px;
+}
+
+/* إصلاح تداخل بطاقات الطلاب */
+@media (min-width: 1024px) {
+  .lg\\:flex-row {
+    flex-wrap: nowrap;
+  }
+  
+  .lg\\:w-80 {
+    min-width: 20rem; /* 320px */
+  }
+  
+  .lg\\:w-64 {
+    min-width: 16rem; /* 256px */
+  }
+}
+
+/* منع انكماش عناصر الطالب */
+.min-w-0 {
+  min-width: 0;
+}
+
+/* تحسين عرض خانات الأيام */
+.grid-cols-2 {
+  gap: 0.5rem; /* gap-2 */
+}
+
+@media (min-width: 640px) {
+  .sm\\:grid-cols-4 {
+    gap: 0.5rem;
+  }
+}
+
+/* ضمان عدم تداخل نصوص الأيام */
+.font-display.text-xs {
+  white-space: nowrap;
+}
+
+/* تحسين عرض الأزرار داخل خانات الأيام */
+.h-10.w-full {
+  min-height: 2.5rem;
+  flex-shrink: 0;
+}
+
+/* منع تداخل الإحصائيات الجانبية */
+.flex.items-stretch.gap-2 {
+  flex: 1;
+  min-width: 0;
+}
+
+/* تحسين عرض المستوى وشارة المستوى */
+.gap-2 .truncate {
+  max-width: calc(100% - 3rem);
+}
+
 /* خلفية متدرجة متحركة */
 @keyframes gradient-shift {
   0% { background-position: 0% 50%; }
