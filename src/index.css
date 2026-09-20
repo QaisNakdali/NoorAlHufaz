@@ -17,3 +17,16 @@ img, video {
   max-width: 100%;
   height: auto;
 }
+
+/* إصلاح حجم الأيقونات SVG - تعيين حجم افتراضي ومنع التكبير غير المقصود */
+svg:not([width]):not([height]):not(.h-):not(.w-) {
+  display: inline-block;
+  width: 1.25rem; /* 20px - حجم مناسب للأيقونات */
+  height: 1.25rem;
+  vertical-align: text-bottom;
+}
+
+/* التأكد من أن الأيقونات داخل الأزرار والعناصر التفاعلية لها حجم مناسب */
+button svg, a svg {
+  pointer-events: none;
+}
