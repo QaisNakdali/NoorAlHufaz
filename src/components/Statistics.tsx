@@ -1,7 +1,7 @@
 /* صفحة الإحصائيات — تحليل شامل لمستوى الطلاب والحضور والغياب */
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
-import { ar, DAYS, type Student, type MemorizationRecord } from "../core";
+import { ar, DAYS, type Student } from "../core";
 import Avatar from "./Avatar";
 import { Icon, Modal, SectionHead } from "./ui";
 
@@ -29,6 +29,10 @@ type WeeklyMemorizationStats = {
   failedRecitations: number;
   successRate: number;
   bestDayVerses: number;
+  totalLines: number;
+  totalPages: number;
+  averageLinesPerDay: number;
+  averagePagesPerDay: number;
   trend: "improving" | "stable" | "declining" | "insufficient-data";
   performanceStatus: "excellent" | "good" | "needs-attention";
 };
@@ -137,27 +141,15 @@ function calculateWeeklyMemorizationStats(student: Student): WeeklyMemorizationS
     return recordDate >= startOfWeek;
   });
   
-  if (weekRecords.length === 0) {
-    return {
-      studentId: student.id,
-      name: student.name,
-      photo: student.photo,
-      totalVerses: 0,
-      memorizationDays: 0,
-      averageVersesPerDay: 0,
-      successfulRecitations: 0,
-      failedRecitations: 0,
-      successRate: 0,
-      bestDayVerses: 0,
-      trend: "insufficient-data",
-      performanceStatus: "needs-attention",
-    };
-  }
+  const plannedDays = DAYS.filter((d) => student.ward[d.key].memorization || student.ward[d.key].amount > 0);
+  const completedPlannedDays = plannedDays.filter((d) => student.days[d.key].h);
+  const totalLines = completedPlannedDays.reduce((sum, d) => sum + (student.ward[d.key].unit === "lines" ? student.ward[d.key].amount : 0), 0);
+  const totalPages = completedPlannedDays.reduce((sum, d) => sum + (student.ward[d.key].unit === "pages" ? student.ward[d.key].amount : 0), 0);
   
   const totalVerses = weekRecords.reduce((sum, r) => sum + r.versesCount, 0);
-  const successfulRecitations = weekRecords.filter(r => r.success).length;
-  const failedRecitations = weekRecords.filter(r => !r.success).length;
-  const successRate = weekRecords.length > 0 ? (successfulRecitations / weekRecords.length) * 100 : 0;
+  const successfulRecitations = completedPlannedDays.length || weekRecords.filter(r => r.success).length;
+  const failedRecitations = Math.max(0, plannedDays.length - completedPlannedDays.length);
+  const successRate = plannedDays.length > 0 ? (completedPlannedDays.length / plannedDays.length) * 100 : (weekRecords.length > 0 ? (weekRecords.filter(r => r.success).length / weekRecords.length) * 100 : 0);
   
   // تجميع الآيات المحفوظة في كل يوم
   const versesByDate: Record<string, number> = {};
@@ -166,7 +158,7 @@ function calculateWeeklyMemorizationStats(student: Student): WeeklyMemorizationS
     versesByDate[dateKey] = (versesByDate[dateKey] || 0) + r.versesCount;
   });
   
-  const memorizationDays = Object.keys(versesByDate).length;
+  const memorizationDays = completedPlannedDays.length || Object.keys(versesByDate).length;
   const averageVersesPerDay = memorizationDays > 0 ? totalVerses / memorizationDays : 0;
   const bestDayVerses = Math.max(...Object.values(versesByDate), 0);
   
@@ -189,9 +181,10 @@ function calculateWeeklyMemorizationStats(student: Student): WeeklyMemorizationS
   
   // تحديد حالة الأداء
   let performanceStatus: "excellent" | "good" | "needs-attention" = "needs-attention";
-  if (successRate >= 80 && averageVersesPerDay >= 5) {
+  const hasMeasuredWork = totalLines > 0 || totalPages > 0 || totalVerses > 0;
+  if (successRate >= 80 && hasMeasuredWork) {
     performanceStatus = "excellent";
-  } else if (successRate >= 60 && averageVersesPerDay >= 3) {
+  } else if (successRate >= 60 && hasMeasuredWork) {
     performanceStatus = "good";
   }
   
@@ -206,6 +199,10 @@ function calculateWeeklyMemorizationStats(student: Student): WeeklyMemorizationS
     failedRecitations,
     successRate,
     bestDayVerses,
+    totalLines,
+    totalPages,
+    averageLinesPerDay: memorizationDays > 0 ? totalLines / memorizationDays : 0,
+    averagePagesPerDay: memorizationDays > 0 ? totalPages / memorizationDays : 0,
     trend,
     performanceStatus,
   };
@@ -431,6 +428,22 @@ function StudentDetailModal({ stats, onClose }: { stats: OverallStudentStats; on
                 </span>
               </div>
               <div className="flex justify-between">
+                <span className="text-sm font-bold text-grape-600">الأسطر هذا الأسبوع</span>
+                <span className="font-display text-lg font-extrabold text-grape-600">{ar(stats.weeklyMemorization.totalLines)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm font-bold text-grape-600">متوسط الأسطر/يوم</span>
+                <span className="font-display text-lg font-extrabold text-grape-600">{ar(stats.weeklyMemorization.averageLinesPerDay.toFixed(1))}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm font-bold text-grape-600">الصفحات هذا الأسبوع</span>
+                <span className="font-display text-lg font-extrabold text-grape-600">{ar(stats.weeklyMemorization.totalPages)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm font-bold text-grape-600">متوسط الصفحات/يوم</span>
+                <span className="font-display text-lg font-extrabold text-grape-600">{ar(stats.weeklyMemorization.averagePagesPerDay.toFixed(1))}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-sm font-bold text-grape-600">أيام الحفظ</span>
                 <span className="font-display text-lg font-extrabold text-grape-600">{ar(stats.weeklyMemorization.memorizationDays)}</span>
               </div>
@@ -573,6 +586,7 @@ function SummaryCards({ students }: { students: Student[] }) {
 
 /** قائمة الطلاب الذين يحتاجون متابعة */
 function NeedsAttentionList({ students }: { students: Student[] }) {
+  const [selected, setSelected] = useState<OverallStudentStats | null>(null);
   const needsAttention = students.map(s => ({
     student: s,
     attendance: calculateAttendanceStats(s),
@@ -599,7 +613,8 @@ function NeedsAttentionList({ students }: { students: Student[] }) {
   }
   
   return (
-    <div className="rounded-3xl border-2 border-coral-200 bg-white p-5">
+    <>
+    <div className="rounded-3xl border border-coral-200 bg-white p-5 shadow-[0_18px_45px_-34px_rgba(201,56,87,.45)]">
       <h3 className="flex items-center gap-2 font-display text-xl font-extrabold text-coral-600 mb-4">
         <Icon name="alert" className="h-6 w-6" strokeWidth={2.4} />
         طلاب يحتاجون متابعة ({ar(needsAttention.length)})
@@ -638,7 +653,19 @@ function NeedsAttentionList({ students }: { students: Student[] }) {
             </div>
             <button
               type="button"
-              onClick={() => {}}
+              onClick={() => setSelected({
+                student,
+                attendance,
+                weeklyMemorization: memorization,
+                summary: generateStudentSummary(attendance, memorization),
+                statusIndicators: {
+                  frequentAbsence: attendance.frequentAbsence,
+                  decliningMemorization: memorization.trend === "declining",
+                  lowSuccessRate: memorization.successRate < 60 && memorization.successRate > 0,
+                  improving: memorization.trend === "improving",
+                  excellent: memorization.performanceStatus === "excellent",
+                },
+              })}
               className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-extrabold text-white transition hover:bg-grape-700"
             >
               عرض الملف
@@ -647,6 +674,8 @@ function NeedsAttentionList({ students }: { students: Student[] }) {
         ))}
       </div>
     </div>
+    {selected && <StudentDetailModal stats={selected} onClose={() => setSelected(null)} />}
+    </>
   );
 }
 

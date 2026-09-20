@@ -46,6 +46,16 @@ export type DayPart = "a" | "h" | "r"; // حضور | تسميع حفظ | تسم�
 export type DayEntry = Record<DayPart, boolean>;
 export type WeekDays = Record<DayKey, DayEntry>;
 
+/** الورد ثابت بين الأسابيع، بينما حالة إنجازه موجودة في days وتُصفّر أسبوعيًا. */
+export type WardUnit = "lines" | "pages";
+export type DailyWard = {
+  memorization: string;
+  review: string;
+  amount: number;
+  unit: WardUnit;
+};
+export type WeeklyWard = Record<DayKey, DailyWard>;
+
 export const DAYS: { key: DayKey; label: string }[] = [
   { key: "sun", label: "الأحد" },
   { key: "mon", label: "الاثنين" },
@@ -66,6 +76,11 @@ export const RECITE_COINS = 5;
 
 export function emptyWeekDays(): WeekDays {
   const mk = (): DayEntry => ({ a: false, h: false, r: false });
+  return { sun: mk(), mon: mk(), tue: mk(), wed: mk() };
+}
+
+export function emptyWeeklyWard(): WeeklyWard {
+  const mk = (): DailyWard => ({ memorization: "", review: "", amount: 0, unit: "lines" });
   return { sun: mk(), mon: mk(), tue: mk(), wed: mk() };
 }
 
@@ -120,6 +135,7 @@ export type Student = {
   weekCoins: number; // عملات هذا الأسبوع من الكشف
   coins: number;
   days: WeekDays;
+  ward: WeeklyWard; // الخطة اليومية؛ لا تتصفّر عند بدء أسبوع جديد
   inventory: string[]; // ids خصائص البروفايل المملوكة
   bag: BagEntry[]; // المشتريات الخارجية
   frame?: FrameKind | null;
@@ -600,6 +616,7 @@ export function seedStudents(): Student[] {
       weekCoins: weekCoinsOf(days),
       coins,
       days,
+      ward: emptyWeeklyWard(),
       inventory: look.inventory ?? [],
       bag: look.bag ?? [],
       frame: look.frame ?? null,

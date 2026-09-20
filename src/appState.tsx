@@ -20,6 +20,7 @@ import {
   DAY_PARTS,
   DEFAULT_SHOP_ITEMS,
   emptyWeekDays,
+  emptyWeeklyWard,
   equipOn,
   findItem,
   HEART_PRICE,
@@ -37,6 +38,7 @@ import {
   type CrownKind,
   type DayKey,
   type DayPart,
+  type DailyWard,
   type Mode,
   type ShopItem,
   type Student,
@@ -96,6 +98,7 @@ type Ctx = State & {
   addStudent: (name: string, photo: string | null) => void;
   removeStudent: (id: string) => void;
   markDay: (id: string, day: DayKey, part: DayPart) => void;
+  updateWard: (id: string, day: DayKey, ward: DailyWard) => void;
 
   addXp: (id: string, amount: number) => void;
   addCoins: (id: string, amount: number) => void;
@@ -146,6 +149,21 @@ function normStudent(s: Student): Student {
   return {
     ...s,
     days: out,
+    ward: (() => {
+      const normalized = emptyWeeklyWard();
+      const source = s.ward;
+      if (!source) return normalized;
+      for (const d of DAYS) {
+        const item = source[d.key];
+        if (item) normalized[d.key] = {
+          memorization: String(item.memorization ?? ""),
+          review: String(item.review ?? ""),
+          amount: Math.max(0, Number(item.amount) || 0),
+          unit: item.unit === "pages" ? "pages" : "lines",
+        };
+      }
+      return normalized;
+    })(),
     weekXp: weekXpOf(out),
     weekCoins: weekCoinsOf(out),
     hearts: typeof s.hearts === "number" ? Math.max(0, Math.min(MAX_HEARTS, s.hearts)) : MAX_HEARTS,
@@ -447,6 +465,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           weekCoins: 0,
           coins: 10, // هدية ترحيب
           days: emptyWeekDays(),
+          ward: emptyWeeklyWard(),
           inventory: [],
           bag: [],
           frame: null,
@@ -516,6 +535,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [students, toast]
   );
+
+  const updateWard = useCallback((id: string, day: DayKey, ward: DailyWard) => {
+    setStudents((ss) => ss.map((s) => s.id === id
+      ? { ...s, ward: { ...s.ward, [day]: { ...ward, amount: Math.max(0, Number(ward.amount) || 0) } } }
+      : s));
+  }, []);
 
   /* ===== الخبرة والعملات اليدوية ===== */
   const addXp = useCallback(
@@ -979,6 +1004,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addStudent,
     removeStudent,
     markDay,
+    updateWard,
     addXp,
     addCoins,
     removeHeart,

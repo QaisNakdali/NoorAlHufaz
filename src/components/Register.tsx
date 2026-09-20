@@ -61,7 +61,7 @@ function DeleteBtn({ onDelete, label = "" }: { onDelete: () => void; label?: str
 
 /* ===== نافذة إعدادات الطالب (عملات / خبرة / قلوب) ===== */
 function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { students, addCoins, addXp, removeHeart, restoreHeart, removeStudent } = useApp();
+  const { students, addCoins, addXp, removeHeart, restoreHeart, removeStudent, updateWard } = useApp();
   const s = students.find((x) => x.id === id);
   if (!s) return null;
   const { level } = levelInfo(s.xp);
@@ -138,6 +138,61 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
           </div>
         </div>
 
+        <div className="mt-5 rounded-2xl border border-grape-200 bg-grape-50/60 p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-xl bg-grape-600 text-white">
+              <Icon name="book" className="h-4 w-4" />
+            </span>
+            <div>
+              <h4 className="font-display font-extrabold text-ink">الورد اليومي</h4>
+              <p className="text-[11px] font-bold text-grape-500">يبقى محفوظًا عند بدء أسبوع جديد</p>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {DAYS.map((d) => {
+              const ward = s.ward[d.key];
+              return (
+                <div key={d.key} className="rounded-2xl border border-grape-200 bg-white p-3 shadow-[0_10px_25px_-22px_rgba(33,22,75,.6)]">
+                  <p className="mb-2 font-display text-sm font-extrabold text-grape-700">{d.label}</p>
+                  <div className="space-y-2">
+                    <input
+                      value={ward.memorization}
+                      onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })}
+                      placeholder="الحفظ: الهمزة ١-٥"
+                      className="w-full rounded-xl border border-grape-200 bg-white px-3 py-2 text-sm font-bold text-ink placeholder:text-grape-300"
+                    />
+                    <input
+                      value={ward.review}
+                      onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })}
+                      placeholder="المراجعة: الناس والفلق"
+                      className="w-full rounded-xl border border-grape-200 bg-white px-3 py-2 text-sm font-bold text-ink placeholder:text-grape-300"
+                    />
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step={ward.unit === "pages" ? "0.5" : "1"}
+                        value={ward.amount || ""}
+                        onChange={(e) => updateWard(s.id, d.key, { ...ward, amount: Number(e.target.value) })}
+                        placeholder="الكمية"
+                        className="min-w-0 rounded-xl border border-grape-200 bg-white px-3 py-2 text-sm font-bold text-ink"
+                      />
+                      <select
+                        value={ward.unit}
+                        onChange={(e) => updateWard(s.id, d.key, { ...ward, unit: e.target.value === "pages" ? "pages" : "lines" })}
+                        className="rounded-xl border border-grape-200 bg-white px-3 py-2 text-sm font-bold text-grape-700"
+                      >
+                        <option value="lines">أسطر</option>
+                        <option value="pages">صفحات</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="mt-5 flex items-center justify-between border-t-2 border-dashed border-grape-200 pt-4">
           <p className="text-xs text-grape-700/60">جوائز {s.name}: {ar(s.awards.length)} · ممتلكاته: {ar(s.inventory.length + s.bag.length)}</p>
           <DeleteBtn label="حذف الطالب" onDelete={() => { removeStudent(s.id); onClose(); }} />
@@ -155,6 +210,9 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
   const { level, into, need } = levelInfo(s.xp);
   const levelPct = Math.max(4, Math.round((into / need) * 100));
   const checkedCount = DAYS.reduce((n, d) => n + DAY_PARTS.filter((p) => s.days[d.key][p.key]).length, 0);
+  const todayKey = (["sun", "mon", "tue", "wed"] as const)[new Date().getDay()];
+  const today = todayKey ? DAYS.find((d) => d.key === todayKey) : null;
+  const todayWard = todayKey ? s.ward[todayKey] : null;
 
   return (
     <div
@@ -167,7 +225,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
     >
       <div className="flex flex-col gap-0 lg:flex-row lg:gap-0">
         {/* خانة الطالب */}
-        <div className={`flex shrink-0 items-center gap-4 px-4 py-4 lg:w-80 lg:max-w-xs lg:shrink-0 lg:border-e-2 ${noHearts ? "lg:border-slate-200" : "lg:border-grape-100"} ${fade}`}>
+        <div className={`flex shrink-0 items-start gap-4 px-4 py-4 lg:w-[23rem] lg:shrink-0 lg:border-e ${noHearts ? "lg:border-slate-200" : "lg:border-grape-100"} ${fade}`}>
           <Avatar photo={s.photo} name={s.name} size={72} frame={s.frame} crown={s.crown} glow={s.glow} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -195,11 +253,18 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
             <p className="mt-1 text-[10px] font-bold text-grape-700/55">
               {noHearts ? "يجمع العملات فقط — اشترِ له قلبًا من متجره" : "من يخالف آداب الحلقة يخسر قلبًا"}
             </p>
+            {today && todayWard && (todayWard.memorization || todayWard.review) && (
+              <div className="mt-3 rounded-xl border border-grape-200 bg-grape-50/80 p-2.5">
+                <p className="mb-1 text-[10px] font-extrabold text-grape-500">ورد {today.label}</p>
+                {todayWard.memorization && <p className="text-xs font-extrabold text-ink"><span className="text-grape-600">حفظ:</span> {todayWard.memorization}</p>}
+                {todayWard.review && <p className="mt-0.5 text-xs font-bold text-grape-700"><span className="text-mint-600">مراجعة:</span> {todayWard.review}</p>}
+              </div>
+            )}
           </div>
         </div>
 
         {/* خانات الأيام — كبيرة وواضحة */}
-        <div className={`grid flex-1 grid-cols-2 gap-2 px-3 pb-3 sm:grid-cols-4 lg:px-3 lg:py-3 ${fade} ${noHearts ? "opacity-60" : ""}`}>
+        <div className={`grid flex-1 grid-cols-2 gap-2 px-3 pb-3 lg:px-3 lg:py-3 xl:grid-cols-4 ${fade} ${noHearts ? "opacity-60" : ""}`}>
           {DAYS.map((d) => {
             const cnt = DAY_PARTS.filter((p) => s.days[d.key][p.key]).length;
             return (
