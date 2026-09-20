@@ -158,7 +158,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
 
   return (
     <article
-      className={`anim-slide-up overflow-hidden rounded-[28px] border bg-white shadow-[0_20px_55px_-42px_rgba(33,22,75,.7)] transition-all ${
+      className={`anim-slide-up overflow-hidden rounded-[24px] border bg-white shadow-[0_18px_45px_-34px_rgba(55,32,120,.35)] transition-all ${
         noHearts
           ? "border-slate-200 bg-slate-50"
           : "border-grape-200 hover:border-grape-300 hover:shadow-[0_24px_65px_-42px_rgba(88,59,195,.55)]"
@@ -166,12 +166,12 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
       style={{ animationDelay: `${delay}ms` }}
     >
       {/* رأس البطاقة: بيانات الطالب والإحصاءات والإجراءات في سطر مريح */}
-      <div className={`flex flex-wrap items-center gap-5 px-5 py-5 sm:px-6 ${fade}`}>
-        <div className="flex min-w-[240px] flex-1 items-center gap-4">
-          <Avatar photo={s.photo} name={s.name} size={68} frame={s.frame} crown={s.crown} glow={s.glow} />
+      <div className={`grid items-center gap-4 px-4 py-4 md:grid-cols-[minmax(220px,1fr)_minmax(190px,.75fr)_auto] sm:px-5 ${fade}`}>
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar photo={s.photo} name={s.name} size={58} frame={s.frame} crown={s.crown} glow={s.glow} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="truncate font-display text-xl font-extrabold text-ink sm:text-2xl">{s.name}</h3>
+              <h3 className="truncate font-display text-lg font-extrabold leading-tight text-ink sm:text-xl">{s.name}</h3>
               <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-[11px]! shadow-none!" />
             </div>
             <div className="mt-2 flex items-center gap-2">
@@ -181,7 +181,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
           </div>
         </div>
 
-        <div className="min-w-[220px] flex-[1.2]" title={`المستوى ${ar(level)} — باقي ${ar(need - into)} نقطة للمستوى التالي`}>
+        <div className="min-w-0" title={`المستوى ${ar(level)} — باقي ${ar(need - into)} نقطة للمستوى التالي`}>
           <div className="mb-2 flex items-center justify-between text-[11px] font-extrabold text-grape-500">
             <span>تقدم المستوى</span><span>{ar(into)} / {ar(need)}</span>
           </div>
@@ -190,7 +190,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
           <div className="rounded-xl bg-gold-400/15 px-3 py-2 text-center">
             <p className="font-display text-lg font-extrabold leading-5 text-gold-600">+{ar(s.weekXp)}</p>
             <p className="mt-1 text-[9px] font-bold text-grape-500">نقطة</p>
@@ -205,12 +205,12 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
         </div>
       </div>
 
-      {/* صفوف يومية مدمجة: الحفظ والمراجعة منفصلان، والأسطر تُحسب تلقائيًا */}
+      {/* خطة أسبوعية واضحة ومدمجة */}
       <div className={`border-t border-grape-100 bg-grape-50/25 p-4 sm:p-5 ${noHearts ? "opacity-65" : ""}`}>
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h4 className="font-display text-base font-extrabold text-ink">خطة الورد الأسبوعية</h4>
-            <p className="mt-0.5 text-[11px] font-bold text-grape-500">اكتب السورة وعدد الآيات، ويظهر تقدير الأسطر تلقائيًا</p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-grape-500">اكتب السورة والآيات والأسطر للحفظ والمراجعة، ويمكن استخدام نصف سطر مثل ٢٫٥</p>
           </div>
           <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-extrabold text-grape-500 shadow-sm">{ar(checkedCount)} / ١٢ منجز</span>
         </div>
@@ -219,23 +219,27 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
             const ward = s.ward[d.key];
             const cnt = DAY_PARTS.filter((p) => s.days[d.key][p.key]).length;
             return (
-              <section key={d.key} className="rounded-2xl border border-grape-200 bg-white p-3.5 shadow-[0_10px_25px_-24px_rgba(33,22,75,.65)]">
+              <section key={d.key} className="rounded-2xl border border-grape-100 bg-white p-4 shadow-[0_8px_24px_-22px_rgba(55,32,120,.4)]">
                 <div className="mb-2.5 flex items-center justify-between">
                   <h5 className="font-display text-sm font-extrabold text-grape-700">{d.label}</h5>
                   <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold ${cnt === 3 ? "bg-mint-100 text-mint-600" : "bg-grape-100 text-grape-500"}`}>{ar(cnt)} / ٣</span>
                 </div>
-                <div className="space-y-2">
-                  <div className="grid items-center gap-2 sm:grid-cols-[48px_minmax(0,1fr)_82px_82px]">
-                    <span className="text-[11px] font-extrabold text-grape-600">حفظ</span>
-                    <input aria-label={`سورة الحفظ ${d.label}`} value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder="اسم السورة" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-grape-50/40 px-2.5 text-xs font-bold text-ink placeholder:text-grape-300" />
-                    <input aria-label={`عدد آيات الحفظ ${d.label}`} type="number" min="0" value={ward.memorizationVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationVerses: Number(e.target.value) })} placeholder="عدد الآيات" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-white px-2 text-center text-xs font-bold text-ink" />
-                    <input aria-label={`عدد أسطر الحفظ ${d.label}`} type="number" min="0" step="0.5" value={ward.memorizationLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationLines: Number(e.target.value) })} placeholder="الأسطر" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-grape-100/60 px-2 text-center text-xs font-extrabold text-grape-700" />
+                <div className="space-y-3">
+                  <div className="rounded-xl bg-grape-50 p-2.5">
+                    <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-grape-700"><Icon name="book" className="h-4 w-4" />الحفظ الجديد</div>
+                    <div className="grid gap-2 grid-cols-[minmax(0,1fr)_88px_78px]">
+                      <input aria-label={`سورة الحفظ ${d.label}`} value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder="اسم السورة" className="field-control" />
+                      <input aria-label={`عدد آيات الحفظ ${d.label}`} type="number" min="0" value={ward.memorizationVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationVerses: Number(e.target.value) })} placeholder="الآيات" className="field-control text-center" />
+                      <input aria-label={`عدد أسطر الحفظ ${d.label}`} type="number" min="0" step="0.5" value={ward.memorizationLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationLines: Number(e.target.value) })} placeholder="الأسطر" className="field-control text-center font-extrabold text-grape-700" />
+                    </div>
                   </div>
-                  <div className="grid items-center gap-2 sm:grid-cols-[48px_minmax(0,1fr)_86px_78px]">
-                    <span className="text-[11px] font-extrabold text-gold-600">مراجعة</span>
-                    <input aria-label={`سورة المراجعة ${d.label}`} value={ward.review} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder="اسم السورة أو السور" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-grape-50/40 px-2.5 text-xs font-bold text-ink placeholder:text-grape-300" />
-                    <input aria-label={`عدد آيات المراجعة ${d.label}`} type="number" min="0" value={ward.reviewVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewVerses: Number(e.target.value) })} placeholder="عدد الآيات" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-white px-2 text-center text-xs font-bold text-ink" />
-                    <span className="rounded-lg bg-gold-400/15 px-2 py-2 text-center text-[10px] font-extrabold text-gold-600">منفصلة</span>
+                  <div className="rounded-xl bg-amber-50 p-2.5">
+                    <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-amber-700"><Icon name="refresh" className="h-4 w-4" />المراجعة</div>
+                    <div className="grid gap-2 grid-cols-[minmax(0,1fr)_88px_78px]">
+                      <input aria-label={`سورة المراجعة ${d.label}`} value={ward.review} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder="اسم السورة أو السور" className="field-control border-amber-200" />
+                      <input aria-label={`عدد آيات المراجعة ${d.label}`} type="number" min="0" value={ward.reviewVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewVerses: Number(e.target.value) })} placeholder="الآيات" className="field-control border-amber-200 text-center" />
+                      <input aria-label={`عدد أسطر المراجعة ${d.label}`} type="number" min="0" step="0.5" value={ward.reviewLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewLines: Number(e.target.value) })} placeholder="الأسطر" className="field-control border-amber-200 text-center font-extrabold text-amber-700" />
+                    </div>
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 border-t border-grape-100 pt-3">

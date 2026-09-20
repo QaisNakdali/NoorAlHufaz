@@ -373,7 +373,7 @@ function StudentDetailModal({ stats, onClose }: { stats: OverallStudentStats; on
             {stats.student.lastHeard?.memorization ? (
               <>
                 <p className="mt-1 font-display text-lg font-extrabold text-ink">{stats.student.lastHeard.memorization.text}</p>
-                <p className="mt-1 text-xs font-bold text-grape-600">{ar(stats.student.lastHeard.memorization.verses)} آية · {stats.student.lastHeard.memorization.day}</p>
+                <p className="mt-1 text-xs font-bold text-grape-600">{ar(stats.student.lastHeard.memorization.verses)} آية · {ar(stats.student.lastHeard.memorization.lines ?? 0)} سطر · {stats.student.lastHeard.memorization.day}</p>
               </>
             ) : <p className="mt-2 text-sm font-bold text-grape-400">لم يُسجّل حفظ بعد</p>}
           </div>
@@ -382,7 +382,7 @@ function StudentDetailModal({ stats, onClose }: { stats: OverallStudentStats; on
             {stats.student.lastHeard?.review ? (
               <>
                 <p className="mt-1 font-display text-lg font-extrabold text-ink">{stats.student.lastHeard.review.text}</p>
-                <p className="mt-1 text-xs font-bold text-gold-600">{ar(stats.student.lastHeard.review.verses)} آية · {stats.student.lastHeard.review.day}</p>
+                <p className="mt-1 text-xs font-bold text-gold-600">{ar(stats.student.lastHeard.review.verses)} آية · {ar(stats.student.lastHeard.review.lines ?? 0)} سطر · {stats.student.lastHeard.review.day}</p>
               </>
             ) : <p className="mt-2 text-sm font-bold text-grape-400">لم تُسجّل مراجعة بعد</p>}
           </div>

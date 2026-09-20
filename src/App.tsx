@@ -94,18 +94,18 @@ function Nav() {
   const { tab, setTab, mode, setMode, sound, toggleSound } = useApp();
   const [explainOpen, setExplainOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-40 border-b border-grape-200/60 bg-white/88 shadow-[0_12px_35px_-28px_rgba(76,29,149,.45)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-4 px-4 py-3 sm:px-6">
+    <header className="sticky top-0 z-40 border-b border-grape-100 bg-white/95 shadow-[0_10px_30px_-25px_rgba(55,29,104,.4)] backdrop-blur-xl">
+      <div className="mx-auto flex max-w-[1360px] flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
         <Logo />
         {mode === "teacher" && (
-          <nav className="order-3 flex w-full items-center gap-1.5 overflow-x-auto pb-1 sm:order-none sm:ms-2 sm:w-auto sm:flex-1 sm:pb-0">
+          <nav className="order-3 flex w-full items-center gap-1 overflow-x-auto rounded-xl bg-grape-50 p-1 sm:order-none sm:ms-2 sm:w-auto sm:flex-1">
             {TABS.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => { sfx.click(); setTab(t.id); }}
-                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 font-display text-sm font-extrabold transition-all active:scale-95 ${
-                  tab === t.id ? "bg-gradient-to-l from-grape-600 to-grape-500 text-white shadow-[0_10px_22px_-14px_rgba(88,59,195,.9)]" : "text-grape-600 hover:bg-grape-100/80"
+                className={`flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 font-display text-xs font-extrabold leading-none transition-all active:scale-95 lg:text-sm ${
+                  tab === t.id ? "bg-white text-grape-700 shadow-sm ring-1 ring-grape-200" : "text-grape-500 hover:bg-white/70 hover:text-grape-700"
                 }`}
               >
                 <Icon name={t.icon} className="h-4 w-4" strokeWidth={2.4} />
@@ -205,7 +205,7 @@ function Shell() {
     <div className="relative min-h-screen">
       <Background />
       <Nav />
-      <main className="relative z-10 mx-auto max-w-[1440px] px-4 pb-24 pt-8 sm:px-6 lg:pt-10">
+      <main className="relative z-10 mx-auto max-w-[1360px] px-4 pb-24 pt-6 sm:px-6 lg:pt-8">
         {mode === "student" ? (
           <StudentView />
         ) : tab === "register" ? (

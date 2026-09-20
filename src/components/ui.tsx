@@ -235,13 +235,13 @@ export function SectionHead({
   extra?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-4 rounded-[24px] border border-white/80 bg-white/70 p-4 shadow-[0_18px_50px_-40px_rgba(76,29,149,.6)] backdrop-blur-sm">
-      <span className={`grid h-12 w-12 place-items-center rounded-2xl ${color}`}>
+    <div className="mb-6 flex flex-wrap items-center gap-4 rounded-[22px] border border-grape-100 bg-white p-5 shadow-[0_16px_44px_-36px_rgba(55,29,104,.4)]">
+      <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${color}`}>
         <Icon name={icon} className="h-6 w-6" strokeWidth={2.2} />
       </span>
       <div className="flex-1 min-w-40">
-        <h2 className="font-display text-2xl font-extrabold leading-7 text-ink">{title}</h2>
-        {desc && <p className="text-sm text-grape-700/70">{desc}</p>}
+        <h2 className="font-display text-xl font-extrabold leading-7 text-ink sm:text-2xl">{title}</h2>
+        {desc && <p className="mt-1 text-xs font-medium leading-5 text-grape-700/70 sm:text-sm">{desc}</p>}
       </div>
       {extra}
     </div>
@@ -267,7 +267,7 @@ export function BigBtn({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3 font-display text-lg font-bold text-white transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:translate-y-0 ${color} ${className}`}
+      className={`inline-flex min-h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-5 py-2.5 font-display text-sm font-extrabold leading-none text-white transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-[.98] disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-40 sm:text-base ${color} ${className}`}
     >
       {children}
     </button>
