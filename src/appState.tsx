@@ -51,10 +51,10 @@ import { sfx, setSoundEnabled } from "./sound";
 import {
   cloudLoad,
   cloudSave,
-  CLOUD_PULL_INTERVAL_SEC,
   CLOUD_SKIP_PHOTOS,
   errMsg,
   isCloudEnabled,
+  subscribeCloud,
 } from "./cloudSync";
 
 export type ToastKind = "xp" | "coin" | "level" | "award" | "error" | "success" | "heart";
@@ -303,8 +303,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!force && rev <= lastPushedRev.current) return;
     setCloud((c) => ({ ...c, status: "syncing" }));
     try {
-      await cloudSave({ rev, data });
+      const saved = await cloudSave({ rev, data });
       lastPushedRev.current = rev;
+      // عند أول نقل للصور إلى Storage نستبدل dataURL بروابط خفيفة محليًا أيضًا.
+      if (saved.data !== data) {
+        const normalized = stateFromPartial(saved.data as Partial<State>);
+        cloudDataRef.current = normalized;
+        setStudents(normalized.students);
+      }
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
     } catch (e) {
       setCloud((c) => ({ ...c, status: "error", lastError: errMsg(e) }));
@@ -410,19 +416,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [students, week, weekName, weeksLog, sound, ceremonyPicks, products, showNewProducts, tripOn, tripDay, tripAttendees, pushCloud]);
 
-  // سحب دوري من السحابة لمزامنة بقية الأجهزة
+  // سحب أولي مرة واحدة، ثم استقبال التحديثات لحظيًا عبر Supabase Realtime.
   useEffect(() => {
     if (!cloudEnabled) return;
-    let cancelled = false;
     void pullCloud(false);
-    const iv = window.setInterval(() => {
-      if (!cancelled) void pullCloud(true);
-    }, Math.max(15, CLOUD_PULL_INTERVAL_SEC) * 1000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(iv);
-    };
-  }, [cloudEnabled, pullCloud]);
+    return subscribeCloud((remote) => {
+      if (remote.rev <= revRef.current) return;
+      const normalized = stateFromPartial(remote.data as Partial<State>);
+      revRef.current = remote.rev;
+      lastPushedRev.current = remote.rev;
+      cloudDataRef.current = normalized;
+      applyRemote(normalized);
+      setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
+    });
+  }, [applyRemote, cloudEnabled, pullCloud]);
 
   /** مزامنة فورية يدوية (سحب ثم رفع) */
   const syncNow = useCallback(() => {

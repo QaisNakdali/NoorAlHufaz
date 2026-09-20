@@ -1,103 +1,108 @@
-/* ══════════════════════════════════════════════════════════════════════
-   المزامنة السحابية — Sync Layer
-   ══════════════════════════════════════════════════════════════════════
+import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
 
-   ▐  الخطوة الوحيدة المطلوبة منك: ضع رابط API الخاص بك في CLOUD_URL أدناه
+/*
+  مزامنة Supabase اللحظية.
+  مفتاح anon مفتاح عام مصمم للاستخدام في المتصفح؛ الحماية الفعلية تطبقها RLS.
+*/
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://inkxxpomafiwygzhohwr.supabase.co";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlua3h4cG9tYWZpd3lnemhvaHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5Mjc5MzcsImV4cCI6MjEwNTUwMzkzN30.9F1VB43lKUFWRQqDlOFdZWN9Qi3wnap17Z3JNZ8trxY";
 
-   الطريقة الأسهل (JSONBin — مجاني):
-     ١) أنشئ حسابًا مجانيًا في https://jsonbin.io
-     ٢) من لوحة التحكم أنشئ Bin جديدًا واكتب داخله: {}
-     ٣) انسخ رابط الـ Bin، شكله هكذا:
-        https://api.jsonbin.io/v3/b/665f1c2eabc123def4567890
-     ٤) الصقه في CLOUD_URL وضع مفتاح الـ Master Key في CLOUD_HEADERS
+const STATE_TABLE = "app_state";
+const STATE_ID = "noor_al_hufaz_main";
+const PHOTOS_BUCKET = "student-photos";
 
-   بدائل تعمل أيضًا: npoint.io · Firebase Realtime DB (REST) · أي خدمة
-   JSON بسيطة تدعم القراءة بالكتابة على رابط واحد.
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+  realtime: { params: { eventsPerSecond: 20 } },
+});
 
-   ▐  اترك CLOUD_URL فارغًا = يعمل التطبيق بالحفظ المحلي فقط (كما كان).
-
-   ملاحظات:
-   - المزامنة تلقائية: كل تعديل يُرفع خلال ثانيتين تقريبًا، وكل جهاز
-     يسحب أحدث نسخة كل CLOUD_PULL_INTERVAL_SEC ثانية.
-   - آخر تعديل يفوز (Last-Write-Wins) — مناسب لأن المعلم عادةً الوحيد
-     الذي يعدّل في اللحظة نفسها.
-   - الباقة المجانية في JSONBin حجمها ١٠٠KB تقريبًا، وصور الطلاب هي أكبر
-     جزء. إن ظهرت أخطاء حجم، فعّل CLOUD_SKIP_PHOTOS بالأسفل.
-   ══════════════════════════════════════════════════════════════════════ */
-
-/* ────────────── ضع رابطك هنا ────────────── */
-export const CLOUD_URL = "https://api.jsonbin.io/v3/b/6a9845b5da38895dfe301732";
-
-/* رؤوس الطلب — ضع هنا مفتاح JSONBin (X-Master-Key) إن كان مطلوبًا */
-export const CLOUD_HEADERS: Record<string, string> = {
-  "X-Master-Key": "$2a$10$ye4iE7eu0edA.xBwFOWMqOU0FF2.CGxdGEMT/bQg4Wq9h8/atioou",
-};
-
-/* فعّلها (true) إن تجاوزت بياناتك حد الخدمة المجانية:
-   الصور تبقى محفوظة على كل جهاز محليًا ولا تُرفع للسحابة */
 export const CLOUD_SKIP_PHOTOS = false;
-
-/* كل كم ثانية يسحب كل جهاز أحدث نسخة من السحابة؟ */
-export const CLOUD_PULL_INTERVAL_SEC = 20;
-
-/* ────────────── ما بعد هذا السطر لا يحتاج تعديلًا ────────────── */
-export const isCloudEnabled = (): boolean => true;
-
+export const isCloudEnabled = (): boolean => Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export type CloudPayload = { rev: number; data: unknown };
 
-const isJsonBin = /jsonbin\.io/i.test(CLOUD_URL);
-
 function errMsg(e: unknown): string {
-  if (e instanceof DOMException && e.name === "AbortError") return "انتهت مهلة الاتصال";
   if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
   return String(e);
 }
 
-async function request(url: string, init: RequestInit): Promise<Response> {
-  const ctrl = new AbortController();
-  const t = window.setTimeout(() => ctrl.abort(), 12000);
-  try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
-  } finally {
-    window.clearTimeout(t);
-  }
+function isDataImage(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith("data:image/");
 }
 
-/** جلب أحدث نسخة من السحابة — تعيد null إذا كان المستودع فارغًا */
-export async function cloudLoad(): Promise<CloudPayload | null> {
-  // إلغاء السحب إذا كان التابلت مقفلاً أو المتصفح بالخلفية توفيراً للباقة
-  if (typeof document !== "undefined" && document.hidden) {
-    return null;
-  }
-
-  const res = await request(isJsonBin ? `${CLOUD_URL}/latest` : CLOUD_URL, {
-    method: "GET",
-    headers: { ...CLOUD_HEADERS, Accept: "application/json" },
+async function uploadStudentPhoto(studentId: string, dataUrl: string): Promise<string> {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  const contentType = blob.type || "image/jpeg";
+  const extension = contentType.includes("webp") ? "webp" : "jpg";
+  const path = `students/${studentId}.${extension}`;
+  const { error } = await supabase.storage.from(PHOTOS_BUCKET).upload(path, blob, {
+    upsert: true,
+    contentType,
+    cacheControl: "86400",
   });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = (await res.json()) as Record<string, unknown>;
-  // فكّ الأغلفة الشائعة: JSONBin يعيد {record} وبعض الخدمات تعيد {data}
-  const payload = (isJsonBin ? json.record : json.record ?? json.data ?? json) as CloudPayload | null;
-  if (!payload || typeof payload !== "object" || typeof payload.rev !== "number" || !("data" in payload)) {
-    return null; // مستودع فارغ أو بصيغة غير متوقعة
-  }
-  return payload;
+  if (error) throw error;
+  const { data } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path);
+  return `${data.publicUrl}?v=${Date.now()}`;
 }
 
-/** رفع نسخة كاملة إلى السحابة */
-export async function cloudSave(payload: CloudPayload): Promise<void> {
-  const body = JSON.stringify(payload);
-  const headers = { ...CLOUD_HEADERS, "Content-Type": "application/json" };
-  let res = await request(CLOUD_URL, { method: "PUT", headers, body });
-  if (!res.ok && !isJsonBin) {
-    // بعض الخدمات لا تدعم PUT — نجرّب POST
-    res = await request(CLOUD_URL, { method: "POST", headers, body });
-  }
-  if (!res.ok) {
-    const hint = res.status === 413 || res.status === 402 ? " — الحجم تجاوز حد الخدمة، جرّب تفعيل CLOUD_SKIP_PHOTOS" : "";
-    throw new Error(`HTTP ${res.status}${hint}`);
-  }
+/** ينقل صور dataURL الحالية إلى Storage مرة واحدة ويعيد نسخة خفيفة للمزامنة. */
+async function preparePayload(payload: CloudPayload): Promise<CloudPayload> {
+  if (!payload.data || typeof payload.data !== "object") return payload;
+  const state = payload.data as { students?: Array<{ id: string; photo?: string | null; [key: string]: unknown }>; [key: string]: unknown };
+  if (!Array.isArray(state.students) || !state.students.some((s) => isDataImage(s.photo))) return payload;
+
+  const students = await Promise.all(state.students.map(async (student) => {
+    if (!isDataImage(student.photo)) return student;
+    const photo = await uploadStudentPhoto(student.id, student.photo);
+    return { ...student, photo };
+  }));
+  return { ...payload, data: { ...state, students } };
+}
+
+export async function cloudLoad(): Promise<CloudPayload | null> {
+  const { data, error } = await supabase
+    .from(STATE_TABLE)
+    .select("rev,data")
+    .eq("id", STATE_ID)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return { rev: Number(data.rev) || 0, data: data.data };
+}
+
+/** يحفظ الحالة ويعيدها بعد نقل الصور إلى Storage إن وجدت. */
+export async function cloudSave(payload: CloudPayload): Promise<CloudPayload> {
+  const prepared = await preparePayload(payload);
+  const { error } = await supabase.from(STATE_TABLE).upsert({
+    id: STATE_ID,
+    rev: prepared.rev,
+    data: prepared.data,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "id" });
+  if (error) throw error;
+  return prepared;
+}
+
+/** يستقبل تعديل أي معلم فور وصوله إلى قاعدة البيانات. */
+export function subscribeCloud(onPayload: (payload: CloudPayload) => void): () => void {
+  let channel: RealtimeChannel | null = supabase
+    .channel("noor-al-hufaz-live")
+    .on("postgres_changes", {
+      event: "*",
+      schema: "public",
+      table: STATE_TABLE,
+      filter: `id=eq.${STATE_ID}`,
+    }, (event) => {
+      const row = event.new as { rev?: number | string; data?: unknown };
+      if (row && row.data !== undefined) onPayload({ rev: Number(row.rev) || 0, data: row.data });
+    })
+    .subscribe();
+
+  return () => {
+    if (channel) void supabase.removeChannel(channel);
+    channel = null;
+  };
 }
 
 export { errMsg };
