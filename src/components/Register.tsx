@@ -165,19 +165,19 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
       }`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className="flex flex-col lg:flex-row">
+      <div className="flex flex-col gap-0 lg:flex-row lg:gap-0">
         {/* خانة الطالب */}
-        <div className={`flex items-center gap-4 px-4 py-4 lg:w-80 lg:shrink-0 lg:border-e-2 ${noHearts ? "lg:border-slate-200" : "lg:border-grape-100"} ${fade}`}>
+        <div className={`flex shrink-0 items-center gap-4 px-4 py-4 lg:w-80 lg:max-w-xs lg:shrink-0 lg:border-e-2 ${noHearts ? "lg:border-slate-200" : "lg:border-grape-100"} ${fade}`}>
           <Avatar photo={s.photo} name={s.name} size={72} frame={s.frame} crown={s.crown} glow={s.glow} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="truncate font-display text-xl font-extrabold leading-6 text-ink">{s.name}</p>
-              <LevelBadge level={level} className="px-2! py-0! text-[10px]!" />
+              <LevelBadge level={level} className="shrink-0 px-2! py-0! text-[10px]!" />
             </div>
             <div className="mt-1.5 flex items-center gap-1.5">
               <HeartsRow hearts={s.hearts} max={MAX_HEARTS} size="w-6.5 h-6.5" />
               {noHearts && (
-                <span className="anim-wiggle rounded-md bg-coral-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">نفدت!</span>
+                <span className="anim-wiggle shrink-0 rounded-md bg-coral-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">نفدت!</span>
               )}
             </div>
             {/* شريط المستوى — يمتلئ كلما زادت نقاطه */}
