@@ -44,7 +44,7 @@ export default function TermFinale() {
               <Icon name={s.icon} className="h-5 w-5" strokeWidth={2.2} />
             </span>
             <p className="font-display text-2xl font-extrabold leading-7 text-ink">{s.value}</p>
-            <p className="text-[11px] font-bold text-grape-700/60">{s.label}</p>
+            <p className="text-xs font-bold text-grape-700/60">{s.label}</p>
           </div>
         ))}
       </div>
@@ -66,7 +66,7 @@ export default function TermFinale() {
           <Icon name="play" fill className="h-6 w-6" />
           عرض الترتيب الكامل
         </button>
-        {week > 1 && <p className="text-[11px] font-bold text-grape-700/55">نتائج الأسابيع السابقة محفوظة في أرشيف الحفل الأسبوعي</p>}
+        {week > 1 && <p className="text-xs font-bold text-grape-700/55">نتائج الأسابيع السابقة محفوظة في أرشيف الحفل الأسبوعي</p>}
       </div>
 
       {/* العرض الكامل */}
@@ -120,7 +120,7 @@ function FinaleOverlay({
                   <Avatar photo={s.photo} name={s.name} size={place === 1 ? 92 : 76} frame={s.frame} crown={s.crown} glow={s.glow} />
                 </div>
                 <p className="mt-2 max-w-full truncate font-display text-base font-extrabold text-white">{s.name}</p>
-                <p className="text-[10px] font-bold text-grape-300">مستوى {ar(level)} · {rankOf(level)}</p>
+                <p className="text-xs font-bold text-grape-300">مستوى {ar(level)} · {rankOf(level)}</p>
                 <div className={`mt-2 w-full rounded-t-2xl border-2 border-b-0 ${heights[place as 1 | 2 | 3]} ${bgs[place as 1 | 2 | 3]} grid place-items-start justify-center pt-2`}>
                   <span className="font-display text-xl font-extrabold text-grape-900">{ar(place)}</span>
                 </div>
@@ -168,7 +168,7 @@ function RankList({ ranking }: { ranking: Student[] }) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate font-display text-base font-extrabold text-white">{s.name}</p>
-              <p className="text-[11px] font-bold text-grape-300">
+              <p className="text-xs font-bold text-grape-300">
                 مستوى {ar(level)} · {rankOf(level)}
               </p>
             </div>

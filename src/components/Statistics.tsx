@@ -282,22 +282,22 @@ function StudentStatCard({ stats }: { stats: OverallStudentStats }) {
             {/* مؤشرات الحالة السريعة */}
             <div className="flex flex-wrap gap-2 mt-2">
               {stats.statusIndicators.frequentAbsence && (
-                <span className="flex items-center gap-1 rounded-full bg-coral-500 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                <span className="flex items-center gap-1 rounded-full bg-coral-500 px-2 py-0.5 text-xs font-extrabold text-white">
                   <Icon name="alert" className="h-3 w-3" /> غياب متكرر
                 </span>
               )}
               {stats.statusIndicators.decliningMemorization && (
-                <span className="flex items-center gap-1 rounded-full bg-orange-400 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                <span className="flex items-center gap-1 rounded-full bg-orange-400 px-2 py-0.5 text-xs font-extrabold text-white">
                   <Icon name="trendingDown" className="h-3 w-3" /> تراجع الحفظ
                 </span>
               )}
               {stats.statusIndicators.improving && (
-                <span className="flex items-center gap-1 rounded-full bg-mint-500 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                <span className="flex items-center gap-1 rounded-full bg-mint-500 px-2 py-0.5 text-xs font-extrabold text-white">
                   <Icon name="trendingUp" className="h-3 w-3" /> يتحسن
                 </span>
               )}
               {stats.statusIndicators.excellent && (
-                <span className="flex items-center gap-1 rounded-full bg-gold-500 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                <span className="flex items-center gap-1 rounded-full bg-gold-500 px-2 py-0.5 text-xs font-extrabold text-white">
                   <Icon name="star" fill className="h-3 w-3" /> ممتاز
                 </span>
               )}
@@ -369,7 +369,7 @@ function StudentDetailModal({ stats, onClose }: { stats: OverallStudentStats; on
 
         <div className="mb-6 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-grape-200 bg-grape-50/60 p-4">
-            <p className="text-[11px] font-extrabold text-grape-500">آخر حفظ سمعه</p>
+            <p className="text-xs font-extrabold text-grape-500">آخر حفظ سمعه</p>
             {stats.student.lastHeard?.memorization ? (
               <>
                 <p className="mt-1 font-display text-lg font-extrabold text-ink">{stats.student.lastHeard.memorization.text}</p>
@@ -378,7 +378,7 @@ function StudentDetailModal({ stats, onClose }: { stats: OverallStudentStats; on
             ) : <p className="mt-2 text-sm font-bold text-grape-400">لم يُسجّل حفظ بعد</p>}
           </div>
           <div className="rounded-2xl border border-gold-500/30 bg-gold-400/10 p-4">
-            <p className="text-[11px] font-extrabold text-gold-600">آخر مراجعة سمعها</p>
+            <p className="text-xs font-extrabold text-gold-600">آخر مراجعة سمعها</p>
             {stats.student.lastHeard?.review ? (
               <>
                 <p className="mt-1 font-display text-lg font-extrabold text-ink">{stats.student.lastHeard.review.text}</p>
@@ -650,22 +650,22 @@ function NeedsAttentionList({ students }: { students: Student[] }) {
                 <p className="font-display text-lg font-extrabold text-ink">{student.name}</p>
                 <div className="flex flex-wrap gap-2 mt-1">
                   {attendance.frequentAbsence && (
-                    <span className="flex items-center gap-1 rounded-full bg-coral-500 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                    <span className="flex items-center gap-1 rounded-full bg-coral-500 px-2 py-0.5 text-xs font-extrabold text-white">
                       <Icon name="alert" className="h-3 w-3" /> غياب ({ar(attendance.absenceDays)} أيام)
                     </span>
                   )}
                   {memorization.trend === "declining" && (
-                    <span className="flex items-center gap-1 rounded-full bg-orange-400 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                    <span className="flex items-center gap-1 rounded-full bg-orange-400 px-2 py-0.5 text-xs font-extrabold text-white">
                       <Icon name="trendingDown" className="h-3 w-3" /> تراجع حفظ
                     </span>
                   )}
                   {memorization.successRate < 60 && memorization.successRate > 0 && (
-                    <span className="flex items-center gap-1 rounded-full bg-gold-400 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                    <span className="flex items-center gap-1 rounded-full bg-gold-400 px-2 py-0.5 text-xs font-extrabold text-white">
                       <Icon name="book" className="h-3 w-3" /> ضعف تسميع
                     </span>
                   )}
                   {memorization.trend === "insufficient-data" && (
-                    <span className="flex items-center gap-1 rounded-full bg-grape-400 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                    <span className="flex items-center gap-1 rounded-full bg-grape-400 px-2 py-0.5 text-xs font-extrabold text-white">
                       <Icon name="search" className="h-3 w-3" /> بيانات قليلة
                     </span>
                   )}

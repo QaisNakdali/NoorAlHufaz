@@ -32,9 +32,9 @@ function PodiumCol({ s, place, delay }: { s: Student; place: 1 | 2 | 3; delay: n
         </span>
       </div>
       <p className="mt-5 max-w-full truncate font-display text-lg font-extrabold text-ink">{s.name}</p>
-      <p className="text-[11px] font-bold text-grape-500">{rankOf(level)}</p>
+      <p className="text-xs font-bold text-grape-500">{rankOf(level)}</p>
       <div className="mt-1.5">
-        <LevelBadge level={level} className="px-2! py-0! text-[10px]!" />
+        <LevelBadge level={level} className="px-2! py-0! text-xs!" />
       </div>
       <div className={`mt-3 w-24 rounded-t-2xl border-2 border-b-0 sm:w-32 ${heights[place]} ${bgs[place]} grid place-items-start justify-center pt-3`}>
         <span className={`flex items-center gap-1 rounded-full bg-white/85 px-2.5 py-1 text-xs font-extrabold shadow ${place === 1 ? "text-gold-600" : "text-grape-600"}`}>
@@ -92,7 +92,7 @@ export default function Leaderboard() {
                   <div className="min-w-32 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-display text-base font-extrabold text-ink">{s.name}</span>
-                      <LevelBadge level={level} className="px-2! py-0! text-[10px]!" />
+                      <LevelBadge level={level} className="px-2! py-0! text-xs!" />
                     </div>
                     <div className="mt-1.5 max-w-72">
                       <XpBar xp={s.xp} compact />

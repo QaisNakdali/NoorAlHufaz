@@ -14,11 +14,11 @@ const TABS: { key: HelpTab; label: string; icon: string }[] = [
 
 function Stat({ icon, title, value, color }: { icon: string; title: string; value: string; color: string }) {
   return (
-    <div className={`flex items-center gap-2.5 rounded-xl border-2 px-3 py-2 ${color}`}>
-      <Icon name={icon} className="h-4.5 w-4.5 shrink-0" strokeWidth={2.2} />
+    <div className={`flex min-h-16 items-center gap-3 rounded-xl border px-3 py-2.5 ${color}`}>
+      <Icon name={icon} className="h-5 w-5 shrink-0" strokeWidth={2.2} />
       <div className="min-w-0">
-        <p className="text-[10px] font-bold opacity-75">{title}</p>
-        <p className="font-display text-sm font-extrabold leading-4">{value}</p>
+        <p className="text-xs font-bold leading-5 opacity-75">{title}</p>
+        <p className="font-display text-sm font-extrabold leading-6">{value}</p>
       </div>
     </div>
   );
@@ -29,14 +29,14 @@ export default function ExplainerModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal open onClose={onClose} wide>
-      <div className="p-6">
-        <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gold-400 text-ink shadow-[0_3px_0_#b57a0a]">
+      <div className="p-4 sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gold-400 text-ink">
             <Icon name="sparkle" fill className="h-6 w-6" />
           </span>
           <div className="flex-1">
-            <h3 className="font-display text-2xl font-extrabold text-ink">كيف تعمل المنصة؟</h3>
-            <p className="text-sm text-grape-700/70">دليلك السريع — اقرأه مرة واحدة وستعرف كل شيء</p>
+            <h3 className="font-display text-xl font-extrabold leading-8 text-ink sm:text-2xl">كيف تعمل المنصة؟</h3>
+            <p className="mt-0.5 text-xs font-medium leading-5 text-grape-700/70 sm:text-sm">دليلك السريع — اقرأه مرة واحدة وستعرف كل شيء</p>
           </div>
           <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-grape-100 text-grape-600 transition hover:bg-grape-200">
             <Icon name="x" className="h-5 w-5" strokeWidth={3} />
@@ -44,14 +44,14 @@ export default function ExplainerModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* التبويبات */}
-        <div className="mt-4 grid grid-cols-4 gap-1.5">
+        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {TABS.map((t) => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
-              className={`flex flex-col items-center gap-1 rounded-xl border-2 px-1 py-2.5 text-xs font-extrabold transition active:scale-95 ${
-                tab === t.key ? "border-grape-600 bg-grape-600 text-white shadow-[0_3px_0_#56289d]" : "border-grape-200 bg-white text-grape-500 hover:border-grape-400"
+              className={`flex min-h-14 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-extrabold leading-5 transition active:scale-95 sm:flex-col sm:gap-1 ${
+                tab === t.key ? "border-grape-600 bg-grape-600 text-white shadow-sm" : "border-grape-200 bg-white text-grape-500 hover:border-grape-400"
               }`}
             >
               <Icon name={t.icon} className="h-5 w-5" strokeWidth={2.2} fill={t.key === "hearts" || t.key === "coins"} />
@@ -60,7 +60,7 @@ export default function ExplainerModal({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
-        <div className="mt-4 max-h-[52vh] overflow-y-auto rounded-2xl border-2 border-grape-100 bg-grape-50/60 p-4">
+        <div className="mt-4 rounded-2xl border border-grape-100 bg-grape-50/60 p-3 sm:p-5">
           {/* ===== المستويات ===== */}
           {tab === "levels" && (
             <div className="space-y-3">
@@ -74,9 +74,9 @@ export default function ExplainerModal({ onClose }: { onClose: () => void }) {
                   <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-grape-100">
                     <div className="xp-fill h-full rounded-full" style={{ width: "65%" }} />
                   </div>
-                  <span className="shrink-0 text-[10px] font-extrabold text-grape-500">٦٥/١٠٠</span>
+                  <span className="shrink-0 text-xs font-extrabold text-grape-500">٦٥/١٠٠</span>
                 </div>
-                <p className="text-[11px] font-bold leading-5 text-grape-700/70">
+                <p className="text-xs font-bold leading-5 text-grape-700/70">
                   هذا الشريط يمتلئ كلما زادت نقاطك، ويبيّن كم بقي لك لتصل للمستوى التالي. لما يمتلئ تمامًا ترتقي لمستوى جديد ويبدأ شريط جديد!
                 </p>
               </div>
@@ -95,7 +95,7 @@ export default function ExplainerModal({ onClose }: { onClose: () => void }) {
                   ))}
                   <span className="rounded-full bg-gradient-to-l from-gold-500 to-grape-600 px-3 py-1 text-xs font-extrabold text-white">أسطورة الحفاظ (بلا نهاية)</span>
                 </div>
-                <p className="mt-2 text-[11px] font-bold text-grape-700/60">
+                <p className="mt-2 text-xs font-bold text-grape-700/60">
                   بعد المستوى {ar(MAX_LEVEL)} تبدأ رحلة «أسطورة الحفاظ» — كل مستوى جديد يضيف نجمة ★ ولا تتوقف أبدًا!
                 </p>
               </div>
@@ -176,11 +176,11 @@ export default function ExplainerModal({ onClose }: { onClose: () => void }) {
               <div className="grid gap-2 sm:grid-cols-2">
                 <div className="rounded-xl border-2 border-grape-200 bg-white p-3">
                   <p className="flex items-center gap-1.5 font-display text-sm font-extrabold text-grape-600"><Icon name="trend" className="h-4 w-4" strokeWidth={2.2} /> الأكثر تطوّرًا</p>
-                  <p className="mt-1 text-[11px] font-bold text-grape-700/70">+٢٠ عملة <b>وترفع مستواه</b> — لمن اجتهد أكثر من ورده</p>
+                  <p className="mt-1 text-xs font-bold text-grape-700/70">+٢٠ عملة <b>وترفع مستواه</b> — لمن اجتهد أكثر من ورده</p>
                 </div>
                 <div className="rounded-xl border-2 border-grape-200 bg-white p-3">
                   <p className="flex items-center gap-1.5 font-display text-sm font-extrabold text-coral-500"><Icon name="heart" className="h-4 w-4" strokeWidth={2.2} /> أفضل سلوك</p>
-                  <p className="mt-1 text-[11px] font-bold text-grape-700/70">+٢٠ عملة — قدوة في الأدب بلا قلوب مفقودة</p>
+                  <p className="mt-1 text-xs font-bold text-grape-700/70">+٢٠ عملة — قدوة في الأدب بلا قلوب مفقودة</p>
                 </div>
               </div>
               <p className="rounded-xl border-2 border-grape-200 bg-white px-3 py-2 text-xs font-bold leading-5 text-grape-700/70">
@@ -190,12 +190,12 @@ export default function ExplainerModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <p className="flex items-center gap-1.5 text-xs font-bold text-grape-700/60">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-grape-100 pt-4">
+          <p className="flex items-center gap-1.5 text-sm font-bold leading-6 text-grape-700/60">
             <Coin className="h-4 w-4" />
             اجمع · تعلّم · ارتقِ
           </p>
-          <button type="button" onClick={onClose} className="rounded-2xl bg-grape-600 px-6 py-2.5 font-display text-sm font-extrabold text-white shadow-[0_4px_0_#56289d] transition hover:bg-grape-700 active:translate-y-0.5 active:shadow-none">
+          <button type="button" onClick={onClose} className="ui-action rounded-xl bg-grape-600 px-6 text-white shadow-sm transition hover:bg-grape-700 active:scale-[.98]">
             فهمت، يلا نبدأ!
           </button>
         </div>
