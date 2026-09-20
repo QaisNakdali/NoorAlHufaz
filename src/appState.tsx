@@ -294,7 +294,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const cloudDataRef = useRef<State | null>(null); // مرآة البيانات لأغراض الرفع
   const pushTimer = useRef<number | null>(null);
   const firstSave = useRef(true);
-  const isRemoteUpdate = useRef(false); // علامة: هل التغيير الحالي قادم من السحابة؟
+  const lastRemoteData = useRef<State | null>(null); // آخر بيانات وردت من السحابة للمقارنة
+
+  /** مقارنة عميقة بسيطة بين حالتين */
+  function statesEqual(a: State, b: State): boolean {
+    return (
+      a.week === b.week &&
+      a.weekName === b.weekName &&
+      a.sound === b.sound &&
+      a.tripOn === b.tripOn &&
+      a.showNewProducts === b.showNewProducts &&
+      JSON.stringify(a.students) === JSON.stringify(b.students) &&
+      JSON.stringify(a.weeksLog) === JSON.stringify(b.weeksLog) &&
+      JSON.stringify(a.ceremonyPicks) === JSON.stringify(b.ceremonyPicks) &&
+      JSON.stringify(a.products) === JSON.stringify(b.products) &&
+      JSON.stringify(a.tripAttendees) === JSON.stringify(b.tripAttendees) &&
+      a.tripDay === b.tripDay
+    );
+  }
 
   /** رفع نسخة إلى السحابة */
   const pushCloud = useCallback(async (rev: number, force = false) => {
@@ -331,8 +348,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }),
       };
     }
-    // علامة: التحديث قادم من السحابة — لا نُطلق عملية رفع إرجاعية
-    isRemoteUpdate.current = true;
+    // حفظ آخر بيانات وردت من السحابة للمقارنة لاحقًا
+    lastRemoteData.current = remote;
     setStudents(remote.students);
     setWeek(remote.week);
     setWeekNameState(remote.weekName);
@@ -344,8 +361,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTripOn(remote.tripOn);
     setTripDay(remote.tripDay);
     setTripAttendees(remote.tripAttendees);
-    // إزالة العلامة بعد دورة React واحدة
-    setTimeout(() => { isRemoteUpdate.current = false; }, 0);
   }, []);
 
   /** سحب أحدث نسخة من السحابة وتطبيقها إن كانت أحدث من المحلية */
@@ -407,8 +422,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // إذا كان التحديث قادمًا من السحابة: نحفظ محليًا فقط ولا نرفع مرة أخرى
-    if (isRemoteUpdate.current) {
+    // مقارنة مع آخر بيانات وردت من السحابة — إذا كانت متطابقة لا نرفع شيئًا
+    const remote = lastRemoteData.current;
+    if (remote && statesEqual(persistData, remote)) {
+      // البيانات مطابقة للسحابة — لا حاجة لرفع أي شيء
       try {
         localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current }));
       } catch {
