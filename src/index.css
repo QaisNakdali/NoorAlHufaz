@@ -30,3 +30,67 @@ svg:not([width]):not([height]):not(.h-):not(.w-) {
 button svg, a svg {
   pointer-events: none;
 }
+
+/* استعادة التصميم البنفسجي المريح للعين */
+.bg-grape-50 { background-color: #f5f3ff; }
+.bg-grape-100 { background-color: #ede9fe; }
+.bg-grape-200 { background-color: #ddd6fe; }
+.bg-grape-300 { background-color: #c4b5fd; }
+.bg-grape-400 { background-color: #a78bfa; }
+.bg-grape-500 { background-color: #8b5cf6; }
+.bg-grape-600 { background-color: #7c3aed; }
+.bg-grape-700 { background-color: #6d28d9; }
+.bg-grape-800 { background-color: #5b21b6; }
+.bg-grape-900 { background-color: #4c1d95; }
+.bg-grape-950 { background-color: #2e1065; }
+
+.text-grape-50 { color: #f5f3ff; }
+.text-grape-100 { color: #ede9fe; }
+.text-grape-200 { color: #ddd6fe; }
+.text-grape-300 { color: #c4b5fd; }
+.text-grape-400 { color: #a78bfa; }
+.text-grape-500 { color: #8b5cf6; }
+.text-grape-600 { color: #7c3aed; }
+.text-grape-700 { color: #6d28d9; }
+.text-grape-800 { color: #5b21b6; }
+.text-grape-900 { color: #4c1d95; }
+.text-grape-950 { color: #2e1065; }
+
+.border-grape-100 { border-color: #ede9fe; }
+.border-grape-200 { border-color: #ddd6fe; }
+.border-grape-300 { border-color: #c4b5fd; }
+.border-grape-400 { border-color: #a78bfa; }
+.border-grape-500 { border-color: #8b5cf6; }
+.border-grape-600 { border-color: #7c3aed; }
+
+.shadow-grape { --tw-shadow-color: #7c3aed; }
+
+/* ألوان إضافية مريحة للعين */
+.bg-coral-50 { background-color: #fff1f2; }
+.bg-coral-100 { background-color: #ffe4e6; }
+.bg-coral-200 { background-color: #fecdd3; }
+.bg-coral-300 { background-color: #fda4af; }
+.bg-coral-400 { background-color: #fb7185; }
+.bg-coral-500 { background-color: #f43f5e; }
+.bg-coral-600 { background-color: #e11d48; }
+
+.text-coral-500 { color: #f43f5e; }
+.text-coral-600 { color: #e11d48; }
+
+.bg-gold-100 { background-color: #fef9c3; }
+.bg-gold-200 { background-color: #fef08a; }
+.bg-gold-300 { background-color: #fde047; }
+.bg-gold-400 { background-color: #facc15; }
+.bg-gold-500 { background-color: #eab308; }
+
+.text-gold-600 { color: #ca8a04; }
+.border-gold-500 { border-color: #eab308; }
+
+/* تحسينات بصرية للأيقونات */
+svg {
+  transition: transform 0.15s ease-in-out;
+}
+
+button:hover svg, a:hover svg {
+  transform: scale(1.05);
+}
