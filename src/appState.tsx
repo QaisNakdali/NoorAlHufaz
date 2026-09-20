@@ -294,6 +294,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const cloudDataRef = useRef<State | null>(null); // مرآة البيانات لأغراض الرفع
   const pushTimer = useRef<number | null>(null);
   const firstSave = useRef(true);
+  
+  // Ref لتتبع ما إذا كنا في حالة تحديث قادم من السحابة (لمنع الحلقة التكرارية)
+  const isRemoteUpdateRef = useRef(false);
+
+  /** مقارنة عميقة بسيطة بين حالتين */
+  function statesEqual(a: State, b: State): boolean {
+    return (
+      a.week === b.week &&
+      a.weekName === b.weekName &&
+      a.sound === b.sound &&
+      a.tripOn === b.tripOn &&
+      a.showNewProducts === b.showNewProducts &&
+      JSON.stringify(a.students) === JSON.stringify(b.students) &&
+      JSON.stringify(a.weeksLog) === JSON.stringify(b.weeksLog) &&
+      JSON.stringify(a.ceremonyPicks) === JSON.stringify(b.ceremonyPicks) &&
+      JSON.stringify(a.products) === JSON.stringify(b.products) &&
+      JSON.stringify(a.tripAttendees) === JSON.stringify(b.tripAttendees) &&
+      a.tripDay === b.tripDay
+    );
+  }
 
   /** رفع نسخة إلى السحابة */
   const pushCloud = useCallback(async (rev: number, force = false) => {
@@ -330,6 +350,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }),
       };
     }
+    // تعيين علامة أن هذا تحديث قادم من السحابة لمنع الرفع الإرجاعي
+    isRemoteUpdateRef.current = true;
     setStudents(remote.students);
     setWeek(remote.week);
     setWeekNameState(remote.weekName);
@@ -369,7 +391,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [applyRemote, pushCloud, toast]
   );
 
-  // حفظ محلي + رفع سحابي عند كل تغيير
+  // حفظ محلي + رفع سحابي عند كل تغيير (باستخدام Debounce)
   useEffect(() => {
     const persistData: State = {
       students,
@@ -402,7 +424,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // تعديل حقيقي: نرفع رقم النسخة ونحفظ ونجدول رفعًا سحابيًا
+    // إذا كان التحديث قادمًا من السحابة، لا نرفع شيئًا — فقط نحفظ محليًا
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false; // إعادة تعيين العلامة
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current }));
+      } catch {
+        /* تجاهل */
+      }
+      return;
+    }
+
+    // تعديل حقيقي من المستخدم: نرفع رقم النسخة ونحفظ ونجدول رفعًا سحابيًا (Debounce 2 ثانية)
     const newRev = Date.now();
     revRef.current = newRev;
     try {
@@ -412,7 +445,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     if (isCloudEnabled()) {
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
-      pushTimer.current = window.setTimeout(() => void pushCloud(newRev), 1500);
+      pushTimer.current = window.setTimeout(() => void pushCloud(newRev), 2000);
     }
   }, [students, week, weekName, weeksLog, sound, ceremonyPicks, products, showNewProducts, tripOn, tripDay, tripAttendees, pushCloud]);
 
@@ -421,11 +454,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!cloudEnabled) return;
     void pullCloud(false);
     return subscribeCloud((remote) => {
+      // قاعدة: السحابة هي المصدر الوحيد للحقائق — نقبل التحديث إذا كان أحدث
       if (remote.rev <= revRef.current) return;
       const normalized = stateFromPartial(remote.data as Partial<State>);
       revRef.current = remote.rev;
       lastPushedRev.current = remote.rev;
       cloudDataRef.current = normalized;
+      // applyRemote سيُطلق isRemoteUpdate ليمنع الرفع الإرجاعي
       applyRemote(normalized);
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
     });
