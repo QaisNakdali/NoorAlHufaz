@@ -204,156 +204,111 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
 
 /* ===== صف طالب في الكشف ===== */
 function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onManage: () => void }) {
-  const { markDay, removeHeart, removeStudent, setMode, setTab } = useApp();
+  const { markDay, updateWard, removeHeart, removeStudent, setMode, setTab } = useApp();
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
   const { level, into, need } = levelInfo(s.xp);
   const levelPct = Math.max(4, Math.round((into / need) * 100));
   const checkedCount = DAYS.reduce((n, d) => n + DAY_PARTS.filter((p) => s.days[d.key][p.key]).length, 0);
-  const todayKey = (["sun", "mon", "tue", "wed"] as const)[new Date().getDay()];
-  const today = todayKey ? DAYS.find((d) => d.key === todayKey) : null;
-  const todayWard = todayKey ? s.ward[todayKey] : null;
 
   return (
-    <div
-      className={`anim-slide-up overflow-hidden rounded-[22px] border-2 transition-all ${
+    <article
+      className={`anim-slide-up overflow-hidden rounded-[28px] border bg-white shadow-[0_20px_55px_-42px_rgba(33,22,75,.7)] transition-all ${
         noHearts
-          ? "border-slate-300 bg-slate-100"
-          : "border-grape-200 bg-white hover:border-grape-300 hover:shadow-[0_16px_34px_-20px_rgba(86,40,157,0.4)]"
+          ? "border-slate-200 bg-slate-50"
+          : "border-grape-200 hover:border-grape-300 hover:shadow-[0_24px_65px_-42px_rgba(88,59,195,.55)]"
       }`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className="flex flex-col gap-0 lg:flex-row lg:gap-0">
-        {/* خانة الطالب */}
-        <div className={`flex shrink-0 items-start gap-4 px-4 py-4 lg:w-[23rem] lg:shrink-0 lg:border-e ${noHearts ? "lg:border-slate-200" : "lg:border-grape-100"} ${fade}`}>
-          <Avatar photo={s.photo} name={s.name} size={72} frame={s.frame} crown={s.crown} glow={s.glow} />
+      {/* رأس البطاقة: بيانات الطالب والإحصاءات والإجراءات في سطر مريح */}
+      <div className={`flex flex-wrap items-center gap-5 px-5 py-5 sm:px-6 ${fade}`}>
+        <div className="flex min-w-[240px] flex-1 items-center gap-4">
+          <Avatar photo={s.photo} name={s.name} size={68} frame={s.frame} crown={s.crown} glow={s.glow} />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="truncate font-display text-xl font-extrabold leading-6 text-ink">{s.name}</p>
-              <LevelBadge level={level} className="shrink-0 px-2! py-0! text-[10px]!" />
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="truncate font-display text-xl font-extrabold text-ink sm:text-2xl">{s.name}</h3>
+              <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-[11px]! shadow-none!" />
             </div>
-            <div className="mt-1.5 flex items-center gap-1.5">
-              <HeartsRow hearts={s.hearts} max={MAX_HEARTS} size="w-6.5 h-6.5" />
-              {noHearts && (
-                <span className="anim-wiggle shrink-0 rounded-md bg-coral-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">نفدت!</span>
-              )}
+            <div className="mt-2 flex items-center gap-2">
+              <HeartsRow hearts={s.hearts} max={MAX_HEARTS} size="w-6 h-6" />
+              {noHearts && <span className="rounded-full bg-coral-100 px-2 py-1 text-[10px] font-extrabold text-coral-600">نفدت القلوب</span>}
             </div>
-            {/* شريط المستوى — يمتلئ كلما زادت نقاطه */}
-            <div className="mt-2" title={`المستوى ${ar(level)} — باقي ${ar(need - into)} نقطة للمستوى التالي`}>
-              <div className="flex items-center gap-1.5">
-                <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-grape-100">
-                  <div
-                    className="xp-fill h-full rounded-full transition-[width] duration-700 ease-out"
-                    style={{ width: levelPct + "%" }}
-                  />
-                </div>
-                <span className="shrink-0 text-[9px] font-extrabold text-grape-500">{ar(into)}/{ar(need)}</span>
-              </div>
-            </div>
-            <p className="mt-1 text-[10px] font-bold text-grape-700/55">
-              {noHearts ? "يجمع العملات فقط — اشترِ له قلبًا من متجره" : "من يخالف آداب الحلقة يخسر قلبًا"}
-            </p>
-            {today && todayWard && (todayWard.memorization || todayWard.review) && (
-              <div className="mt-3 rounded-xl border border-grape-200 bg-grape-50/80 p-2.5">
-                <p className="mb-1 text-[10px] font-extrabold text-grape-500">ورد {today.label}</p>
-                {todayWard.memorization && <p className="text-xs font-extrabold text-ink"><span className="text-grape-600">حفظ:</span> {todayWard.memorization}</p>}
-                {todayWard.review && <p className="mt-0.5 text-xs font-bold text-grape-700"><span className="text-mint-600">مراجعة:</span> {todayWard.review}</p>}
-              </div>
-            )}
           </div>
         </div>
 
-        {/* خانات الأيام — كبيرة وواضحة */}
-        <div className={`grid flex-1 grid-cols-2 gap-2 px-3 pb-3 lg:px-3 lg:py-3 xl:grid-cols-4 ${fade} ${noHearts ? "opacity-60" : ""}`}>
+        <div className="min-w-[220px] flex-[1.2]" title={`المستوى ${ar(level)} — باقي ${ar(need - into)} نقطة للمستوى التالي`}>
+          <div className="mb-2 flex items-center justify-between text-[11px] font-extrabold text-grape-500">
+            <span>تقدم المستوى</span><span>{ar(into)} / {ar(need)}</span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-grape-100">
+            <div className="xp-fill h-full rounded-full transition-[width] duration-700" style={{ width: levelPct + "%" }} />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="rounded-xl bg-gold-400/15 px-3 py-2 text-center">
+            <p className="font-display text-lg font-extrabold leading-5 text-gold-600">+{ar(s.weekXp)}</p>
+            <p className="mt-1 text-[9px] font-bold text-grape-500">نقطة</p>
+          </div>
+          <div className="rounded-xl bg-grape-100 px-3 py-2 text-center">
+            <p className="flex items-center gap-1 font-display text-lg font-extrabold leading-5 text-grape-600"><Coin className="h-4 w-4" />+{ar(s.weekCoins)}</p>
+            <p className="mt-1 text-[9px] font-bold text-grape-500">عملة</p>
+          </div>
+          <button type="button" onClick={() => removeHeart(s.id)} disabled={noHearts} title="خصم قلب" className="grid h-10 w-10 place-items-center rounded-xl bg-coral-500/10 text-coral-500 transition hover:bg-coral-500 hover:text-white disabled:opacity-30"><Icon name="heart" fill className="h-4.5 w-4.5" /></button>
+          <button type="button" onClick={onManage} title="إعدادات الطالب" className="grid h-10 w-10 place-items-center rounded-xl bg-grape-100 text-grape-600 transition hover:bg-grape-600 hover:text-white"><Icon name="wand" className="h-4.5 w-4.5" /></button>
+          <DeleteBtn label="" onDelete={() => removeStudent(s.id)} />
+        </div>
+      </div>
+
+      {/* كل يوم بطاقة مستقلة: تحديد الورد ثم تسجيل الإنجاز */}
+      <div className={`border-t border-grape-100 bg-grape-50/35 p-5 sm:p-6 ${noHearts ? "opacity-65" : ""}`}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h4 className="font-display text-base font-extrabold text-ink">خطة الورد الأسبوعية</h4>
+            <p className="mt-1 text-xs font-bold text-grape-500">حدّد الحفظ والمراجعة لكل يوم ثم سجّل الإنجاز من الأزرار</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-extrabold text-grape-500 shadow-sm">{ar(checkedCount)} / ١٢ منجز</span>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
           {DAYS.map((d) => {
+            const ward = s.ward[d.key];
             const cnt = DAY_PARTS.filter((p) => s.days[d.key][p.key]).length;
             return (
-              <div key={d.key} className={`rounded-2xl border-2 p-1.5 ${noHearts ? "border-slate-200 bg-slate-50" : "border-grape-100 bg-grape-50/60"}`}>
-                <div className="mb-1.5 flex items-center justify-between px-1.5 pt-0.5">
-                  <span className="font-display text-xs font-extrabold text-grape-500">{d.label}</span>
-                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-extrabold ${cnt > 0 ? "bg-mint-400/20 text-mint-600" : "bg-grape-100 text-grape-400"}`}>
-                    {ar(cnt)}/٣
-                  </span>
+              <section key={d.key} className="rounded-2xl border border-grape-200 bg-white p-4 shadow-[0_12px_30px_-26px_rgba(33,22,75,.7)]">
+                <div className="mb-4 flex items-center justify-between">
+                  <h5 className="font-display text-base font-extrabold text-grape-700">{d.label}</h5>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold ${cnt === 3 ? "bg-mint-100 text-mint-600" : "bg-grape-100 text-grape-500"}`}>{ar(cnt)} / ٣</span>
                 </div>
-                <div className="space-y-1.5">
+
+                <div className="space-y-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-extrabold text-grape-500">ورد الحفظ</span>
+                    <input value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder="مثال: سورة الهمزة ١-٥" className="h-11 w-full rounded-xl border border-grape-200 bg-grape-50/40 px-3 text-sm font-bold text-ink placeholder:font-medium placeholder:text-grape-300" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-extrabold text-grape-500">ورد المراجعة</span>
+                    <input value={ward.review} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder="مثال: الناس والفلق" className="h-11 w-full rounded-xl border border-grape-200 bg-grape-50/40 px-3 text-sm font-bold text-ink placeholder:font-medium placeholder:text-grape-300" />
+                  </label>
+                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <input type="number" min="0" step={ward.unit === "pages" ? "0.5" : "1"} value={ward.amount || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, amount: Number(e.target.value) })} placeholder="الكمية" className="h-10 min-w-0 rounded-xl border border-grape-200 bg-white px-3 text-sm font-bold text-ink" />
+                    <select value={ward.unit} onChange={(e) => updateWard(s.id, d.key, { ...ward, unit: e.target.value === "pages" ? "pages" : "lines" })} className="h-10 rounded-xl border border-grape-200 bg-white px-3 text-sm font-bold text-grape-700"><option value="lines">أسطر</option><option value="pages">صفحات</option></select>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-2 border-t border-grape-100 pt-4">
                   {DAY_PARTS.map((p) => {
                     const on = s.days[d.key][p.key];
-                    return (
-                      <button
-                        key={p.key}
-                        type="button"
-                        onClick={() => markDay(s.id, d.key, p.key)}
-                        title={
-                          noHearts
-                            ? `${p.label} · +${p.coins} عملات فقط (مستواه متوقف حتى يشتري قلبًا)`
-                            : `${p.label} · +${p.xp} نقطة مستوى و+${p.coins} عملات`
-                        }
-                        className={`flex h-10 w-full items-center justify-between rounded-xl border-2 px-2.5 text-xs font-extrabold transition-all active:scale-[0.95] ${
-                          on ? PART_ON[p.key] : "border-dashed border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"
-                        }`}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <Icon name={on ? "check" : p.icon} className="h-4 w-4 shrink-0" strokeWidth={3} />
-                          {p.label}
-                        </span>
-                        {noHearts ? (
-                          <span className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] ${on ? "bg-white/25 text-white" : "bg-gold-400/30 text-gold-600"}`}>
-                            <Coin className="h-3 w-3" /> +{ar(p.coins)}
-                          </span>
-                        ) : (
-                          <span className={`rounded-md px-1.5 py-0.5 text-[10px] ${on ? "bg-white/25 text-white" : "bg-grape-100 text-grape-400"}`}>
-                            +{ar(p.xp)}
-                          </span>
-                        )}
-                      </button>
-                    );
+                    return <button key={p.key} type="button" onClick={() => markDay(s.id, d.key, p.key)} className={`flex h-10 items-center justify-center gap-1 rounded-xl border text-[11px] font-extrabold transition active:scale-95 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"}`}><Icon name={on ? "check" : p.icon} className="h-3.5 w-3.5" strokeWidth={2.7} />{p.label}</button>;
                   })}
                 </div>
-              </div>
+              </section>
             );
           })}
-        </div>
-
-        {/* نقاط الأسبوع والإجراءات */}
-        <div className={`flex items-center justify-between gap-3 border-t-2 px-4 py-3 lg:w-64 lg:shrink-0 lg:flex-col lg:justify-center lg:border-s-2 lg:border-t-0 lg:py-4 ${noHearts ? "border-slate-200" : "border-grape-100"} ${fade}`}>
-          <div className="flex items-stretch gap-2">
-            <div className={`flex-1 rounded-2xl border-2 px-4 py-2 text-center ${s.weekXp > 0 ? "border-gold-500/60 bg-gold-400/20" : "border-grape-100 bg-grape-50"}`}>
-              <p className="font-display text-xl font-extrabold leading-6 text-gold-600">+{ar(s.weekXp)}</p>
-              <p className="text-[9px] font-bold text-grape-700/60">نقاط الأسبوع</p>
-            </div>
-            <div className={`flex-1 rounded-2xl border-2 px-4 py-2 text-center ${s.weekCoins > 0 ? "border-grape-400/60 bg-grape-600/10" : "border-grape-100 bg-grape-50"}`}>
-              <p className="flex items-center justify-center gap-1 font-display text-xl font-extrabold leading-6 text-grape-600">
-                <Coin className="h-4 w-4" />+{ar(s.weekCoins)}
-              </p>
-              <p className="text-[9px] font-bold text-grape-700/60">عملات الأسبوع</p>
-            </div>
-          </div>
-          <p className="text-[9px] font-bold text-grape-700/50 lg:-mt-1">{ar(checkedCount)}/١٢ خانة مسجلة</p>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => removeHeart(s.id)}
-              disabled={noHearts}
-              title="خصم قلب لمخالفة آداب الحلقة"
-              className="grid h-10 w-10 place-items-center rounded-xl bg-coral-500/15 text-coral-500 transition-all hover:bg-coral-500 hover:text-white active:scale-90 disabled:opacity-30"
-            >
-              <Icon name="heart" fill className="h-4.5 w-4.5" />
-            </button>
-            <button
-              type="button"
-              onClick={onManage}
-              title="إعدادات الطالب: عملات وخبرة وقلوب"
-              className="grid h-10 w-10 place-items-center rounded-xl bg-grape-600/12 text-grape-600 transition-all hover:bg-grape-600 hover:text-white active:scale-90"
-            >
-              <Icon name="wand" className="h-4.5 w-4.5" strokeWidth={2.2} />
-            </button>
-            <DeleteBtn label="" onDelete={() => removeStudent(s.id)} />
-          </div>
         </div>
       </div>
 
       {noHearts && (
-        <div className="flex flex-wrap items-center gap-2 border-t-2 border-slate-200 bg-slate-200/60 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-100 px-5 py-3">
           <p className="text-[11px] font-extrabold text-slate-500">
             نفدت قلوب {s.name} — سجّل له الحضور والتسميع ليجمع العملات، ثم يشتري قلبًا من متجره ({ar(HEART_PRICE)} عملة) ويعود لنقاط المستوى
           </p>
@@ -366,7 +321,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
           </button>
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
