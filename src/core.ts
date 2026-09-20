@@ -51,10 +51,13 @@ export type WardUnit = "lines" | "pages";
 export type DailyWard = {
   memorization: string;
   review: string;
-  amount: number;
-  unit: WardUnit;
+  memorizationVerses: number;
+  reviewVerses: number;
 };
 export type WeeklyWard = Record<DayKey, DailyWard>;
+
+export type LastHeardEntry = { text: string; verses: number; day: string; at: number };
+export type LastHeard = { memorization?: LastHeardEntry; review?: LastHeardEntry };
 
 export const DAYS: { key: DayKey; label: string }[] = [
   { key: "sun", label: "الأحد" },
@@ -80,9 +83,13 @@ export function emptyWeekDays(): WeekDays {
 }
 
 export function emptyWeeklyWard(): WeeklyWard {
-  const mk = (): DailyWard => ({ memorization: "", review: "", amount: 0, unit: "lines" });
+  const mk = (): DailyWard => ({ memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0 });
   return { sun: mk(), mon: mk(), tue: mk(), wed: mk() };
 }
+
+/** تقدير موحّد على أساس مصحف المدينة (15 سطرًا في الصفحة). */
+export const estimatedLinesFromVerses = (verses: number): number =>
+  Math.max(0, Math.round((Number(verses) || 0) * 1.45));
 
 /** نقاط الأسبوع = مجموع نقاط كل الخانات المسجلة */
 export function weekXpOf(days: WeekDays): number {
@@ -136,6 +143,7 @@ export type Student = {
   coins: number;
   days: WeekDays;
   ward: WeeklyWard; // الخطة اليومية؛ لا تتصفّر عند بدء أسبوع جديد
+  lastHeard?: LastHeard; // آخر حفظ ومراجعة سمعهما الطالب؛ لا يتصفّران أسبوعيًا
   inventory: string[]; // ids خصائص البروفايل المملوكة
   bag: BagEntry[]; // المشتريات الخارجية
   frame?: FrameKind | null;

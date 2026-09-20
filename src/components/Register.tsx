@@ -7,6 +7,7 @@ import {
   ATTEND_XP,
   DAYS,
   DAY_PARTS,
+  estimatedLinesFromVerses,
   HEART_PRICE,
   levelInfo,
   MAX_HEARTS,
@@ -61,7 +62,7 @@ function DeleteBtn({ onDelete, label = "" }: { onDelete: () => void; label?: str
 
 /* ===== نافذة إعدادات الطالب (عملات / خبرة / قلوب) ===== */
 function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { students, addCoins, addXp, removeHeart, restoreHeart, removeStudent, updateWard } = useApp();
+  const { students, addCoins, addXp, removeHeart, restoreHeart, removeStudent } = useApp();
   const s = students.find((x) => x.id === id);
   if (!s) return null;
   const { level } = levelInfo(s.xp);
@@ -138,61 +139,6 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
           </div>
         </div>
 
-        <div className="mt-5 rounded-2xl border border-grape-200 bg-grape-50/60 p-4">
-          <div className="mb-4 flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-xl bg-grape-600 text-white">
-              <Icon name="book" className="h-4 w-4" />
-            </span>
-            <div>
-              <h4 className="font-display font-extrabold text-ink">الورد اليومي</h4>
-              <p className="text-[11px] font-bold text-grape-500">يبقى محفوظًا عند بدء أسبوع جديد</p>
-            </div>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {DAYS.map((d) => {
-              const ward = s.ward[d.key];
-              return (
-                <div key={d.key} className="rounded-2xl border border-grape-200 bg-white p-3 shadow-[0_10px_25px_-22px_rgba(33,22,75,.6)]">
-                  <p className="mb-2 font-display text-sm font-extrabold text-grape-700">{d.label}</p>
-                  <div className="space-y-2">
-                    <input
-                      value={ward.memorization}
-                      onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })}
-                      placeholder="الحفظ: الهمزة ١-٥"
-                      className="w-full rounded-xl border border-grape-200 bg-white px-3 py-2 text-sm font-bold text-ink placeholder:text-grape-300"
-                    />
-                    <input
-                      value={ward.review}
-                      onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })}
-                      placeholder="المراجعة: الناس والفلق"
-                      className="w-full rounded-xl border border-grape-200 bg-white px-3 py-2 text-sm font-bold text-ink placeholder:text-grape-300"
-                    />
-                    <div className="grid grid-cols-[1fr_auto] gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step={ward.unit === "pages" ? "0.5" : "1"}
-                        value={ward.amount || ""}
-                        onChange={(e) => updateWard(s.id, d.key, { ...ward, amount: Number(e.target.value) })}
-                        placeholder="الكمية"
-                        className="min-w-0 rounded-xl border border-grape-200 bg-white px-3 py-2 text-sm font-bold text-ink"
-                      />
-                      <select
-                        value={ward.unit}
-                        onChange={(e) => updateWard(s.id, d.key, { ...ward, unit: e.target.value === "pages" ? "pages" : "lines" })}
-                        className="rounded-xl border border-grape-200 bg-white px-3 py-2 text-sm font-bold text-grape-700"
-                      >
-                        <option value="lines">أسطر</option>
-                        <option value="pages">صفحات</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
         <div className="mt-5 flex items-center justify-between border-t-2 border-dashed border-grape-200 pt-4">
           <p className="text-xs text-grape-700/60">جوائز {s.name}: {ar(s.awards.length)} · ممتلكاته: {ar(s.inventory.length + s.bag.length)}</p>
           <DeleteBtn label="حذف الطالب" onDelete={() => { removeStudent(s.id); onClose(); }} />
@@ -260,45 +206,44 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
         </div>
       </div>
 
-      {/* كل يوم بطاقة مستقلة: تحديد الورد ثم تسجيل الإنجاز */}
-      <div className={`border-t border-grape-100 bg-grape-50/35 p-5 sm:p-6 ${noHearts ? "opacity-65" : ""}`}>
-        <div className="mb-4 flex items-center justify-between gap-3">
+      {/* صفوف يومية مدمجة: الحفظ والمراجعة منفصلان، والأسطر تُحسب تلقائيًا */}
+      <div className={`border-t border-grape-100 bg-grape-50/25 p-4 sm:p-5 ${noHearts ? "opacity-65" : ""}`}>
+        <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h4 className="font-display text-base font-extrabold text-ink">خطة الورد الأسبوعية</h4>
-            <p className="mt-1 text-xs font-bold text-grape-500">حدّد الحفظ والمراجعة لكل يوم ثم سجّل الإنجاز من الأزرار</p>
+            <p className="mt-0.5 text-[11px] font-bold text-grape-500">اكتب السورة وعدد الآيات، ويظهر تقدير الأسطر تلقائيًا</p>
           </div>
           <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-extrabold text-grape-500 shadow-sm">{ar(checkedCount)} / ١٢ منجز</span>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+        <div className="grid gap-3 xl:grid-cols-2">
           {DAYS.map((d) => {
             const ward = s.ward[d.key];
             const cnt = DAY_PARTS.filter((p) => s.days[d.key][p.key]).length;
+            const lines = estimatedLinesFromVerses(ward.memorizationVerses);
             return (
-              <section key={d.key} className="rounded-2xl border border-grape-200 bg-white p-4 shadow-[0_12px_30px_-26px_rgba(33,22,75,.7)]">
-                <div className="mb-4 flex items-center justify-between">
-                  <h5 className="font-display text-base font-extrabold text-grape-700">{d.label}</h5>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold ${cnt === 3 ? "bg-mint-100 text-mint-600" : "bg-grape-100 text-grape-500"}`}>{ar(cnt)} / ٣</span>
+              <section key={d.key} className="rounded-2xl border border-grape-200 bg-white p-3.5 shadow-[0_10px_25px_-24px_rgba(33,22,75,.65)]">
+                <div className="mb-2.5 flex items-center justify-between">
+                  <h5 className="font-display text-sm font-extrabold text-grape-700">{d.label}</h5>
+                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold ${cnt === 3 ? "bg-mint-100 text-mint-600" : "bg-grape-100 text-grape-500"}`}>{ar(cnt)} / ٣</span>
                 </div>
-
-                <div className="space-y-3">
-                  <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-extrabold text-grape-500">ورد الحفظ</span>
-                    <input value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder="مثال: سورة الهمزة ١-٥" className="h-11 w-full rounded-xl border border-grape-200 bg-grape-50/40 px-3 text-sm font-bold text-ink placeholder:font-medium placeholder:text-grape-300" />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-extrabold text-grape-500">ورد المراجعة</span>
-                    <input value={ward.review} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder="مثال: الناس والفلق" className="h-11 w-full rounded-xl border border-grape-200 bg-grape-50/40 px-3 text-sm font-bold text-ink placeholder:font-medium placeholder:text-grape-300" />
-                  </label>
-                  <div className="grid grid-cols-[1fr_auto] gap-2">
-                    <input type="number" min="0" step={ward.unit === "pages" ? "0.5" : "1"} value={ward.amount || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, amount: Number(e.target.value) })} placeholder="الكمية" className="h-10 min-w-0 rounded-xl border border-grape-200 bg-white px-3 text-sm font-bold text-ink" />
-                    <select value={ward.unit} onChange={(e) => updateWard(s.id, d.key, { ...ward, unit: e.target.value === "pages" ? "pages" : "lines" })} className="h-10 rounded-xl border border-grape-200 bg-white px-3 text-sm font-bold text-grape-700"><option value="lines">أسطر</option><option value="pages">صفحات</option></select>
+                <div className="space-y-2">
+                  <div className="grid items-center gap-2 sm:grid-cols-[48px_minmax(0,1fr)_86px_78px]">
+                    <span className="text-[11px] font-extrabold text-grape-600">حفظ</span>
+                    <input aria-label={`سورة الحفظ ${d.label}`} value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder="اسم السورة" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-grape-50/40 px-2.5 text-xs font-bold text-ink placeholder:text-grape-300" />
+                    <input aria-label={`عدد آيات الحفظ ${d.label}`} type="number" min="0" value={ward.memorizationVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationVerses: Number(e.target.value) })} placeholder="عدد الآيات" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-white px-2 text-center text-xs font-bold text-ink" />
+                    <span className="rounded-lg bg-grape-100 px-2 py-2 text-center text-[10px] font-extrabold text-grape-600">≈ {ar(lines)} سطر</span>
+                  </div>
+                  <div className="grid items-center gap-2 sm:grid-cols-[48px_minmax(0,1fr)_86px_78px]">
+                    <span className="text-[11px] font-extrabold text-gold-600">مراجعة</span>
+                    <input aria-label={`سورة المراجعة ${d.label}`} value={ward.review} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder="اسم السورة أو السور" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-grape-50/40 px-2.5 text-xs font-bold text-ink placeholder:text-grape-300" />
+                    <input aria-label={`عدد آيات المراجعة ${d.label}`} type="number" min="0" value={ward.reviewVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewVerses: Number(e.target.value) })} placeholder="عدد الآيات" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-white px-2 text-center text-xs font-bold text-ink" />
+                    <span className="rounded-lg bg-gold-400/15 px-2 py-2 text-center text-[10px] font-extrabold text-gold-600">منفصلة</span>
                   </div>
                 </div>
-
-                <div className="mt-4 grid grid-cols-3 gap-2 border-t border-grape-100 pt-4">
+                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-grape-100 pt-3">
                   {DAY_PARTS.map((p) => {
                     const on = s.days[d.key][p.key];
-                    return <button key={p.key} type="button" onClick={() => markDay(s.id, d.key, p.key)} className={`flex h-10 items-center justify-center gap-1 rounded-xl border text-[11px] font-extrabold transition active:scale-95 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"}`}><Icon name={on ? "check" : p.icon} className="h-3.5 w-3.5" strokeWidth={2.7} />{p.label}</button>;
+                    return <button key={p.key} type="button" onClick={() => markDay(s.id, d.key, p.key)} className={`flex h-9 items-center justify-center gap-1 rounded-lg border text-[10px] font-extrabold transition active:scale-95 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"}`}><Icon name={on ? "check" : p.icon} className="h-3.5 w-3.5" strokeWidth={2.7} />{p.label}</button>;
                   })}
                 </div>
               </section>

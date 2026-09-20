@@ -1,7 +1,7 @@
 /* صفحة الإحصائيات — تحليل شامل لمستوى الطلاب والحضور والغياب */
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
-import { ar, DAYS, type Student } from "../core";
+import { ar, DAYS, estimatedLinesFromVerses, type Student } from "../core";
 import Avatar from "./Avatar";
 import { Icon, Modal, SectionHead } from "./ui";
 
@@ -141,10 +141,10 @@ function calculateWeeklyMemorizationStats(student: Student): WeeklyMemorizationS
     return recordDate >= startOfWeek;
   });
   
-  const plannedDays = DAYS.filter((d) => student.ward[d.key].memorization || student.ward[d.key].amount > 0);
+  const plannedDays = DAYS.filter((d) => student.ward[d.key].memorization || student.ward[d.key].memorizationVerses > 0);
   const completedPlannedDays = plannedDays.filter((d) => student.days[d.key].h);
-  const totalLines = completedPlannedDays.reduce((sum, d) => sum + (student.ward[d.key].unit === "lines" ? student.ward[d.key].amount : 0), 0);
-  const totalPages = completedPlannedDays.reduce((sum, d) => sum + (student.ward[d.key].unit === "pages" ? student.ward[d.key].amount : 0), 0);
+  const totalLines = completedPlannedDays.reduce((sum, d) => sum + estimatedLinesFromVerses(student.ward[d.key].memorizationVerses), 0);
+  const totalPages = totalLines / 15;
   
   const totalVerses = weekRecords.reduce((sum, r) => sum + r.versesCount, 0);
   const successfulRecitations = completedPlannedDays.length || weekRecords.filter(r => r.success).length;
@@ -365,6 +365,27 @@ function StudentDetailModal({ stats, onClose }: { stats: OverallStudentStats; on
           <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-grape-100 text-grape-600 transition hover:bg-grape-200">
             <Icon name="x" className="h-5 w-5" strokeWidth={3} />
           </button>
+        </div>
+
+        <div className="mb-6 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-grape-200 bg-grape-50/60 p-4">
+            <p className="text-[11px] font-extrabold text-grape-500">آخر حفظ سمعه</p>
+            {stats.student.lastHeard?.memorization ? (
+              <>
+                <p className="mt-1 font-display text-lg font-extrabold text-ink">{stats.student.lastHeard.memorization.text}</p>
+                <p className="mt-1 text-xs font-bold text-grape-600">{ar(stats.student.lastHeard.memorization.verses)} آية · {stats.student.lastHeard.memorization.day}</p>
+              </>
+            ) : <p className="mt-2 text-sm font-bold text-grape-400">لم يُسجّل حفظ بعد</p>}
+          </div>
+          <div className="rounded-2xl border border-gold-500/30 bg-gold-400/10 p-4">
+            <p className="text-[11px] font-extrabold text-gold-600">آخر مراجعة سمعها</p>
+            {stats.student.lastHeard?.review ? (
+              <>
+                <p className="mt-1 font-display text-lg font-extrabold text-ink">{stats.student.lastHeard.review.text}</p>
+                <p className="mt-1 text-xs font-bold text-gold-600">{ar(stats.student.lastHeard.review.verses)} آية · {stats.student.lastHeard.review.day}</p>
+              </>
+            ) : <p className="mt-2 text-sm font-bold text-grape-400">لم تُسجّل مراجعة بعد</p>}
+          </div>
         </div>
         
         <div className="grid gap-6 md:grid-cols-2">
