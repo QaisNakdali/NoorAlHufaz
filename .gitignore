@@ -1,51 +1,43 @@
 ```
 # Dependencies
 node_modules/
+package-lock.json
 
 # Build artifacts
 dist/
-build/
-*.js.map
-*.css.map
 
-# Environment variables
+# Environment
 .env
 .env.local
 *.env.*
 
-# IDE and editor files
+# Logs
+*.log
+
+# Editor/IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *.tmp
 
-# Logs
-*.log
-
-# Coverage reports
-coverage/
-htmlcov/
-*.coverage
-
-# Python cache
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.Python
+venv/
+.venv/
+.env
+.env.local
 
-# System files
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# System
 .DS_Store
 Thumbs.db
-
-# Package lock files
-package-lock.json
-.yarn/*
-!.yarn/releases
-!.yarn/patches
-!.yarn/plugins
-!.yarn/sdks
-
-# Browserslist
-.browserslist*
 ```
