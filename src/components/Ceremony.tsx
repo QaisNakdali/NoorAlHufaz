@@ -56,15 +56,15 @@ function NewProductCard({ p, delay }: { p: ShopProduct; delay: number }) {
       <div className="p-3">
         <div className="flex items-center justify-between gap-2">
           <p className="font-display text-base font-extrabold">{p.name}</p>
-          <span className="rounded-full bg-gold-400 px-2 py-0.5 text-[9px] font-extrabold text-ink">جديد</span>
+          <span className="rounded-full bg-gold-400 px-2 py-0.5 text-xs font-extrabold text-ink">جديد</span>
         </div>
-        <p className="mt-0.5 text-[11px] font-bold text-grape-700/60">{p.desc}</p>
+        <p className="mt-0.5 text-xs font-bold text-grape-700/60">{p.desc}</p>
         <div className="mt-2 flex items-center gap-2">
           <span className="flex items-center gap-1 rounded-full bg-gold-400/25 px-2.5 py-1 text-xs font-extrabold text-gold-600">
             <Coin className="h-3.5 w-3.5" />
             {ar(p.price)}
           </span>
-          <span className="rounded-full bg-grape-600/12 px-2.5 py-1 text-[10px] font-extrabold text-grape-600">يُفتح في المستوى {ar(p.minLevel)}</span>
+          <span className="rounded-full bg-grape-600/12 px-2.5 py-1 text-xs font-extrabold text-grape-600">يُفتح في المستوى {ar(p.minLevel)}</span>
         </div>
       </div>
     </div>
@@ -137,7 +137,7 @@ export default function CeremonyPanel() {
           </span>
           <div className="flex-1 min-w-52">
             <p className="font-display text-lg font-extrabold leading-6 text-ink">كشف الرحلة (اختياري)</p>
-            <p className="text-[11px] font-bold text-grape-700/65">
+            <p className="text-xs font-bold text-grape-700/65">
               ليست كل الأسابيع فيها رحلة — فعّلها عند الحاجة. من يحضر الرحلة يأخذ +٢٠ عملة وتزداد فرصته ليكون بطل الأسبوع
             </p>
           </div>
@@ -184,7 +184,7 @@ export default function CeremonyPanel() {
                         </span>
                       )}
                     </span>
-                    <span className={`text-[10px] font-extrabold ${on ? "text-mint-600" : "text-grape-400"}`}>{s.name}</span>
+                    <span className={`text-xs font-extrabold ${on ? "text-mint-600" : "text-grape-400"}`}>{s.name}</span>
                   </button>
                 );
               })}
@@ -200,7 +200,7 @@ export default function CeremonyPanel() {
         </span>
         <div className="flex-1 min-w-52">
           <p className="font-display text-lg font-extrabold leading-6 text-ink">أعلن عن منتجات المتجر الجديدة</p>
-          <p className="text-[11px] font-bold text-grape-700/65">
+          <p className="text-xs font-bold text-grape-700/65">
             تعرض صفحة «وصل حديثًا» في نهاية الحفل ما أضفته للمتجر هذا الأسبوع — اتركها مطفأة إن لم تضف شيئًا
           </p>
         </div>
@@ -228,13 +228,13 @@ export default function CeremonyPanel() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="font-display text-lg font-extrabold leading-6 text-ink">أبطال الأسبوع — المراكز الثلاثة</p>
-            <p className="text-[11px] font-bold text-grape-700/65">الأول +٣٠ · الثاني +٢٠ · الثالث +١٠ عملة — البطولة استحقاق لأسبوع مكتمل فقط</p>
+            <p className="text-xs font-bold text-grape-700/65">الأول +٣٠ · الثاني +٢٠ · الثالث +١٠ عملة — البطولة استحقاق لأسبوع مكتمل فقط</p>
           </div>
           <button
             type="button"
             onClick={toggleChamps}
             title={champsCanceled ? "إعادة بطولات الأسبوع إلى الحفل" : "إلغاء بطولات الأسبوع لهذا الأسبوع"}
-            className={`flex shrink-0 items-center gap-1 rounded-xl border-2 px-2.5 py-1.5 text-[11px] font-extrabold transition-all active:scale-95 ${
+            className={`flex shrink-0 items-center gap-1 rounded-xl border-2 px-2.5 py-1.5 text-xs font-extrabold transition-all active:scale-95 ${
               champsCanceled
                 ? "border-mint-600/60 bg-mint-400/15 text-mint-600 hover:bg-mint-400/30"
                 : "border-coral-400/50 bg-white text-coral-500 hover:bg-coral-500 hover:text-white"
@@ -259,7 +259,7 @@ export default function CeremonyPanel() {
             <Icon name="shield" className="h-4 w-4" strokeWidth={2.4} />
             لا يستحق البطولة إلا من جمع الصفات الثلاث:
           </p>
-          <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
+          <div className="flex flex-wrap gap-1.5 text-xs font-bold">
             {championCriteria(tripOn).map((c) => (
               <span key={c.label} className={`flex items-center gap-1 rounded-full px-2.5 py-1 ${c.active ? "bg-mint-400/20 text-mint-600" : "bg-grape-100 text-grape-400"}`}>
                 <Icon name={c.icon} className="h-3.5 w-3.5" strokeWidth={2.6} /> {c.label}
@@ -270,17 +270,17 @@ export default function CeremonyPanel() {
             const eligible = students.filter((s) => isChampionEligible(s, tripOn, tripAttendees));
             return (
               <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t-2 border-dashed border-gold-500/25 pt-2.5">
-                <span className="text-[11px] font-extrabold text-ink">
+                <span className="text-xs font-extrabold text-ink">
                   المؤهلون للبطولة: <span className="text-gold-600">{ar(eligible.length)}</span> من {ar(students.length)}
                 </span>
                 {eligible.slice(0, 6).map((s) => (
-                  <span key={s.id} className="flex items-center gap-1 rounded-full bg-gold-400/20 px-2 py-0.5 text-[10px] font-extrabold text-gold-600">
+                  <span key={s.id} className="flex items-center gap-1 rounded-full bg-gold-400/20 px-2 py-0.5 text-xs font-extrabold text-gold-600">
                     {s.name}
                     {tripOn && tripAttendees.includes(s.id) && " ✦"}
                   </span>
                 ))}
                 {eligible.length === 0 && (
-                  <span className="text-[10px] font-bold text-grape-400">لم يكمل أحد أسبوعه بعد — البطولة لمن يستحق</span>
+                  <span className="text-xs font-bold text-grape-400">لم يكمل أحد أسبوعه بعد — البطولة لمن يستحق</span>
                 )}
               </div>
             );
@@ -306,7 +306,7 @@ export default function CeremonyPanel() {
                   </span>
                   <div className="flex-1">
                     <p className="font-display text-sm font-extrabold leading-4 text-ink">{t.short}</p>
-                    <p className="text-[10px] font-bold text-grape-700/55">{t.desc} · +{ar(t.coins)} عملة</p>
+                    <p className="text-xs font-bold text-grape-700/55">{t.desc} · +{ar(t.coins)} عملة</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -335,7 +335,7 @@ export default function CeremonyPanel() {
                   </button>
                 </div>
                 {value === "none" ? (
-                  <p className="mt-2 rounded-xl bg-grape-50 px-2.5 py-1.5 text-center text-[10px] font-bold text-grape-400">لن يُسلَّم هذا المركز في الحفل</p>
+                  <p className="mt-2 rounded-xl bg-grape-50 px-2.5 py-1.5 text-center text-xs font-bold text-grape-400">لن يُسلَّم هذا المركز في الحفل</p>
                 ) : winner ? (
                   <div className="anim-pop mt-2 flex items-center gap-2 rounded-xl bg-gold-400/15 px-2.5 py-1.5">
                     <Avatar photo={winner.photo} name={winner.name} size={26} />
@@ -345,7 +345,7 @@ export default function CeremonyPanel() {
                     </span>
                   </div>
                 ) : (
-                  <p className="mt-2 rounded-xl bg-grape-50 px-2.5 py-1.5 text-center text-[10px] font-bold text-grape-400">
+                  <p className="mt-2 rounded-xl bg-grape-50 px-2.5 py-1.5 text-center text-xs font-bold text-grape-400">
                     {options.length === 0 ? "لا مؤهلين متاحين لهذا المركز" : "لم يُحدَّد بعد"}
                   </p>
                 )}
@@ -378,7 +378,7 @@ export default function CeremonyPanel() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-lg font-extrabold leading-6 text-ink">{m.title}</p>
-                  <p className="text-[11px] font-bold text-grape-700/65">
+                  <p className="text-xs font-bold text-grape-700/65">
                     {m.desc} · جائزة +{ar(m.coins)} عملة{m.key === "improved" ? " وترفع المستوى" : ""}
                   </p>
                 </div>
@@ -386,7 +386,7 @@ export default function CeremonyPanel() {
                   type="button"
                   onClick={() => setCeremonyPick(k, canceled ? null : "none")}
                   title={canceled ? "إعادة الجائزة إلى الحفل" : "إلغاء هذه الجائزة لهذا الأسبوع"}
-                  className={`flex shrink-0 items-center gap-1 rounded-xl border-2 px-2.5 py-1.5 text-[11px] font-extrabold transition-all active:scale-95 ${
+                  className={`flex shrink-0 items-center gap-1 rounded-xl border-2 px-2.5 py-1.5 text-xs font-extrabold transition-all active:scale-95 ${
                     canceled
                       ? "border-mint-600/60 bg-mint-400/15 text-mint-600 hover:bg-mint-400/30"
                       : "border-coral-400/50 bg-white text-coral-500 hover:bg-coral-500 hover:text-white"
@@ -441,7 +441,7 @@ export default function CeremonyPanel() {
           <p className="mb-3 flex items-center gap-2 font-display text-base font-extrabold text-ink">
             <Icon name="medal" className="h-5 w-5 text-grape-500" strokeWidth={2.2} />
             أرشيف النتائج السابقة
-            <span className="text-[10px] font-bold text-grape-700/50">اضغط على أسبوع لعرض نتائجه المحفوظة</span>
+            <span className="text-xs font-bold text-grape-700/50">اضغط على أسبوع لعرض نتائجه المحفوظة</span>
           </p>
           <div className="space-y-2">
             {weeksLog.map((log) => (
@@ -452,7 +452,7 @@ export default function CeremonyPanel() {
                   </span>
                   <button type="button" onClick={() => setOpenLog(openLog === log.week ? null : log.week)} className="min-w-0 flex-1 text-start">
                     <span className="block truncate font-display text-sm font-extrabold text-ink">{log.name || "أسبوع سابق"}</span>
-                    <span className="text-[10px] font-bold text-grape-700/55">{log.savedAt} · {ar(log.top.length)} طالبًا · {ar(log.awards.length)} جائزة</span>
+                    <span className="text-xs font-bold text-grape-700/55">{log.savedAt} · {ar(log.top.length)} طالبًا · {ar(log.awards.length)} جائزة</span>
                   </button>
                   <button
                     type="button"
@@ -466,7 +466,7 @@ export default function CeremonyPanel() {
                 {openLog === log.week && (
                   <div className="anim-fade border-t-2 border-dashed border-grape-200 px-3 py-3">
                     {log.trip && (
-                      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-extrabold text-mint-600">
+                      <p className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-mint-600">
                         <Icon name="flag" className="h-3.5 w-3.5" strokeWidth={2.4} />
                         رحلة {TRIP_DAYS.find((d) => d.key === log.trip?.day)?.label}: {log.trip.attendeeNames.join("، ") || "لم يحضر أحد"}
                       </p>
@@ -474,7 +474,7 @@ export default function CeremonyPanel() {
                     {log.awards.length > 0 && (
                       <div className="mb-2 flex flex-wrap gap-1.5">
                         {log.awards.map((a, i) => (
-                          <span key={i} className="flex items-center gap-1 rounded-full bg-gold-400/20 px-2.5 py-1 text-[10px] font-extrabold text-gold-600">
+                          <span key={i} className="flex items-center gap-1 rounded-full bg-gold-400/20 px-2.5 py-1 text-xs font-extrabold text-gold-600">
                             <Icon name="trophy" className="h-3 w-3" strokeWidth={2.4} />
                             {a.title}: {a.studentName}
                           </span>
@@ -489,8 +489,8 @@ export default function CeremonyPanel() {
                           </span>
                           <Avatar photo={e.photo} name={e.name} size={34} frame={e.frame} crown={e.crown} />
                           <span className="min-w-0 flex-1 truncate font-display text-sm font-extrabold text-ink">{e.name}</span>
-                          <span className="text-[10px] font-bold text-grape-500">م{ar(e.level)}</span>
-                          <span className="flex items-center gap-0.5 rounded-full bg-grape-600/12 px-2 py-0.5 text-[10px] font-extrabold text-grape-700">
+                          <span className="text-xs font-bold text-grape-500">م{ar(e.level)}</span>
+                          <span className="flex items-center gap-0.5 rounded-full bg-grape-600/12 px-2 py-0.5 text-xs font-extrabold text-grape-700">
                             <Icon name="bolt" fill className="h-3 w-3" />+{ar(e.weekXp)}
                           </span>
                         </div>
@@ -560,7 +560,7 @@ function ArmDelete({ onDelete }: { onDelete: () => void }) {
         }
       }}
       title="حذف هذا الأسبوع من الأرشيف"
-      className={`shrink-0 rounded-lg px-2 py-1.5 text-[10px] font-extrabold transition-all active:scale-90 ${
+      className={`shrink-0 rounded-lg px-2 py-1.5 text-xs font-extrabold transition-all active:scale-90 ${
         arm ? "bg-coral-500 text-white" : "text-grape-300 hover:bg-coral-500/10 hover:text-coral-500"
       }`}
     >
@@ -781,7 +781,7 @@ export function CeremonyShow() {
                     <p className="mt-4 max-w-full truncate font-display text-base font-extrabold text-white sm:text-lg">
                       {isShown ? entry.student.name : "؟"}
                     </p>
-                    <p className={`mt-0.5 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${isShown ? "bg-gold-400 text-ink" : "bg-white/10 text-white/40"}`}>
+                    <p className={`mt-0.5 rounded-full px-2.5 py-0.5 text-xs font-extrabold ${isShown ? "bg-gold-400 text-ink" : "bg-white/10 text-white/40"}`}>
                       {isShown ? `+${ar(entry.tier.coins)} عملة` : entry.tier.short}
                     </p>
                     <div className={`mt-2 w-full rounded-t-2xl border-2 border-b-0 ${heights[place as 1 | 2 | 3]} ${bgs[place as 1 | 2 | 3]}`} />

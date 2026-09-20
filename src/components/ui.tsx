@@ -170,7 +170,7 @@ export function XpBar({ xp, compact = false }: { xp: number; compact?: boolean }
   return (
     <div>
       {!compact && (
-        <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-grape-700/80">
+        <div className="mb-1 flex items-center justify-between text-xs font-semibold text-grape-700/80">
           <span className="font-display">{rankOf(level)}</span>
           <span dir="ltr">{ar(into)} / {ar(need)}</span>
         </div>
@@ -206,10 +206,10 @@ export function Modal({
   return createPortal(
     <div className="fixed inset-0 z-[70] overflow-y-auto">
       <div className="anim-fade fixed inset-0 bg-grape-950/60 backdrop-blur-[3px]" onClick={onClose} />
-      <div className="pointer-events-none relative flex min-h-full items-center justify-center p-4">
+      <div className="pointer-events-none relative flex min-h-full items-center justify-center p-3 sm:p-6">
         <div
-          className={`anim-pop pointer-events-auto my-6 w-full rounded-[28px] border border-grape-200 bg-white shadow-[0_28px_80px_-28px_rgba(33,22,75,.5)] ${
-            wide ? "max-w-2xl" : "max-w-md"
+          className={`anim-pop pointer-events-auto my-3 max-h-[92vh] w-full overflow-y-auto rounded-[24px] border border-grape-200 bg-white shadow-[0_28px_80px_-28px_rgba(33,22,75,.5)] sm:my-6 ${
+            wide ? "max-w-3xl" : "max-w-md"
           }`}
         >
           {children}

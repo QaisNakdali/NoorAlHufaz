@@ -54,7 +54,7 @@ function LevelTrack({ xp }: { xp: number }) {
             return (
               <div key={l} className="min-w-0 flex-1">
                 <div className={`w-full rounded-t-md transition-all sm:rounded-t-lg ${cur ? "anim-glow h-9 bg-gradient-to-t from-gold-600 to-gold-300" : done || isLegend ? "h-7 bg-gradient-to-t from-grape-600 to-grape-400" : "h-5 bg-grape-100"}`} />
-                <p className={`mt-1 text-center text-[9px] font-extrabold sm:text-[10px] ${cur ? "text-gold-600" : done || isLegend ? "text-grape-600" : "text-grape-300"}`}>{ar(l)}</p>
+                <p className={`mt-1 text-center text-xs font-extrabold sm:text-xs ${cur ? "text-gold-600" : done || isLegend ? "text-grape-600" : "text-grape-300"}`}>{ar(l)}</p>
               </div>
             );
           })}
@@ -65,7 +65,7 @@ function LevelTrack({ xp }: { xp: number }) {
               ? `أسطورة الحفاظ — جمعت ${ar(legend)} ${legend === 1 ? "نجمة أسطورية" : "نجوم أسطورية"}، واصل فكل مستوى جديد يضيف نجمة!`
               : `بقي ${ar(toNext)} نقطة لتصل إلى المستوى ${ar(level + 1)}`}
           </span>
-          <span className="text-[10px] font-bold text-grape-700/55">{ar(into)} / {ar(need)}</span>
+          <span className="text-xs font-bold text-grape-700/55">{ar(into)} / {ar(need)}</span>
         </div>
       </div>
     </div>
@@ -79,7 +79,7 @@ function StatBox({ icon, color, label, value, sub }: { icon: string; color: stri
         <Icon name={icon} className="h-5 w-5" strokeWidth={2.2} />
       </span>
       <p className="font-display text-2xl font-extrabold leading-7 text-ink">{value}</p>
-      <p className="text-[11px] font-bold text-grape-700/60">
+      <p className="text-xs font-bold text-grape-700/60">
         {label} {sub && <span className="text-grape-500">· {sub}</span>}
       </p>
     </div>
@@ -148,7 +148,7 @@ export default function StudentView() {
                 <HeartsRow hearts={s.hearts} max={3} size="w-7 h-7" />
               </div>
               {s.hearts === 0 && (
-                <p className="mt-2 rounded-xl bg-slate-200 px-3 py-1.5 text-[11px] font-extrabold text-slate-500">
+                <p className="mt-2 rounded-xl bg-slate-200 px-3 py-1.5 text-xs font-extrabold text-slate-500">
                   نفدت قلوبك — تستمر بجمع العملات، واشترِ قلبًا من متجرك لتعود لنقاط المستوى
                 </p>
               )}
@@ -189,7 +189,7 @@ export default function StudentView() {
                   const attended = s.days[d.key].a;
                   return (
                     <div key={d.key} className={`flex flex-col items-center gap-1.5 rounded-xl border-2 py-2.5 ${attended ? "border-mint-600 bg-mint-400/15" : "border-dashed border-grape-200 bg-grape-50"}`}>
-                      <span className={`text-[11px] font-extrabold ${attended ? "text-mint-600" : "text-grape-300"}`}>{d.label}</span>
+                      <span className={`text-xs font-extrabold ${attended ? "text-mint-600" : "text-grape-300"}`}>{d.label}</span>
                       <div className="flex items-center gap-1">
                         {DAY_PARTS.map((p) => {
                           const on = s.days[d.key][p.key];
@@ -214,7 +214,7 @@ export default function StudentView() {
                   );
                 })}
               </div>
-              <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-grape-700/55">
+              <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-bold text-grape-700/55">
                 <span className="flex items-center gap-1"><Icon name="user" className="h-3 w-3" strokeWidth={2.6} /> حضور</span>
                 <span className="flex items-center gap-1"><Icon name="book" className="h-3 w-3" strokeWidth={2.4} /> تسميع حفظ</span>
                 <span className="flex items-center gap-1"><Icon name="refresh" className="h-3 w-3" strokeWidth={2.4} /> تسميع مراجعة</span>

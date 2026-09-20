@@ -12,11 +12,11 @@ import { BigBtn, Coin, heartFade, HeartsRow, Icon, Modal, SectionHead } from "./
 function KindBadge({ p }: { p: ShopProduct }) {
   if (p.kind === "cosmetic")
     return (
-      <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold text-white ${typeof p.stock === "number" ? "bg-gold-500" : "bg-grape-600"}`}>
+      <span className={`rounded-full px-2 py-0.5 text-xs font-extrabold text-white ${typeof p.stock === "number" ? "bg-gold-500" : "bg-grape-600"}`}>
         {typeof p.stock === "number" ? "خاصية · محدودة" : "خاصية بروفايل"}
       </span>
     );
-  return <span className="rounded-full bg-mint-600 px-2 py-0.5 text-[9px] font-extrabold text-white">جائزة خارجية · متكررة</span>;
+  return <span className="rounded-full bg-mint-600 px-2 py-0.5 text-xs font-extrabold text-white">جائزة خارجية · متكررة</span>;
 }
 
 /* صورة المنتج: صورة المعلم إن وُجدت، وإلا رسم تلقائي لخصائص البروفايل */
@@ -67,16 +67,16 @@ export function BuyCard({ s, p, delay = 0, canGrant = false }: { s: Student; p: 
       style={{ animationDelay: `${delay}ms` }}
     >
       {locked && (
-        <span className="absolute top-2.5 end-2.5 z-10 flex items-center gap-1 rounded-full bg-grape-600 px-2.5 py-1 text-[10px] font-extrabold text-white">
+        <span className="absolute top-2.5 end-2.5 z-10 flex items-center gap-1 rounded-full bg-grape-600 px-2.5 py-1 text-xs font-extrabold text-white">
           <Icon name="lock" className="h-3 w-3" strokeWidth={2.6} />
           المستوى {ar(p.minLevel)}
         </span>
       )}
       {outOfStock && (
-        <span className="absolute top-2.5 end-2.5 z-10 rounded-full bg-slate-500 px-2.5 py-1 text-[10px] font-extrabold text-white">نفدت الكمية</span>
+        <span className="absolute top-2.5 end-2.5 z-10 rounded-full bg-slate-500 px-2.5 py-1 text-xs font-extrabold text-white">نفدت الكمية</span>
       )}
       {soldOut && !outOfStock && (
-        <span className="absolute top-2.5 end-2.5 z-10 flex items-center gap-1 rounded-full bg-mint-600 px-2.5 py-1 text-[10px] font-extrabold text-white">
+        <span className="absolute top-2.5 end-2.5 z-10 flex items-center gap-1 rounded-full bg-mint-600 px-2.5 py-1 text-xs font-extrabold text-white">
           <Icon name="check" className="h-3 w-3" strokeWidth={3.4} />
           {isCosmetic ? (equipped ? "ملبوسة" : "مملوكة") : "في حقيبتك"}
         </span>
@@ -86,14 +86,14 @@ export function BuyCard({ s, p, delay = 0, canGrant = false }: { s: Student; p: 
         <p className="font-display text-base font-extrabold leading-5 text-ink">{p.name}</p>
         <KindBadge p={p} />
       </div>
-      <p className="mt-0.5 min-h-7 text-[11px] font-bold leading-4 text-grape-700/60">{p.desc}</p>
+      <p className="mt-0.5 min-h-7 text-xs font-bold leading-4 text-grape-700/60">{p.desc}</p>
       {(qty > 0 || hasStockLimit) && (
         <div className="mt-1 flex flex-wrap items-center gap-2">
           {!isCosmetic && qty > 0 && (
-            <p className="text-[10px] font-extrabold text-mint-600">في الحقيبة: {ar(qty)} {qty === 1 ? "قطعة" : "قطع"}</p>
+            <p className="text-xs font-extrabold text-mint-600">في الحقيبة: {ar(qty)} {qty === 1 ? "قطعة" : "قطع"}</p>
           )}
           {hasStockLimit && (
-            <p className={`text-[10px] font-extrabold ${outOfStock ? "text-slate-400" : isCosmetic ? "text-gold-600" : "text-grape-500"}`}>
+            <p className={`text-xs font-extrabold ${outOfStock ? "text-slate-400" : isCosmetic ? "text-gold-600" : "text-grape-500"}`}>
               المتوفر: {ar(p.stock as number)} {isCosmetic && !outOfStock ? "فقط" : ""}
             </p>
           )}
@@ -119,7 +119,7 @@ export function BuyCard({ s, p, delay = 0, canGrant = false }: { s: Student; p: 
             <>
               <Coin className="h-4 w-4" />
               {ar(p.price)}
-              {poor && <span className="text-[10px]">(عملاتك {ar(s.coins)})</span>}
+              {poor && <span className="text-xs">(عملاتك {ar(s.coins)})</span>}
             </>
           )}
         </button>
@@ -164,7 +164,7 @@ function HeartProductCard({ s }: { s: Student }) {
       </span>
       <div className="min-w-0 flex-1">
         <p className="font-display text-lg font-extrabold leading-6 text-ink">قلب جديد</p>
-        <p className="text-[11px] font-bold text-grape-700/60">
+        <p className="text-xs font-bold text-grape-700/60">
           {s.hearts === 0
             ? "نفدت قلوبك! اشترِ قلبًا لتعود لنقاط المستوى والمنافسة"
             : "قلب احتياطي يعيدك للمنافسة إن خسرت قلوبك"}
@@ -207,7 +207,7 @@ export function StudentShop({ s, canGrant = false }: { s: Student; canGrant?: bo
         </div>
         <div className="min-w-0">
           <p className="font-display text-lg font-extrabold leading-6 text-ink">متجر {s.name}</p>
-          <p className="text-[11px] font-bold text-grape-700/60">المستوى {ar(level)} — مرتب حسب المستويات، وبعض الهدايا تُفتح لاحقًا</p>
+          <p className="text-xs font-bold text-grape-700/60">المستوى {ar(level)} — مرتب حسب المستويات، وبعض الهدايا تُفتح لاحقًا</p>
         </div>
         <span className="ms-auto flex items-center gap-1.5 rounded-full border-2 border-gold-500/50 bg-gold-400/20 px-3.5 py-1.5 font-display text-base font-extrabold text-gold-600">
           <Coin className="h-4.5 w-4.5" />
@@ -236,12 +236,12 @@ export function StudentShop({ s, canGrant = false }: { s: Student; canGrant?: bo
               </span>
               <p className="font-display text-base font-extrabold text-ink">هدايا المستوى {ar(lvl)}</p>
               {!open && (
-                <span className="flex items-center gap-1 rounded-full bg-grape-100 px-2.5 py-0.5 text-[10px] font-extrabold text-grape-500">
+                <span className="flex items-center gap-1 rounded-full bg-grape-100 px-2.5 py-0.5 text-xs font-extrabold text-grape-500">
                   <Icon name="lock" className="h-3 w-3" strokeWidth={2.6} />
                   تُفتح لاحقًا
                 </span>
               )}
-              <span className="ms-auto text-[10px] font-bold text-grape-700/50">{ar(items.length)} منتج</span>
+              <span className="ms-auto text-xs font-bold text-grape-700/50">{ar(items.length)} منتج</span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {items.map((p, i) => (
@@ -352,7 +352,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
               </div>
             ) : (
               <span className="dashed-border grid h-24 w-24 place-items-center rounded-2xl bg-grape-50 text-grape-400">
-                {busy ? <span className="text-[10px] font-bold">جاري...</span> : <Icon name="store" className="h-9 w-9" strokeWidth={1.8} />}
+                {busy ? <span className="text-xs font-bold">جاري...</span> : <Icon name="store" className="h-9 w-9" strokeWidth={1.8} />}
               </span>
             )}
             <span className="absolute -bottom-1.5 -end-1.5 grid h-8 w-8 place-items-center rounded-full bg-grape-600 text-white shadow-lg transition group-hover:scale-110">
@@ -415,7 +415,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
               </div>
             </div>
             {!image && (
-              <p className="mt-1.5 text-[10px] font-bold text-grape-700/55">تُرسم صورة المنتج تلقائيًا بلون الخاصية — أو ارفع صورة مخصصة إن أحببت</p>
+              <p className="mt-1.5 text-xs font-bold text-grape-700/55">تُرسم صورة المنتج تلقائيًا بلون الخاصية — أو ارفع صورة مخصصة إن أحببت</p>
             )}
           </div>
         ) : (
@@ -439,7 +439,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
             <input type="number" min={0} value={stockStr} onChange={(e) => setStockStr(e.target.value)} placeholder="غير محدودة" className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
           </div>
         </div>
-        <p className="mt-2 text-[11px] font-bold leading-5 text-grape-700/60">
+        <p className="mt-2 text-xs font-bold leading-5 text-grape-700/60">
           {kind === "external"
             ? "حدّد كم قطعة عندك من هذه الجائزة. تنقص الكمية مع كل شراء، وعند نفادها تُقفل بلون باهت حتى تزيدها. اترك الحقل فارغًا لكمية غير محدودة."
             : "اجعلها نادرة ومحدودة ليزداد حماس الطلاب لها — مثلًا: ٣ إطارات قوس قزح فقط في الفصل كله! تنقص الكمية مع كل مشترٍ، وعند نفادها تُقفل بلون باهت حتى تزيدها. اترك الحقل فارغًا لكمية غير محدودة."}
@@ -513,7 +513,7 @@ export default function StoreTab() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-display text-sm font-extrabold text-ink">{p.name}</p>
-                <p className="flex flex-wrap items-center gap-x-2 text-[10px] font-bold text-grape-700/60">
+                <p className="flex flex-wrap items-center gap-x-2 text-xs font-bold text-grape-700/60">
                   <span className="flex items-center gap-0.5"><Coin className="h-3 w-3" />{ar(p.price)}</span>
                   <span>م{ar(p.minLevel)}</span>
                   <span className={p.kind === "cosmetic" ? "text-grape-500" : "text-mint-600"}>
@@ -565,7 +565,7 @@ export default function StoreTab() {
               </option>
             ))}
           </select>
-          <p className="text-[11px] font-bold text-grape-700/55">الشراء ينقص من رصيد الطالب · زر «منح مجاني» يهدي المنتج بلا عملات</p>
+          <p className="text-xs font-bold text-grape-700/55">الشراء ينقص من رصيد الطالب · زر «منح مجاني» يهدي المنتج بلا عملات</p>
         </div>
         {buyer ? (
           <StudentShop s={buyer} canGrant />

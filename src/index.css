@@ -16,9 +16,9 @@
 :root { font-family: "IBM Plex Sans Arabic", system-ui, sans-serif; color: #211a35; background: #f8f6fd; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; min-width: 320px; min-height: 100vh; overflow-x: hidden; }
+body { margin: 0; min-width: 320px; min-height: 100vh; overflow-x: hidden; line-height: 1.55; }
 button, input, select, textarea { font: inherit; }
-button { cursor: pointer; line-height: 1.25; }
+button { cursor: pointer; line-height: 1.4; }
 button:disabled { cursor: not-allowed; }
 img, video { max-width: 100%; height: auto; }
 ::selection { color: #351969; background: #dfd3ff; }
@@ -27,6 +27,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .field-control { width: 100%; min-width: 0; height: 2.5rem; border: 1px solid #e3d9ff; border-radius: .75rem; background: #fff; padding-inline: .7rem; color: #211a35; font-size: .75rem; font-weight: 700; line-height: 1; transition: border-color .18s ease, box-shadow .18s ease, background .18s ease; }
 .field-control::placeholder { color: #9987bd; font-weight: 600; }
 .field-control:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgb(139 92 246 / .11); }
+.ui-action { min-height: 2.5rem; padding: .55rem .85rem; white-space: nowrap; font-size: .8rem; font-weight: 800; line-height: 1.35; }
 .xp-fill { background: linear-gradient(90deg, #7440dc, #9d73f8); }
 .dashed-border { border: 2px dashed #cdbbff; }
 

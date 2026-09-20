@@ -37,7 +37,7 @@ function Logo() {
       </span>
       <span className="leading-tight">
         <span className="block font-display text-xl font-extrabold text-ink sm:text-2xl">نور الحفّاظ</span>
-        <span className="hidden text-[10px] font-bold tracking-wide text-grape-500 min-[420px]:block">نحفظ · نلعب · نرتقي</span>
+        <span className="hidden text-xs font-bold tracking-wide text-grape-500 min-[420px]:block">نحفظ · نلعب · نرتقي</span>
       </span>
     </div>
   );
@@ -50,7 +50,7 @@ function CloudChip() {
     return (
       <span
         title="الحفظ محلي على هذا الجهاز فقط. لتفعيل المزامنة بين الهواتف ضع رابط API في ملف src/cloudSync.ts"
-        className="flex cursor-help items-center gap-1.5 rounded-full border-2 border-grape-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-grape-400"
+        className="flex cursor-help items-center gap-1.5 rounded-full border-2 border-grape-200 bg-white px-2.5 py-1.5 text-xs font-bold text-grape-400"
       >
         <Icon name="cloudOff" className="h-4 w-4" strokeWidth={2.2} />
         <span className="hidden sm:inline">محلي</span>
@@ -74,7 +74,7 @@ function CloudChip() {
           ? `آخر مزامنة ${t} — اضغط للتحديث الآن`
           : "اضغط للمزامنة الآن"
       }
-      className={`flex items-center gap-1.5 rounded-full border-2 px-2.5 py-1.5 text-[11px] font-extrabold transition-all active:scale-95 ${
+      className={`flex items-center gap-1.5 rounded-full border-2 px-2.5 py-1.5 text-xs font-extrabold transition-all active:scale-95 ${
         cloud.status === "error"
           ? "border-coral-400/60 bg-white text-coral-500 hover:bg-coral-50"
           : busy

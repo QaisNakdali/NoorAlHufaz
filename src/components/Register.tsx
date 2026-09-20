@@ -134,7 +134,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
                 </button>
               </div>
             </div>
-            <p className="mt-2 text-[11px] text-grape-700/60">من يفقد كل قلوبه يستمر بجمع العملات فقط حتى يشتري قلبًا ({ar(HEART_PRICE)} عملة) أو تمنحه قلبًا من هنا.</p>
+            <p className="mt-2 text-xs text-grape-700/60">من يفقد كل قلوبه يستمر بجمع العملات فقط حتى يشتري قلبًا ({ar(HEART_PRICE)} عملة) أو تمنحه قلبًا من هنا.</p>
           </div>
         </div>
 
@@ -172,17 +172,17 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="truncate font-display text-lg font-extrabold leading-tight text-ink sm:text-xl">{s.name}</h3>
-              <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-[11px]! shadow-none!" />
+              <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-xs! shadow-none!" />
             </div>
             <div className="mt-2 flex items-center gap-2">
               <HeartsRow hearts={s.hearts} max={MAX_HEARTS} size="w-6 h-6" />
-              {noHearts && <span className="rounded-full bg-coral-100 px-2 py-1 text-[10px] font-extrabold text-coral-600">نفدت القلوب</span>}
+              {noHearts && <span className="rounded-full bg-coral-100 px-2 py-1 text-xs font-extrabold text-coral-600">نفدت القلوب</span>}
             </div>
           </div>
         </div>
 
         <div className="min-w-0" title={`المستوى ${ar(level)} — باقي ${ar(need - into)} نقطة للمستوى التالي`}>
-          <div className="mb-2 flex items-center justify-between text-[11px] font-extrabold text-grape-500">
+          <div className="mb-2 flex items-center justify-between text-xs font-extrabold text-grape-500">
             <span>تقدم المستوى</span><span>{ar(into)} / {ar(need)}</span>
           </div>
           <div className="h-2.5 overflow-hidden rounded-full bg-grape-100">
@@ -193,11 +193,11 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
         <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
           <div className="rounded-xl bg-gold-400/15 px-3 py-2 text-center">
             <p className="font-display text-lg font-extrabold leading-5 text-gold-600">+{ar(s.weekXp)}</p>
-            <p className="mt-1 text-[9px] font-bold text-grape-500">نقطة</p>
+            <p className="mt-1 text-xs font-bold text-grape-500">نقطة</p>
           </div>
           <div className="rounded-xl bg-grape-100 px-3 py-2 text-center">
             <p className="flex items-center gap-1 font-display text-lg font-extrabold leading-5 text-grape-600"><Coin className="h-4 w-4" />+{ar(s.weekCoins)}</p>
-            <p className="mt-1 text-[9px] font-bold text-grape-500">عملة</p>
+            <p className="mt-1 text-xs font-bold text-grape-500">عملة</p>
           </div>
           <button type="button" onClick={() => removeHeart(s.id)} disabled={noHearts} title="خصم قلب" className="grid h-10 w-10 place-items-center rounded-xl bg-coral-500/10 text-coral-500 transition hover:bg-coral-500 hover:text-white disabled:opacity-30"><Icon name="heart" fill className="h-4.5 w-4.5" /></button>
           <button type="button" onClick={onManage} title="إعدادات الطالب" className="grid h-10 w-10 place-items-center rounded-xl bg-grape-100 text-grape-600 transition hover:bg-grape-600 hover:text-white"><Icon name="wand" className="h-4.5 w-4.5" /></button>
@@ -212,7 +212,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
             <h4 className="font-display text-base font-extrabold text-ink">خطة الورد الأسبوعية</h4>
             <p className="mt-1 text-xs font-semibold leading-5 text-grape-500">اكتب السورة والآيات والأسطر للحفظ والمراجعة، ويمكن استخدام نصف سطر مثل ٢٫٥</p>
           </div>
-          <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-extrabold text-grape-500 shadow-sm">{ar(checkedCount)} / ١٢ منجز</span>
+          <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-extrabold text-grape-500 shadow-sm">{ar(checkedCount)} / ١٢ منجز</span>
         </div>
         <div className="grid gap-3 xl:grid-cols-2">
           {DAYS.map((d) => {
@@ -222,7 +222,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
               <section key={d.key} className="rounded-2xl border border-grape-100 bg-white p-4 shadow-[0_8px_24px_-22px_rgba(55,32,120,.4)]">
                 <div className="mb-2.5 flex items-center justify-between">
                   <h5 className="font-display text-sm font-extrabold text-grape-700">{d.label}</h5>
-                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold ${cnt === 3 ? "bg-mint-100 text-mint-600" : "bg-grape-100 text-grape-500"}`}>{ar(cnt)} / ٣</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-extrabold ${cnt === 3 ? "bg-mint-100 text-mint-600" : "bg-grape-100 text-grape-500"}`}>{ar(cnt)} / ٣</span>
                 </div>
                 <div className="space-y-3">
                   <div className="rounded-xl bg-grape-50 p-2.5">
@@ -245,7 +245,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
                 <div className="mt-3 grid grid-cols-3 gap-2 border-t border-grape-100 pt-3">
                   {DAY_PARTS.map((p) => {
                     const on = s.days[d.key][p.key];
-                    return <button key={p.key} type="button" onClick={() => markDay(s.id, d.key, p.key)} className={`flex h-9 items-center justify-center gap-1 rounded-lg border text-[10px] font-extrabold transition active:scale-95 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"}`}><Icon name={on ? "check" : p.icon} className="h-3.5 w-3.5" strokeWidth={2.7} />{p.label}</button>;
+                    return <button key={p.key} type="button" onClick={() => markDay(s.id, d.key, p.key)} className={`flex h-9 items-center justify-center gap-1 rounded-lg border text-xs font-extrabold transition active:scale-95 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"}`}><Icon name={on ? "check" : p.icon} className="h-3.5 w-3.5" strokeWidth={2.7} />{p.label}</button>;
                   })}
                 </div>
               </section>
@@ -256,13 +256,13 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
 
       {noHearts && (
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-100 px-5 py-3">
-          <p className="text-[11px] font-extrabold text-slate-500">
+          <p className="text-xs font-extrabold text-slate-500">
             نفدت قلوب {s.name} — سجّل له الحضور والتسميع ليجمع العملات، ثم يشتري قلبًا من متجره ({ar(HEART_PRICE)} عملة) ويعود لنقاط المستوى
           </p>
           <button
             type="button"
             onClick={() => { setMode("student"); setTab("store"); }}
-            className="rounded-lg bg-grape-600 px-2.5 py-1 text-[10px] font-extrabold text-white transition hover:bg-grape-700 active:scale-95"
+            className="rounded-lg bg-grape-600 px-2.5 py-1 text-xs font-extrabold text-white transition hover:bg-grape-700 active:scale-95"
           >
             فتح متجره
           </button>
@@ -315,7 +315,7 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
               <img src={photo} alt="معاينة" className="h-24 w-24 rounded-2xl border-4 border-grape-200 object-cover transition group-hover:border-grape-400" />
             ) : (
               <span className="dashed-border grid h-24 w-24 place-items-center rounded-2xl bg-grape-50 text-grape-400 transition group-hover:text-grape-600">
-                {busy ? <span className="text-[10px] font-bold">جاري...</span> : <Icon name="user" className="h-9 w-9" strokeWidth={1.8} />}
+                {busy ? <span className="text-xs font-bold">جاري...</span> : <Icon name="user" className="h-9 w-9" strokeWidth={1.8} />}
               </span>
             )}
             <span className="absolute -bottom-1.5 -end-1.5 grid h-8 w-8 place-items-center rounded-full bg-grape-600 text-white shadow-lg transition group-hover:scale-110">
@@ -383,7 +383,7 @@ function WeekStars() {
           </div>
         ))}
       </div>
-      <p className="mt-3 text-center text-[11px] font-bold text-grape-700/55">هذه النتيجة تظهر للطلاب في وضع العرض وفي الحفل الأسبوعي</p>
+      <p className="mt-3 text-center text-xs font-bold text-grape-700/55">هذه النتيجة تظهر للطلاب في وضع العرض وفي الحفل الأسبوعي</p>
     </div>
   );
 }
@@ -443,7 +443,7 @@ export default function Register() {
           <Icon name="refresh" className="h-4 w-4" strokeWidth={2.4} />
           تسميع المراجعة: +{ar(RECITE_XP)} نقاط و+{ar(RECITE_COINS)} عملات
         </span>
-        <p className="px-1 text-[11px] font-bold text-grape-700/55 sm:col-span-3">
+        <p className="px-1 text-xs font-bold text-grape-700/55 sm:col-span-3">
           العملات تُجمع دائمًا · نقاط المستوى تتوقف لمن نفدت قلوبه حتى يشتري قلبًا · من يخالف آداب الحلقة يخسر قلبًا
         </p>
       </div>

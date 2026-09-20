@@ -92,7 +92,7 @@ export default function Deliveries() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-display text-sm font-extrabold text-ink">{s.name} — {p.name}</p>
-                  <p className={`text-[11px] font-extrabold ${done ? "text-mint-600" : "text-gold-600"}`}>
+                  <p className={`text-xs font-extrabold ${done ? "text-mint-600" : "text-gold-600"}`}>
                     {done ? "استُلمت بالكامل" : `استلم ${ar(r.received)} من ${ar(r.qty)} · متبقي ${ar(pending)}`}
                   </p>
                 </div>

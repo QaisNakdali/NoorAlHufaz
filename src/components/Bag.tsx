@@ -8,7 +8,7 @@ import { Coin, Icon } from "./ui";
 function SlotLabel({ slot }: { slot?: string }) {
   const label =
     slot === "frame" ? "إطار الصورة" : slot === "crown" ? "التاج" : slot === "glow" ? "التوهّج" : slot === "cardbg" ? "خلفية البطاقة" : "خاصية";
-  return <span className="rounded-full bg-grape-100 px-2 py-0.5 text-[9px] font-extrabold text-grape-600">{label}</span>;
+  return <span className="rounded-full bg-grape-100 px-2 py-0.5 text-xs font-extrabold text-grape-600">{label}</span>;
 }
 
 export default function StudentBag({ s }: { s: Student }) {
@@ -24,7 +24,7 @@ export default function StudentBag({ s }: { s: Student }) {
         <Avatar photo={s.photo} name={s.name} size={56} frame={s.frame} crown={s.crown} glow={s.glow} />
         <div className="min-w-0 flex-1">
           <p className="font-display text-lg font-extrabold leading-6 text-ink">حقيبة {s.name}</p>
-          <p className="text-[11px] font-bold text-grape-700/60">
+          <p className="text-xs font-bold text-grape-700/60">
             المستوى {ar(level)} · {rankOf(level)} · خصائص البروفايل والمشتريات في قسمين منفصلين
           </p>
         </div>
@@ -39,7 +39,7 @@ export default function StudentBag({ s }: { s: Student }) {
         <p className="mb-3 flex items-center gap-2 font-display text-base font-extrabold text-ink">
           <Icon name="sparkle" className="h-5 w-5 text-grape-600" strokeWidth={2.2} />
           خصائص البروفايل
-          <span className="text-[10px] font-bold text-grape-700/55">البس ما يعجبك وخلّعه متى شئت</span>
+          <span className="text-xs font-bold text-grape-700/55">البس ما يعجبك وخلّعه متى شئت</span>
         </p>
         {ownedCosmetics.length === 0 ? (
           <p className="rounded-xl border-2 border-dashed border-grape-200 bg-white p-5 text-center text-xs font-bold text-grape-400">
@@ -81,7 +81,7 @@ export default function StudentBag({ s }: { s: Student }) {
         <p className="mb-3 flex items-center gap-2 font-display text-base font-extrabold text-ink">
           <Icon name="gift" className="h-5 w-5 text-mint-600" strokeWidth={2.2} />
           المشتريات الخارجية
-          <span className="text-[10px] font-bold text-grape-700/55">يسلمها المعلم يدًا ويعلّم الاستلام من تبويب «التسليمات»</span>
+          <span className="text-xs font-bold text-grape-700/55">يسلمها المعلم يدًا ويعلّم الاستلام من تبويب «التسليمات»</span>
         </p>
         {externalEntries.length === 0 ? (
           <p className="rounded-xl border-2 border-dashed border-grape-200 bg-white p-5 text-center text-xs font-bold text-grape-400">
@@ -107,7 +107,7 @@ export default function StudentBag({ s }: { s: Student }) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-display text-sm font-extrabold text-ink">{p.name}</p>
-                    <p className={`text-[10px] font-extrabold ${done ? "text-mint-600" : "text-gold-600"}`}>
+                    <p className={`text-xs font-extrabold ${done ? "text-mint-600" : "text-gold-600"}`}>
                       {done ? `استُلمت بالكامل (${ar(b.qty)})` : `استلم ${ar(b.receivedQty)} من ${ar(b.qty)} — متبقي ${ar(pending)}`}
                     </p>
                   </div>
@@ -117,7 +117,7 @@ export default function StudentBag({ s }: { s: Student }) {
                         type="button"
                         onClick={() => deliverItem(s.id, b.itemId)}
                         title="تعليم قطعة كمُستلمة"
-                        className="flex items-center gap-1 rounded-xl bg-mint-600 px-2.5 py-1.5 text-[10px] font-extrabold text-white shadow-[0_2px_0_#0a7a50] transition hover:brightness-110 active:translate-y-0.5 active:shadow-none"
+                        className="flex items-center gap-1 rounded-xl bg-mint-600 px-2.5 py-1.5 text-xs font-extrabold text-white shadow-[0_2px_0_#0a7a50] transition hover:brightness-110 active:translate-y-0.5 active:shadow-none"
                       >
                         <Icon name="check" className="h-3 w-3" strokeWidth={3.4} />
                         استلم
@@ -140,7 +140,7 @@ export default function StudentBag({ s }: { s: Student }) {
           </div>
         )}
         {externalEntries.length > 0 && (
-          <p className="mt-2 text-center text-[10px] font-bold text-grape-700/50">
+          <p className="mt-2 text-center text-xs font-bold text-grape-700/50">
             إجمالي ما استلمه: {ar(externalEntries.reduce((n, b) => n + bagReceivedQty(s, b.itemId), 0))} قطعة
           </p>
         )}
