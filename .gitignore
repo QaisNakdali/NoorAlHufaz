@@ -1,5 +1,7 @@
-```
 # Build artifacts
 dist/
 build/
-```
+node_modules/
+.vercel/
+*.log
+.DS_Store

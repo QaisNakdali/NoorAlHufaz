@@ -1,6 +1,41 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Design tokens — Tailwind v4 needs these declared explicitly.  The previous
+   stylesheet only defined a handful of solid colours, which left many of the
+   opacity, hover and dark shades in the interface completely unstyled. */
+@theme {
+  --font-sans: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-display: "Baloo Bhaijaan 2", "IBM Plex Sans Arabic", sans-serif;
+
+  --color-ink: #172033;
+  --color-grape-50: #f7f7ff;
+  --color-grape-100: #efefff;
+  --color-grape-200: #dddafe;
+  --color-grape-300: #c5bdfd;
+  --color-grape-400: #a897fa;
+  --color-grape-500: #8870f2;
+  --color-grape-600: #6d50df;
+  --color-grape-700: #583bc3;
+  --color-grape-800: #472f9d;
+  --color-grape-900: #39287c;
+  --color-grape-950: #21164b;
+
+  --color-gold-300: #f9da73;
+  --color-gold-400: #f4c84d;
+  --color-gold-500: #dfaa25;
+  --color-gold-600: #b77b12;
+  --color-mint-100: #dff9f1;
+  --color-mint-200: #b9f0df;
+  --color-mint-400: #48cfa6;
+  --color-mint-500: #23ae86;
+  --color-mint-600: #168568;
+  --color-coral-50: #fff3f5;
+  --color-coral-100: #ffe1e6;
+  --color-coral-200: #ffc7d0;
+  --color-coral-400: #f47b91;
+  --color-coral-500: #e95672;
+  --color-coral-600: #c93857;
+}
 
 :root {
   font-family: 'IBM Plex Sans Arabic', 'Baloo Bhaijaan 2', sans-serif;
@@ -16,7 +51,25 @@ body {
   margin: 0;
   padding: 0;
   overflow-x: hidden;
+  min-width: 320px;
+  min-height: 100vh;
+  color: #172033;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(136, 112, 242, .13), transparent 28rem),
+    radial-gradient(circle at 5% 35%, rgba(72, 207, 166, .11), transparent 24rem),
+    #fafaff;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
+
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgba(109, 80, 223, .22);
+  outline-offset: 2px;
+}
+
+::selection { background: #dddafe; color: #39287c; }
 
 /* جعل الصور والفيديوهات متجاوبة فقط */
 img, video {
