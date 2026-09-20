@@ -27,11 +27,12 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 function Logo() {
   return (
-    <div className="flex items-center gap-2.5">
-      <span className="anim-wiggle inline-block">
-        <svg viewBox="0 0 24 24" className="h-11 w-11 drop-shadow-[0_3px_0_rgba(86,40,157,0.35)]">
-          <rect width="24" height="24" rx="7" fill="#8448e6" />
-          <path d="M12 3.5l2.4 5.2 5.6.9-4 4.1.9 5.8-4.9-2.7-4.9 2.7.9-5.8-4-4.1 5.6-.9z" fill="#ffd75e" />
+    <div className="flex items-center gap-3">
+      <span className="inline-block rounded-2xl shadow-[0_10px_25px_-12px_rgba(75,47,157,.8)]">
+        <svg viewBox="0 0 24 24" className="h-11 w-11">
+          <defs><linearGradient id="logo-gradient" x1="3" y1="2" x2="21" y2="22"><stop stopColor="#8870f2"/><stop offset="1" stopColor="#583bc3"/></linearGradient></defs>
+          <rect width="24" height="24" rx="7" fill="url(#logo-gradient)" />
+          <path d="M12 4.2l2.05 4.4 4.8.7-3.48 3.4.82 4.78L12 15.25l-4.19 2.23.82-4.78-3.48-3.4 4.8-.7z" fill="#f9da73" />
         </svg>
       </span>
       <span className="leading-tight">
@@ -93,8 +94,8 @@ function Nav() {
   const { tab, setTab, mode, setMode, sound, toggleSound } = useApp();
   const [explainOpen, setExplainOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-40 border-b-2 border-grape-200/70 bg-grape-50/85 backdrop-blur-md">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+    <header className="sticky top-0 z-40 border-b border-grape-200/70 bg-white/85 shadow-[0_8px_30px_-24px_rgba(33,22,75,.55)] backdrop-blur-xl">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3.5 sm:px-6">
         <Logo />
         {mode === "teacher" && (
           <nav className="order-3 flex w-full items-center gap-1.5 overflow-x-auto pb-1 sm:order-none sm:ms-2 sm:w-auto sm:flex-1 sm:pb-0">
@@ -104,7 +105,7 @@ function Nav() {
                 type="button"
                 onClick={() => { sfx.click(); setTab(t.id); }}
                 className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-3.5 py-2 font-display text-sm font-extrabold transition-all active:scale-95 ${
-                  tab === t.id ? "bg-grape-600 text-white shadow-[0_4px_0_#56289d]" : "text-grape-600 hover:bg-white hover:shadow-sm"
+                  tab === t.id ? "bg-grape-600 text-white shadow-[0_8px_20px_-10px_rgba(88,59,195,.8)]" : "text-grape-600 hover:bg-grape-100/70"
                 }`}
               >
                 <Icon name={t.icon} className="h-4 w-4" strokeWidth={2.4} />
@@ -124,7 +125,7 @@ function Nav() {
           <button
             type="button"
             onClick={() => { setExplainOpen(true); sfx.pop(); }}
-            className="anim-bounce-soft grid h-10 w-10 place-items-center rounded-full border-2 border-gold-500 bg-gold-400 font-display text-xl font-extrabold text-ink shadow-[0_3px_0_#b57a0a] transition-all hover:brightness-110 active:scale-90"
+            className="grid h-10 w-10 place-items-center rounded-xl border border-gold-500/40 bg-gold-400/25 font-display text-xl font-extrabold text-gold-600 transition-all hover:bg-gold-400/40 active:scale-95"
             aria-label="كيف تعمل المنصة؟"
             title="كيف تعمل المنصة؟ — دليلك السريع"
           >
@@ -204,7 +205,7 @@ function Shell() {
     <div className="relative min-h-screen">
       <Background />
       <Nav />
-      <main className="relative z-10 mx-auto max-w-7xl px-4 pb-24 pt-7 sm:px-6">
+      <main className="relative z-10 mx-auto max-w-7xl px-4 pb-24 pt-8 sm:px-6 lg:pt-10">
         {mode === "student" ? (
           <StudentView />
         ) : tab === "register" ? (
@@ -223,7 +224,7 @@ function Shell() {
           <CeremonyPanel />
         )}
       </main>
-      <footer className="relative z-10 border-t-2 border-grape-200/60 py-5 text-center">
+      <footer className="relative z-10 border-t border-grape-200/60 bg-white/45 py-5 text-center backdrop-blur-sm">
         <p className="flex items-center justify-center gap-2 px-4 text-xs font-bold text-grape-400">
           <Icon name="sparkle" fill className="h-3.5 w-3.5 shrink-0" />
           نور الحفّاظ — رحلة حفظٍ تشبه اللعب، وقلوبٌ صغيرة تصعد نجمًا كل أسبوع

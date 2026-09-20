@@ -693,7 +693,7 @@ export default function StatisticsPage() {
     <div className="space-y-8">
       <SectionHead
         title="إحصائيات وتحليل مستوى الطلاب"
-        subtitle="دراسة شاملة لأداء الطلاب بناءً على سجل الحفظ والحضور الفعلي"
+        desc="دراسة شاملة لأداء الطلاب بناءً على سجل الحفظ والحضور الفعلي"
         icon="chart"
       />
       
