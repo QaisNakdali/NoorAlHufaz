@@ -53,6 +53,7 @@ export type DailyWard = {
   review: string;
   memorizationVerses: number;
   reviewVerses: number;
+  memorizationLines: number;
 };
 export type WeeklyWard = Record<DayKey, DailyWard>;
 
@@ -83,7 +84,7 @@ export function emptyWeekDays(): WeekDays {
 }
 
 export function emptyWeeklyWard(): WeeklyWard {
-  const mk = (): DailyWard => ({ memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0 });
+  const mk = (): DailyWard => ({ memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0 });
   return { sun: mk(), mon: mk(), tue: mk(), wed: mk() };
 }
 

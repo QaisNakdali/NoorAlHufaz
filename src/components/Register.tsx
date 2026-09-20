@@ -7,7 +7,6 @@ import {
   ATTEND_XP,
   DAYS,
   DAY_PARTS,
-  estimatedLinesFromVerses,
   HEART_PRICE,
   levelInfo,
   MAX_HEARTS,
@@ -219,7 +218,6 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
           {DAYS.map((d) => {
             const ward = s.ward[d.key];
             const cnt = DAY_PARTS.filter((p) => s.days[d.key][p.key]).length;
-            const lines = estimatedLinesFromVerses(ward.memorizationVerses);
             return (
               <section key={d.key} className="rounded-2xl border border-grape-200 bg-white p-3.5 shadow-[0_10px_25px_-24px_rgba(33,22,75,.65)]">
                 <div className="mb-2.5 flex items-center justify-between">
@@ -227,11 +225,11 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
                   <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold ${cnt === 3 ? "bg-mint-100 text-mint-600" : "bg-grape-100 text-grape-500"}`}>{ar(cnt)} / ٣</span>
                 </div>
                 <div className="space-y-2">
-                  <div className="grid items-center gap-2 sm:grid-cols-[48px_minmax(0,1fr)_86px_78px]">
+                  <div className="grid items-center gap-2 sm:grid-cols-[48px_minmax(0,1fr)_82px_82px]">
                     <span className="text-[11px] font-extrabold text-grape-600">حفظ</span>
                     <input aria-label={`سورة الحفظ ${d.label}`} value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder="اسم السورة" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-grape-50/40 px-2.5 text-xs font-bold text-ink placeholder:text-grape-300" />
                     <input aria-label={`عدد آيات الحفظ ${d.label}`} type="number" min="0" value={ward.memorizationVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationVerses: Number(e.target.value) })} placeholder="عدد الآيات" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-white px-2 text-center text-xs font-bold text-ink" />
-                    <span className="rounded-lg bg-grape-100 px-2 py-2 text-center text-[10px] font-extrabold text-grape-600">≈ {ar(lines)} سطر</span>
+                    <input aria-label={`عدد أسطر الحفظ ${d.label}`} type="number" min="0" step="0.5" value={ward.memorizationLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationLines: Number(e.target.value) })} placeholder="الأسطر" className="h-9 min-w-0 rounded-lg border border-grape-200 bg-grape-100/60 px-2 text-center text-xs font-extrabold text-grape-700" />
                   </div>
                   <div className="grid items-center gap-2 sm:grid-cols-[48px_minmax(0,1fr)_86px_78px]">
                     <span className="text-[11px] font-extrabold text-gold-600">مراجعة</span>
@@ -391,8 +389,14 @@ export default function Register() {
   const { students, week, weekName } = useApp();
   const [addOpen, setAddOpen] = useState(false);
   const [manageId, setManageId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
-  const byName = useMemo(() => [...students].sort((a, b) => a.name.localeCompare(b.name, "ar")), [students]);
+  const byName = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase("ar");
+    return [...students]
+      .filter((s) => !q || s.name.toLocaleLowerCase("ar").includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  }, [students, query]);
 
   return (
     <div className="anim-fade">
@@ -401,15 +405,28 @@ export default function Register() {
         title="كشف الحلقة"
         desc={`${weekName || "الأسبوع الحالي"} · مرتب أبجديًا · كل يوم: حضور + تسميع حفظ + تسميع مراجعة`}
         extra={
-          <BigBtn onClick={() => setAddOpen(true)} color="bg-mint-600 hover:brightness-110 shadow-[0_5px_0_#0a7a50]">
+          <BigBtn onClick={() => setAddOpen(true)} color="bg-gradient-to-l from-mint-600 to-mint-500 hover:brightness-105 shadow-[0_12px_28px_-16px_rgba(22,133,104,.9)]">
             <Icon name="plus" className="h-5 w-5" strokeWidth={3} />
             طالب جديد
           </BigBtn>
         }
       />
 
+      <div className="mb-4 rounded-2xl border border-grape-200/80 bg-white/90 p-3 shadow-[0_16px_40px_-34px_rgba(76,29,149,.55)] backdrop-blur">
+        <label className="relative block">
+          <Icon name="search" className="pointer-events-none absolute end-3 top-1/2 h-5 w-5 -translate-y-1/2 text-grape-400" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="ابحث عن طالب بالاسم..."
+            className="h-12 w-full rounded-xl border border-grape-200 bg-grape-50/60 pe-11 ps-4 text-sm font-bold text-ink outline-none transition placeholder:text-grape-300 focus:border-grape-500 focus:bg-white focus:ring-4 focus:ring-grape-100"
+          />
+        </label>
+      </div>
+
       {/* قاعدة النقاط */}
-      <div className="mb-4 grid gap-2 rounded-2xl border-2 border-grape-200 bg-white p-3 sm:grid-cols-3">
+      <div className="mb-4 grid gap-2 rounded-2xl border border-grape-200/80 bg-white/90 p-3 shadow-[0_16px_40px_-36px_rgba(76,29,149,.55)] sm:grid-cols-3">
         <span className="flex items-center gap-2 rounded-xl bg-mint-400/15 px-3 py-2 text-sm font-extrabold text-mint-600">
           <Icon name="user" className="h-4 w-4" strokeWidth={2.6} />
           مجرد الحضور: +{ar(ATTEND_XP)} نقاط و+{ar(ATTEND_COINS)} عملات
@@ -429,8 +446,8 @@ export default function Register() {
 
       {byName.length === 0 ? (
         <div className="dashed-border rounded-3xl bg-white/70 p-16 text-center">
-          <p className="font-display text-xl font-extrabold text-grape-600">الكشف فارغ</p>
-          <p className="mt-1 text-sm text-grape-700/70">أضف أول طالب باسمه وصورته</p>
+          <p className="font-display text-xl font-extrabold text-grape-600">{query ? "لا يوجد طالب بهذا الاسم" : "الكشف فارغ"}</p>
+          <p className="mt-1 text-sm text-grape-700/70">{query ? "جرّب كتابة اسم آخر" : "أضف أول طالب باسمه وصورته"}</p>
         </div>
       ) : (
         <div className="space-y-2.5">

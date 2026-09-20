@@ -1,7 +1,7 @@
 /* صفحة الإحصائيات — تحليل شامل لمستوى الطلاب والحضور والغياب */
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
-import { ar, DAYS, estimatedLinesFromVerses, type Student } from "../core";
+import { ar, DAYS, type Student } from "../core";
 import Avatar from "./Avatar";
 import { Icon, Modal, SectionHead } from "./ui";
 
@@ -143,7 +143,7 @@ function calculateWeeklyMemorizationStats(student: Student): WeeklyMemorizationS
   
   const plannedDays = DAYS.filter((d) => student.ward[d.key].memorization || student.ward[d.key].memorizationVerses > 0);
   const completedPlannedDays = plannedDays.filter((d) => student.days[d.key].h);
-  const totalLines = completedPlannedDays.reduce((sum, d) => sum + estimatedLinesFromVerses(student.ward[d.key].memorizationVerses), 0);
+  const totalLines = completedPlannedDays.reduce((sum, d) => sum + student.ward[d.key].memorizationLines, 0);
   const totalPages = totalLines / 15;
   
   const totalVerses = weekRecords.reduce((sum, r) => sum + r.versesCount, 0);

@@ -94,8 +94,8 @@ function Nav() {
   const { tab, setTab, mode, setMode, sound, toggleSound } = useApp();
   const [explainOpen, setExplainOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-40 border-b border-grape-200/70 bg-white/85 shadow-[0_8px_30px_-24px_rgba(33,22,75,.55)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3.5 sm:px-6">
+    <header className="sticky top-0 z-40 border-b border-grape-200/60 bg-white/88 shadow-[0_12px_35px_-28px_rgba(76,29,149,.45)] backdrop-blur-xl">
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-4 px-4 py-3 sm:px-6">
         <Logo />
         {mode === "teacher" && (
           <nav className="order-3 flex w-full items-center gap-1.5 overflow-x-auto pb-1 sm:order-none sm:ms-2 sm:w-auto sm:flex-1 sm:pb-0">
@@ -104,8 +104,8 @@ function Nav() {
                 key={t.id}
                 type="button"
                 onClick={() => { sfx.click(); setTab(t.id); }}
-                className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-3.5 py-2 font-display text-sm font-extrabold transition-all active:scale-95 ${
-                  tab === t.id ? "bg-grape-600 text-white shadow-[0_8px_20px_-10px_rgba(88,59,195,.8)]" : "text-grape-600 hover:bg-grape-100/70"
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 font-display text-sm font-extrabold transition-all active:scale-95 ${
+                  tab === t.id ? "bg-gradient-to-l from-grape-600 to-grape-500 text-white shadow-[0_10px_22px_-14px_rgba(88,59,195,.9)]" : "text-grape-600 hover:bg-grape-100/80"
                 }`}
               >
                 <Icon name={t.icon} className="h-4 w-4" strokeWidth={2.4} />
@@ -205,7 +205,7 @@ function Shell() {
     <div className="relative min-h-screen">
       <Background />
       <Nav />
-      <main className="relative z-10 mx-auto max-w-7xl px-4 pb-24 pt-8 sm:px-6 lg:pt-10">
+      <main className="relative z-10 mx-auto max-w-[1440px] px-4 pb-24 pt-8 sm:px-6 lg:pt-10">
         {mode === "student" ? (
           <StudentView />
         ) : tab === "register" ? (

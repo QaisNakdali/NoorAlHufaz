@@ -160,6 +160,7 @@ function normStudent(s: Student): Student {
           review: String(item.review ?? ""),
           memorizationVerses: Math.max(0, Number(item.memorizationVerses ?? 0) || 0),
           reviewVerses: Math.max(0, Number(item.reviewVerses ?? 0) || 0),
+          memorizationLines: Math.max(0, Number(item.memorizationLines ?? 0) || 0),
         };
       }
       return normalized;
@@ -551,6 +552,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...ward,
           memorizationVerses: Math.max(0, Number(ward.memorizationVerses) || 0),
           reviewVerses: Math.max(0, Number(ward.reviewVerses) || 0),
+          memorizationLines: Math.max(0, Number(ward.memorizationLines) || 0),
         } } }
       : s));
   }, []);

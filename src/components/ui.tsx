@@ -208,7 +208,7 @@ export function Modal({
       <div className="anim-fade fixed inset-0 bg-grape-950/60 backdrop-blur-[3px]" onClick={onClose} />
       <div className="pointer-events-none relative flex min-h-full items-center justify-center p-4">
         <div
-          className={`anim-pop pointer-events-auto my-6 w-full rounded-3xl border-4 border-grape-100 bg-white shadow-2xl ${
+          className={`anim-pop pointer-events-auto my-6 w-full rounded-[28px] border border-grape-200 bg-white shadow-[0_28px_80px_-28px_rgba(33,22,75,.5)] ${
             wide ? "max-w-2xl" : "max-w-md"
           }`}
         >
@@ -235,8 +235,8 @@ export function SectionHead({
   extra?: ReactNode;
 }) {
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-3">
-      <span className={`grid h-12 w-12 place-items-center rounded-2xl ${color} shadow-inner`}>
+    <div className="mb-6 flex flex-wrap items-center gap-4 rounded-[24px] border border-white/80 bg-white/70 p-4 shadow-[0_18px_50px_-40px_rgba(76,29,149,.6)] backdrop-blur-sm">
+      <span className={`grid h-12 w-12 place-items-center rounded-2xl ${color}`}>
         <Icon name={icon} className="h-6 w-6" strokeWidth={2.2} />
       </span>
       <div className="flex-1 min-w-40">
@@ -253,7 +253,7 @@ export function BigBtn({
   children,
   onClick,
   disabled = false,
-  color = "bg-grape-600 hover:bg-grape-700 shadow-[0_5px_0_#56289d]",
+  color = "bg-gradient-to-l from-grape-600 to-grape-500 hover:brightness-105 shadow-[0_12px_28px_-14px_rgba(88,59,195,.9)]",
   className = "",
 }: {
   children: ReactNode;
@@ -267,7 +267,7 @@ export function BigBtn({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3 font-display text-lg font-bold text-white transition-all active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-40 disabled:active:translate-y-0 ${color} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3 font-display text-lg font-bold text-white transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:translate-y-0 ${color} ${className}`}
     >
       {children}
     </button>

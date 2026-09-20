@@ -7,18 +7,18 @@
   --font-sans: "IBM Plex Sans Arabic", system-ui, sans-serif;
   --font-display: "Baloo Bhaijaan 2", "IBM Plex Sans Arabic", sans-serif;
 
-  --color-ink: #172033;
-  --color-grape-50: #f7f7ff;
-  --color-grape-100: #efefff;
-  --color-grape-200: #dddafe;
-  --color-grape-300: #c5bdfd;
-  --color-grape-400: #a897fa;
-  --color-grape-500: #8870f2;
-  --color-grape-600: #6d50df;
-  --color-grape-700: #583bc3;
-  --color-grape-800: #472f9d;
-  --color-grape-900: #39287c;
-  --color-grape-950: #21164b;
+  --color-ink: #20173a;
+  --color-grape-50: #faf7ff;
+  --color-grape-100: #f1eaff;
+  --color-grape-200: #e2d4ff;
+  --color-grape-300: #ccb5ff;
+  --color-grape-400: #ab87ff;
+  --color-grape-500: #8b5cf6;
+  --color-grape-600: #763de4;
+  --color-grape-700: #6028c7;
+  --color-grape-800: #4c219c;
+  --color-grape-900: #3d1d79;
+  --color-grape-950: #261149;
 
   --color-gold-300: #f9da73;
   --color-gold-400: #f4c84d;
@@ -54,10 +54,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   color: #172033;
-  background:
-    radial-gradient(circle at 85% 0%, rgba(136, 112, 242, .13), transparent 28rem),
-    radial-gradient(circle at 5% 35%, rgba(72, 207, 166, .11), transparent 24rem),
-    #fafaff;
+  background: #faf8ff;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -95,21 +92,21 @@ button svg.icon, a svg.icon {
 /* ============================================
    ألوان التصميم البنفسجي المريح للعين
    ============================================ */
-.bg-grape-50 { background-color: #f5f3ff !important; }
-.bg-grape-100 { background-color: #ede9fe !important; }
-.bg-grape-200 { background-color: #ddd6fe !important; }
-.bg-grape-300 { background-color: #c4b5fd !important; }
-.bg-grape-400 { background-color: #a78bfa !important; }
+.bg-grape-50 { background-color: #faf7ff !important; }
+.bg-grape-100 { background-color: #f1eaff !important; }
+.bg-grape-200 { background-color: #e2d4ff !important; }
+.bg-grape-300 { background-color: #ccb5ff !important; }
+.bg-grape-400 { background-color: #ab87ff !important; }
 .bg-grape-500 { background-color: #8b5cf6 !important; }
-.bg-grape-600 { background-color: #7c3aed !important; }
-.bg-grape-700 { background-color: #6d28d9 !important; }
-.bg-grape-800 { background-color: #5b21b6 !important; }
-.bg-grape-900 { background-color: #4c1d95 !important; }
+.bg-grape-600 { background-color: #763de4 !important; }
+.bg-grape-700 { background-color: #6028c7 !important; }
+.bg-grape-800 { background-color: #4c219c !important; }
+.bg-grape-900 { background-color: #3d1d79 !important; }
 
 .text-grape-50 { color: #f5f3ff !important; }
 .text-grape-100 { color: #ede9fe !important; }
-.text-grape-600 { color: #7c3aed !important; }
-.text-grape-700 { color: #6d28d9 !important; }
+.text-grape-600 { color: #763de4 !important; }
+.text-grape-700 { color: #6028c7 !important; }
 
 .border-grape-100 { border-color: #ede9fe !important; }
 .border-grape-200 { border-color: #ddd6fe !important; }
