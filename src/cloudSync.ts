@@ -74,14 +74,32 @@ export async function cloudLoad(): Promise<CloudPayload | null> {
 /** يحفظ الحالة ويعيدها بعد نقل الصور إلى Storage إن وجدت. */
 export async function cloudSave(payload: CloudPayload): Promise<CloudPayload> {
   const prepared = await preparePayload(payload);
-  const { error } = await supabase.from(STATE_TABLE).upsert({
+  const row = {
     id: STATE_ID,
     rev: prepared.rev,
     data: prepared.data,
     updated_at: new Date().toISOString(),
-  }, { onConflict: "id" });
-  if (error) throw error;
-  return prepared;
+  };
+
+  // تحديث ذري: لا يمكن لطلب قديم وصل متأخرًا أن يستبدل نسخة أحدث.
+  const { data: updated, error: updateError } = await supabase
+    .from(STATE_TABLE)
+    .update(row)
+    .eq("id", STATE_ID)
+    .lt("rev", prepared.rev)
+    .select("rev,data")
+    .maybeSingle();
+  if (updateError) throw updateError;
+  if (updated) return prepared;
+
+  // إذا لم يوجد الصف بعد، نحاول إنشاءه. تعارض الإنشاء يعني أن جهازًا آخر سبقنا.
+  const { error: insertError } = await supabase.from(STATE_TABLE).insert(row);
+  if (!insertError) return prepared;
+  if (insertError.code !== "23505") throw insertError;
+
+  // نسختنا رُفضت لأنها أقدم؛ نعيد النسخة الفائزة كي يطبقها الجهاز محليًا.
+  const latest = await cloudLoad();
+  return latest ?? prepared;
 }
 
 /** يستقبل تعديل أي معلم فور وصوله إلى قاعدة البيانات. */
