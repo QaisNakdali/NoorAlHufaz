@@ -36,7 +36,28 @@ export type ItemKind = "cosmetic" | "external";
 /** خانة الخاصية — كل خانة تُلبس عنصرًا واحدًا في الوقت نفسه */
 export type CosmeticSlot = "frame" | "crown" | "glow" | "cardbg";
 
-export type AwardRec = { id: string; title: string; week: number };
+export type AwardRec = { id: string; title: string; week: number; coins?: number };
+export type Halaqa = { id: string; name: string; createdAt: number };
+export type RewardKey = "champions" | "improved" | "behavior" | "trip";
+export type RewardOption = { enabled: boolean; coins: number };
+export type RewardSettings = Record<RewardKey, RewardOption>;
+export type RewardGrant = {
+  id: string;
+  week: number;
+  studentId: string;
+  studentName: string;
+  reward: RewardKey;
+  title: string;
+  coins: number;
+  grantedAt: number;
+};
+
+export const DEFAULT_REWARD_SETTINGS: RewardSettings = {
+  champions: { enabled: true, coins: 100 },
+  improved: { enabled: true, coins: 75 },
+  behavior: { enabled: true, coins: 50 },
+  trip: { enabled: false, coins: 30 },
+};
 
 /** مشتريات خارجية في الحقيبة — الكمية + ما سُلم منها */
 export type BagEntry = { itemId: string; qty: number; receivedQty: number };
@@ -137,6 +158,8 @@ export type Student = {
   id: string;
   name: string;
   photo: string | null;
+  /** حلقة واحدة فقط. null يحافظ على الطلاب القدامى بلا تعيين إجباري. */
+  halaqaId?: string | null;
   hearts: number;
   heartsLostWeek: number;
   xp: number;
@@ -377,12 +400,15 @@ export const recitations = (s: Student): number =>
 export const isChampionEligible = (s: Student, tripOn: boolean, tripAttendees: string[]): boolean =>
   attendedDays(s) === DAYS.length &&
   recitations(s) === DAYS.length * 2 &&
+  s.hearts === MAX_HEARTS &&
+  s.heartsLostWeek === 0 &&
   (!tripOn || tripAttendees.includes(s.id));
 
 /** شروط البطولة (للعرض) */
 export const championCriteria = (tripOn: boolean): { icon: string; label: string; active: boolean }[] => [
   { icon: "calendar", label: "حضر كل الأيام بلا غياب", active: true },
   { icon: "book", label: "سمّع الحفظ والمراجعة كل الأيام", active: true },
+  { icon: "heart", label: "حافظ على جميع القلوب", active: true },
   { icon: "flag", label: tripOn ? "حضر الرحلة" : "الرحلة إن وُجدت", active: tripOn },
 ];
 
@@ -422,6 +448,11 @@ export type WeekLogEntry = {
   hearts: number;
   frame: FrameKind | null;
   crown: CrownKind | null;
+  attendanceDays?: number;
+  memorizationLines?: number;
+  reviewLines?: number;
+  memorizationVerses?: number;
+  reviewVerses?: number;
 };
 
 export type WeekLog = {
@@ -429,7 +460,7 @@ export type WeekLog = {
   name: string;
   savedAt: string;
   top: WeekLogEntry[];
-  awards: { title: string; studentName: string }[];
+  awards: { title: string; studentName: string; coins?: number; reward?: RewardKey }[];
   trip?: { day: TripDay; attendeeNames: string[] } | null;
 };
 

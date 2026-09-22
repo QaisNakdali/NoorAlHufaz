@@ -12,6 +12,7 @@ import {
   MAX_HEARTS,
   RECITE_COINS,
   RECITE_XP,
+  xpForLevel,
   type DayPart,
   type Student,
 } from "../core";
@@ -61,10 +62,29 @@ function DeleteBtn({ onDelete, label = "" }: { onDelete: () => void; label?: str
 
 /* ===== نافذة إعدادات الطالب (عملات / خبرة / قلوب) ===== */
 function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { students, addCoins, addXp, removeHeart, restoreHeart, removeStudent } = useApp();
+  const { students, halaqas, updateStudentProfile, addCoins, addXp, removeHeart, restoreHeart, removeStudent, toast } = useApp();
   const s = students.find((x) => x.id === id);
+  const [name, setName] = useState(s?.name ?? "");
+  const [photo, setPhoto] = useState<string | null>(s?.photo ?? null);
+  const [coins, setCoins] = useState(s?.coins ?? 0);
+  const [hearts, setHearts] = useState(s?.hearts ?? MAX_HEARTS);
+  const [studentLevel, setStudentLevel] = useState(s ? levelInfo(s.xp).level : 1);
+  const [halaqaId, setHalaqaId] = useState<string | null>(s?.halaqaId ?? null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   if (!s) return null;
   const { level } = levelInfo(s.xp);
+  const saveProfile = () => {
+    updateStudentProfile(s.id, { name, photo, coins, hearts, xp: studentLevel !== level ? xpForLevel(Math.max(1, studentLevel)) : undefined, halaqaId });
+    onClose();
+  };
+  const onFile = async (file: File | null) => {
+    if (!file) return;
+    setBusy(true);
+    try { setPhoto(await compressImage(file, 320, true)); }
+    catch { toast("error", "تعذّر قراءة الصورة"); }
+    finally { setBusy(false); }
+  };
   return (
     <Modal open onClose={onClose} wide>
       <div className="p-6">
@@ -80,6 +100,23 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl border-2 border-grape-100 bg-grape-50/50 p-4 sm:col-span-2">
+            <p className="mb-3 font-display text-base font-extrabold text-ink">بيانات الطالب</p>
+            <div className="grid gap-3 sm:grid-cols-[96px_1fr_1fr]">
+              <button type="button" onClick={() => fileRef.current?.click()} className="relative mx-auto h-20 w-20 overflow-hidden rounded-2xl border-2 border-grape-200 bg-white">
+                {photo ? <img src={photo} alt="" className="h-full w-full object-cover" /> : <Icon name="user" className="m-auto h-full w-8 text-grape-300" />}
+                {busy && <span className="absolute inset-0 grid place-items-center bg-white/80 text-xs font-bold">جاري...</span>}
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
+              <label className="text-xs font-bold text-grape-600">الاسم<input value={name} onChange={(e) => setName(e.target.value)} className="field-control mt-1 w-full" /></label>
+              <label className="text-xs font-bold text-grape-600">الحلقة<select value={halaqaId ?? ""} onChange={(e) => setHalaqaId(e.target.value || null)} className="field-control mt-1 w-full"><option value="">بلا حلقة</option>{halaqas.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}</select></label>
+              <label className="text-xs font-bold text-grape-600">العملات<input type="number" min="0" value={coins} onChange={(e) => setCoins(Number(e.target.value))} className="field-control mt-1 w-full" /></label>
+              <label className="text-xs font-bold text-grape-600">المستوى<input type="number" min="1" value={studentLevel} onChange={(e) => setStudentLevel(Number(e.target.value))} className="field-control mt-1 w-full" /></label>
+              <label className="text-xs font-bold text-grape-600">القلوب<select value={hearts} onChange={(e) => setHearts(Number(e.target.value))} className="field-control mt-1 w-full">{[0,1,2,3].map((v) => <option key={v} value={v}>{ar(v)}</option>)}</select></label>
+            </div>
+            <div className="mt-3 flex gap-2"><BigBtn onClick={saveProfile} className="flex-1"><Icon name="check" className="h-4 w-4" />حفظ التعديلات</BigBtn>{photo && <button type="button" onClick={() => setPhoto(null)} className="rounded-xl border-2 border-coral-200 px-3 text-xs font-extrabold text-coral-500">إزالة الصورة</button>}</div>
+            <p className="mt-2 text-xs font-bold text-grape-400">تغيير الحلقة أو البيانات لا يعيد إنشاء الطالب ولا يمس حضوره أو ورده أو سجلاته.</p>
+          </div>
           <div className="rounded-2xl border-2 border-grape-100 bg-white p-3.5">
             <p className="mb-2.5 flex items-center gap-2 font-display text-sm font-extrabold text-ink">
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-gold-400/25 text-gold-600"><Coin className="h-4 w-4" /></span>
@@ -149,7 +186,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
 
 /* ===== صف طالب في الكشف ===== */
 function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onManage: () => void }) {
-  const { markDay, updateWard, removeHeart, removeStudent, setMode, setTab } = useApp();
+  const { markDay, updateWard, removeHeart, removeStudent, setMode, setTab, halaqas } = useApp();
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
   const { level, into, need } = levelInfo(s.xp);
@@ -173,6 +210,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="truncate font-display text-lg font-extrabold leading-tight text-ink sm:text-xl">{s.name}</h3>
               <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-xs! shadow-none!" />
+              <span className="shrink-0 rounded-full bg-grape-100 px-2 py-0.5 text-xs font-extrabold text-grape-500">{halaqas.find((h) => h.id === s.halaqaId)?.name ?? "بلا حلقة"}</span>
             </div>
             <div className="mt-2 flex items-center gap-2">
               <HeartsRow hearts={s.hearts} max={MAX_HEARTS} size="w-6 h-6" />
@@ -274,10 +312,11 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
 
 /* ===== نافذة إضافة طالب ===== */
 function AddStudentModal({ onClose }: { onClose: () => void }) {
-  const { addStudent, toast } = useApp();
+  const { addStudent, halaqas, toast } = useApp();
   const [name, setName] = useState("");
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [halaqaId, setHalaqaId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const onFile = async (f: File | null) => {
@@ -299,7 +338,7 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
       sfx.error();
       return;
     }
-    addStudent(name.trim(), photo);
+    addStudent(name.trim(), photo, halaqaId);
     onClose();
   };
 
@@ -338,6 +377,11 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
                 إزالة الصورة
               </button>
             )}
+            <label className="mt-3 block text-sm font-bold text-grape-700">الحلقة</label>
+            <select value={halaqaId ?? ""} onChange={(e) => setHalaqaId(e.target.value || null)} className="mt-1 w-full rounded-2xl border-2 border-grape-200 bg-grape-50 px-4 py-2.5 font-bold text-ink outline-none focus:border-grape-500">
+              <option value="">بلا حلقة</option>
+              {halaqas.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+            </select>
           </div>
         </div>
 
@@ -390,17 +434,20 @@ function WeekStars() {
 
 /* ===== الكشف ===== */
 export default function Register() {
-  const { students, week, weekName } = useApp();
+  const { students, halaqas, addHalaqa, removeHalaqa, week, weekName } = useApp();
   const [addOpen, setAddOpen] = useState(false);
   const [manageId, setManageId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [halaqaFilter, setHalaqaFilter] = useState<string>("all");
+  const [newHalaqa, setNewHalaqa] = useState("");
+  const [showHalaqaManager, setShowHalaqaManager] = useState(false);
 
   const byName = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("ar");
     return [...students]
-      .filter((s) => !q || s.name.toLocaleLowerCase("ar").includes(q))
+      .filter((s) => (!q || s.name.toLocaleLowerCase("ar").includes(q)) && (halaqaFilter === "all" || (halaqaFilter === "none" ? !s.halaqaId : s.halaqaId === halaqaFilter)))
       .sort((a, b) => a.name.localeCompare(b.name, "ar"));
-  }, [students, query]);
+  }, [students, query, halaqaFilter]);
 
   return (
     <div className="anim-fade">
@@ -427,6 +474,13 @@ export default function Register() {
             className="h-12 w-full rounded-xl border border-grape-200 bg-grape-50/60 pe-11 ps-4 text-sm font-bold text-ink outline-none transition placeholder:text-grape-300 focus:border-grape-500 focus:bg-white focus:ring-4 focus:ring-grape-100"
           />
         </label>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => setHalaqaFilter("all")} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === "all" ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-600"}`}>جميع الحلقات</button>
+          {halaqas.map((h) => <button key={h.id} type="button" onClick={() => setHalaqaFilter(h.id)} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === h.id ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-600"}`}>{h.name}</button>)}
+          <button type="button" onClick={() => setHalaqaFilter("none")} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === "none" ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-500"}`}>بلا حلقة</button>
+          <button type="button" onClick={() => setShowHalaqaManager((v) => !v)} className="rounded-xl border-2 border-dashed border-grape-300 px-3 py-1.5 text-xs font-extrabold text-grape-600">+ إضافة حلقة جديدة</button>
+        </div>
+        {showHalaqaManager && <div className="mt-3 rounded-xl border border-grape-200 bg-grape-50 p-3"><div className="flex gap-2"><input value={newHalaqa} onChange={(e) => setNewHalaqa(e.target.value)} placeholder="مثال: حلقة أ" className="field-control flex-1"/><button type="button" onClick={() => { addHalaqa(newHalaqa); setNewHalaqa(""); }} className="rounded-xl bg-grape-600 px-4 text-sm font-extrabold text-white">إضافة</button></div>{halaqas.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{halaqas.map((h) => <span key={h.id} className="flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-bold text-grape-600">{h.name}<button type="button" onClick={() => removeHalaqa(h.id)} title="حذف الحلقة دون حذف الطلاب" className="text-coral-500">×</button></span>)}</div>}</div>}
       </div>
 
       {/* قاعدة النقاط */}

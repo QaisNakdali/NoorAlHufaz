@@ -18,6 +18,7 @@ import {
   CHAMPION_TIERS,
   DAYS,
   DAY_PARTS,
+  DEFAULT_REWARD_SETTINGS,
   DEFAULT_SHOP_ITEMS,
   emptyWeekDays,
   emptyWeeklyWard,
@@ -34,6 +35,7 @@ import {
   weekXpOf,
   type BgKind,
   type CeremonyPicks,
+  type Halaqa,
   type CosmeticSlot,
   type CrownKind,
   type DayKey,
@@ -42,6 +44,7 @@ import {
   type Mode,
   type ShopItem,
   type Student,
+  type RewardSettings,
   type Tab,
   type TripDay,
   type WeekDays,
@@ -70,6 +73,7 @@ export type CloudInfo = {
 
 type State = {
   students: Student[];
+  halaqas: Halaqa[];
   week: number;
   weekName: string;
   weeksLog: WeekLog[];
@@ -81,6 +85,7 @@ type State = {
   tripOn: boolean;
   tripDay: TripDay | null;
   tripAttendees: string[];
+  rewardSettings: RewardSettings;
 };
 
 type Ctx = State & {
@@ -95,8 +100,12 @@ type Ctx = State & {
   setWeekName: (name: string) => void;
   setShowNewProducts: (v: boolean) => void;
 
-  addStudent: (name: string, photo: string | null) => void;
+  addStudent: (name: string, photo: string | null, halaqaId?: string | null) => void;
+  updateStudentProfile: (id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null }) => void;
   removeStudent: (id: string) => void;
+  addHalaqa: (name: string) => void;
+  renameHalaqa: (id: string, name: string) => void;
+  removeHalaqa: (id: string) => void;
   markDay: (id: string, day: DayKey, part: DayPart) => void;
   updateWard: (id: string, day: DayKey, ward: DailyWard) => void;
 
@@ -118,6 +127,7 @@ type Ctx = State & {
 
   grantAward: (id: string, title: string, coins?: number, xp?: number) => void;
   setCeremonyPick: (key: keyof CeremonyPicks, id: string | null) => void;
+  setRewardSetting: (key: keyof RewardSettings, value: Partial<RewardSettings[keyof RewardSettings]>) => void;
   removeWeekLog: (week: number) => void;
   /* الرحلة الأسبوعية */
   setTrip: (on: boolean, day?: TripDay | null) => void;
@@ -184,6 +194,8 @@ function normStudent(s: Student): Student {
     glow: s.glow ?? null,
     cardBg: s.cardBg ? ((BG_MIGRATION[s.cardBg] ?? s.cardBg) as BgKind) : null,
     awards: Array.isArray(s.awards) ? s.awards : [],
+    halaqaId: typeof s.halaqaId === "string" ? s.halaqaId : null,
+    memorizationRecords: Array.isArray(s.memorizationRecords) ? s.memorizationRecords : [],
   };
 }
 
@@ -193,6 +205,9 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
   const students = Array.isArray(p.students) ? (p.students as Student[]).map(normStudent) : seedStudents();
   return {
     students,
+    halaqas: Array.isArray(p.halaqas)
+      ? (p.halaqas as Halaqa[]).filter((h) => h && typeof h.id === "string" && typeof h.name === "string")
+      : [],
     week: typeof p.week === "number" ? p.week : 1,
     weekName: typeof p.weekName === "string" ? p.weekName : "",
     weeksLog: Array.isArray(p.weeksLog) ? (p.weeksLog as WeekLog[]) : [],
@@ -201,6 +216,12 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
     tripOn: !!p.tripOn,
     tripDay: (p.tripDay as TripDay | null) ?? null,
     tripAttendees: Array.isArray(p.tripAttendees) ? (p.tripAttendees as string[]) : [],
+    rewardSettings: {
+      champions: { ...DEFAULT_REWARD_SETTINGS.champions, ...(p.rewardSettings?.champions ?? {}) },
+      improved: { ...DEFAULT_REWARD_SETTINGS.improved, ...(p.rewardSettings?.improved ?? {}) },
+      behavior: { ...DEFAULT_REWARD_SETTINGS.behavior, ...(p.rewardSettings?.behavior ?? {}) },
+      trip: { ...DEFAULT_REWARD_SETTINGS.trip, ...(p.rewardSettings?.trip ?? {}) },
+    },
     showNewProducts: p.showNewProducts !== false,
     products:
       Array.isArray(p.products) && p.products.length
@@ -258,6 +279,7 @@ let toastSeq = 1;
 export function AppProvider({ children }: { children: ReactNode }) {
   const [init] = useState(loadPersist);
   const [students, setStudents] = useState<Student[]>(init.students);
+  const [halaqas, setHalaqas] = useState<Halaqa[]>(init.halaqas);
   const [week, setWeek] = useState(init.week);
   const [weekName, setWeekNameState] = useState(init.weekName);
   const [weeksLog, setWeeksLog] = useState<WeekLog[]>(init.weeksLog);
@@ -268,6 +290,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tripOn, setTripOn] = useState(init.tripOn);
   const [tripDay, setTripDay] = useState<TripDay | null>(init.tripDay);
   const [tripAttendees, setTripAttendees] = useState<string[]>(init.tripAttendees);
+  const [rewardSettings, setRewardSettings] = useState<RewardSettings>(init.rewardSettings);
   const [tab, setTab] = useState<Tab>("register");
   const [mode, setMode] = useState<Mode>("teacher");
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -315,6 +338,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         cloudDataRef.current = normalized;
         setStudents(normalized.students);
         if (saved.rev !== rev) {
+          setHalaqas(normalized.halaqas);
           setWeek(normalized.week);
           setWeekNameState(normalized.weekName);
           setWeeksLog(normalized.weeksLog);
@@ -325,6 +349,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setTripOn(normalized.tripOn);
           setTripDay(normalized.tripDay);
           setTripAttendees(normalized.tripAttendees);
+          setRewardSettings(normalized.rewardSettings);
         }
       }
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
@@ -353,6 +378,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
     }
     setStudents(remote.students);
+    setHalaqas(remote.halaqas);
     setWeek(remote.week);
     setWeekNameState(remote.weekName);
     setWeeksLog(remote.weeksLog);
@@ -363,6 +389,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTripOn(remote.tripOn);
     setTripDay(remote.tripDay);
     setTripAttendees(remote.tripAttendees);
+    setRewardSettings(remote.rewardSettings);
   }, []);
 
   /** سحب أحدث نسخة من السحابة وتطبيقها إن كانت أحدث من المحلية */
@@ -395,6 +422,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const persistData: State = {
       students,
+      halaqas,
       week,
       weekName,
       weeksLog,
@@ -405,6 +433,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       tripOn,
       tripDay,
       tripAttendees,
+      rewardSettings,
     };
 
     // النسخة السحابية: تُحذف الصور إن طُلب ذلك للتقليل من الحجم
@@ -450,7 +479,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
       pushTimer.current = window.setTimeout(() => void pushCloud(newRev), 1500);
     }
-  }, [students, week, weekName, weeksLog, sound, ceremonyPicks, products, showNewProducts, tripOn, tripDay, tripAttendees, pushCloud]);
+  }, [students, halaqas, week, weekName, weeksLog, sound, ceremonyPicks, products, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
 
   // سحب أولي مرة واحدة، ثم استقبال التحديثات لحظيًا عبر Supabase Realtime.
   useEffect(() => {
@@ -496,13 +525,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ===== الطلاب ===== */
   const addStudent = useCallback(
-    (name: string, photo: string | null) => {
+    (name: string, photo: string | null, halaqaId: string | null = null) => {
       setStudents((ss) => [
         ...ss,
         {
           id: uid(),
           name,
           photo,
+          halaqaId,
           hearts: MAX_HEARTS,
           heartsLostWeek: 0,
           xp: 0,
@@ -518,6 +548,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           glow: null,
           cardBg: null,
           awards: [],
+          memorizationRecords: [],
         },
       ]);
       sfx.sparkle();
@@ -525,6 +556,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [toast]
   );
+
+  const updateStudentProfile = useCallback((id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null }) => {
+    setStudents((ss) => ss.map((s) => s.id === id ? {
+      ...s,
+      ...(changes.name !== undefined ? { name: changes.name.trim() || s.name } : {}),
+      ...(changes.photo !== undefined ? { photo: changes.photo } : {}),
+      ...(changes.coins !== undefined ? { coins: Math.max(0, Math.floor(changes.coins)) } : {}),
+      ...(changes.xp !== undefined ? { xp: Math.max(0, Math.floor(changes.xp)) } : {}),
+      ...(changes.hearts !== undefined ? { hearts: Math.max(0, Math.min(MAX_HEARTS, Math.floor(changes.hearts))) } : {}),
+      ...(changes.halaqaId !== undefined ? { halaqaId: changes.halaqaId } : {}),
+    } : s));
+    toast("success", "تم حفظ بيانات الطالب دون تغيير سجلاته");
+  }, [toast]);
+
+  const addHalaqa = useCallback((name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    setHalaqas((hs) => hs.some((h) => h.name === clean) ? hs : [...hs, { id: uid(), name: clean, createdAt: Date.now() }]);
+    toast("success", `تمت إضافة ${clean}`);
+  }, [toast]);
+
+  const renameHalaqa = useCallback((id: string, name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    setHalaqas((hs) => hs.map((h) => h.id === id ? { ...h, name: clean } : h));
+  }, []);
+
+  const removeHalaqa = useCallback((id: string) => {
+    setHalaqas((hs) => hs.filter((h) => h.id !== id));
+    setStudents((ss) => ss.map((s) => s.halaqaId === id ? { ...s, halaqaId: null } : s));
+    toast("success", "حُذفت الحلقة وأصبح طلابها بلا حلقة، دون حذف أي طالب أو سجل");
+  }, [toast]);
 
   const removeStudent = useCallback(
     (id: string) => {
@@ -915,33 +978,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /* ===== الجوائز والأسبوع ===== */
-  /** منح جائزة — عملات دائمًا، وخبرة (ترفع المستوى) فقط إن حُدّدت */
+  /** منح جائزة أسبوعية بعملات فقط وبشكل آمن ضد التكرار. */
   const grantAward = useCallback(
-    (id: string, title: string, coins = 0, xp = 0) => {
+    (id: string, title: string, coins = 0, _xp = 0) => {
       const st = students.find((s) => s.id === id);
       if (!st) return;
-      const { student: leveledSt, leveled } = applyXp(st, xp);
+      if (st.awards.some((a) => a.week === week && a.title === title)) return;
       const next: Student = {
-        ...leveledSt,
-        coins: leveledSt.coins + coins,
-        awards: [...leveledSt.awards, { id: uid(), title, week }],
+        ...st,
+        coins: st.coins + Math.max(0, coins),
+        awards: [...st.awards, { id: `week-${week}-${id}-${title}`, title, week, coins: Math.max(0, coins) }],
       };
       setStudents((ss) => ss.map((s) => (s.id === id ? next : s)));
       sfx.fanfare();
-      toast("award", `حصل ${st.name} على «${title}» (+${ar(coins)} عملة${xp > 0 ? ` و+${ar(xp)} خبرة` : ""})`);
-      if (leveled) {
-        const t = window.setTimeout(() => {
-          sfx.levelUp();
-          toast("level", `ارتقى ${st.name} إلى المستوى ${leveled}`);
-        }, 420);
-        timers.current.push(t);
-      }
+      toast("award", `حصل ${st.name} على «${title}» (+${ar(coins)} عملة)`);
     },
     [students, toast, week]
   );
 
   const setCeremonyPick = useCallback((key: keyof CeremonyPicks, id: string | null) => {
     setCeremonyPicks((p) => ({ ...p, [key]: id ?? undefined }));
+  }, []);
+
+  const setRewardSetting = useCallback((key: keyof RewardSettings, value: Partial<RewardSettings[keyof RewardSettings]>) => {
+    setRewardSettings((current) => ({
+      ...current,
+      [key]: { ...current[key], ...value, coins: Math.max(0, Number(value.coins ?? current[key].coins) || 0) },
+    }));
   }, []);
 
   const removeWeekLog = useCallback(
@@ -959,22 +1022,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!on) setTripAttendees([]);
   }, []);
 
-  /** حضور الرحلة يمنح +٢٠ عملة فورًا (وتُسحب إن أُلغي الحضور) */
+  /** تسجيل حضور الرحلة فقط؛ الجائزة تُصرف من الحفل حسب الإعداد المختار. */
   const toggleTripAttendee = useCallback(
     (id: string) => {
       const st = students.find((s) => s.id === id);
       if (!st) return;
       const was = tripAttendees.includes(id);
       setTripAttendees((a) => (was ? a.filter((x) => x !== id) : [...a, id]));
-      update(id, (s) => ({ ...s, coins: Math.max(0, s.coins + (was ? -TRIP_COIN_REWARD : TRIP_COIN_REWARD)) }));
       if (!was) {
-        sfx.coin();
-        toast("coin", `حضر ${st.name} الرحلة — +${ar(TRIP_COIN_REWARD)} عملة`);
+        sfx.pop();
+        toast("success", `تم تسجيل حضور ${st.name} للرحلة`);
       } else {
         sfx.click();
       }
     },
-    [students, toast, tripAttendees, update]
+    [students, toast, tripAttendees]
   );
 
   /* ===== الحفل ===== */
@@ -1012,6 +1074,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           hearts: s.hearts,
           frame: s.frame ?? null,
           crown: s.crown ?? null,
+          attendanceDays: DAYS.filter((d) => s.days[d.key].a).length,
+          memorizationLines: DAYS.filter((d) => s.days[d.key].h).reduce((n, d) => n + s.ward[d.key].memorizationLines, 0),
+          reviewLines: DAYS.filter((d) => s.days[d.key].r).reduce((n, d) => n + s.ward[d.key].reviewLines, 0),
+          memorizationVerses: DAYS.filter((d) => s.days[d.key].h).reduce((n, d) => n + s.ward[d.key].memorizationVerses, 0),
+          reviewVerses: DAYS.filter((d) => s.days[d.key].r).reduce((n, d) => n + s.ward[d.key].reviewVerses, 0),
         })),
       awards,
       trip:
@@ -1039,6 +1106,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value: Ctx = {
     students,
+    halaqas,
     week,
     weekName,
     weeksLog,
@@ -1050,6 +1118,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     tripOn,
     tripDay,
     tripAttendees,
+    rewardSettings,
     setTrip,
     toggleTripAttendee,
     tab,
@@ -1062,7 +1131,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sorted,
     setWeekName,
     addStudent,
+    updateStudentProfile,
     removeStudent,
+    addHalaqa,
+    renameHalaqa,
+    removeHalaqa,
     markDay,
     updateWard,
     addXp,
@@ -1081,6 +1154,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     restockProduct,
     grantAward,
     setCeremonyPick,
+    setRewardSetting,
     removeWeekLog,
     startWeek,
     showCeremony,

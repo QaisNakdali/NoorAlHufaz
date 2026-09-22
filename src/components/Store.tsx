@@ -7,6 +7,7 @@ import { sfx } from "../sound";
 import Avatar from "./Avatar";
 import CosmeticThumb from "./CosmeticThumb";
 import { BigBtn, Coin, heartFade, HeartsRow, Icon, Modal, SectionHead } from "./ui";
+import WeeklyAwards from "./WeeklyAwards";
 
 /* شارة نوع العنصر */
 function KindBadge({ p }: { p: ShopProduct }) {
@@ -471,6 +472,7 @@ export default function StoreTab() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ShopProduct | null>(null);
   const [buyerId, setBuyerId] = useState<string | null>(null);
+  const [awardsOpen, setAwardsOpen] = useState(false);
   const buyer = sorted.find((s) => s.id === buyerId) ?? null;
 
   return (
@@ -481,7 +483,7 @@ export default function StoreTab() {
         desc="أضف منتجاتك بصورها وكمياتها — خصائص البروفايل تُرسم صورتها تلقائيًا بلونها"
         color="bg-mint-400/20 text-mint-600"
         extra={
-          <BigBtn
+          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setAwardsOpen(true)} className="rounded-2xl border-2 border-gold-500/50 bg-gold-400/20 px-4 py-2.5 font-display text-sm font-extrabold text-gold-700">🎁 جوائز الأسبوع</button><BigBtn
             onClick={() => {
               setEditing(null);
               setEditorOpen(true);
@@ -490,7 +492,7 @@ export default function StoreTab() {
           >
             <Icon name="plus" className="h-5 w-5" strokeWidth={3} />
             منتج جديد
-          </BigBtn>
+          </BigBtn></div>
         }
       />
 
@@ -577,6 +579,7 @@ export default function StoreTab() {
       </div>
 
       {editorOpen && <ProductModal initial={editing} onClose={() => setEditorOpen(false)} />}
+      {awardsOpen && <WeeklyAwards onClose={() => setAwardsOpen(false)} />}
     </div>
   );
 }
