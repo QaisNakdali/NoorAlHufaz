@@ -294,26 +294,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const cloudDataRef = useRef<State | null>(null); // مرآة البيانات لأغراض الرفع
   const pushTimer = useRef<number | null>(null);
   const firstSave = useRef(true);
-  
-  // Ref لتتبع ما إذا كنا في حالة تحديث قادم من السحابة (لمنع الحلقة التكرارية)
-  const isRemoteUpdateRef = useRef(false);
-
-  /** مقارنة عميقة بسيطة بين حالتين */
-  function statesEqual(a: State, b: State): boolean {
-    return (
-      a.week === b.week &&
-      a.weekName === b.weekName &&
-      a.sound === b.sound &&
-      a.tripOn === b.tripOn &&
-      a.showNewProducts === b.showNewProducts &&
-      JSON.stringify(a.students) === JSON.stringify(b.students) &&
-      JSON.stringify(a.weeksLog) === JSON.stringify(b.weeksLog) &&
-      JSON.stringify(a.ceremonyPicks) === JSON.stringify(b.ceremonyPicks) &&
-      JSON.stringify(a.products) === JSON.stringify(b.products) &&
-      JSON.stringify(a.tripAttendees) === JSON.stringify(b.tripAttendees) &&
-      a.tripDay === b.tripDay
-    );
-  }
+  // رقم النسخة البعيدة الجاري تطبيقها. يمنع مؤثر الحفظ من إعادة رفعها كسجل محلي جديد.
+  const applyingRemoteRev = useRef<number | null>(null);
 
   /** رفع نسخة إلى السحابة */
   const pushCloud = useCallback(async (rev: number, force = false) => {
@@ -324,12 +306,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCloud((c) => ({ ...c, status: "syncing" }));
     try {
       const saved = await cloudSave({ rev, data });
-      lastPushedRev.current = rev;
+      lastPushedRev.current = Math.max(lastPushedRev.current, saved.rev);
       // عند أول نقل للصور إلى Storage نستبدل dataURL بروابط خفيفة محليًا أيضًا.
-      if (saved.data !== data) {
+      if (saved.data !== data || saved.rev !== rev) {
         const normalized = stateFromPartial(saved.data as Partial<State>);
+        applyingRemoteRev.current = saved.rev;
+        revRef.current = saved.rev;
         cloudDataRef.current = normalized;
         setStudents(normalized.students);
+        if (saved.rev !== rev) {
+          setWeek(normalized.week);
+          setWeekNameState(normalized.weekName);
+          setWeeksLog(normalized.weeksLog);
+          setSound(normalized.sound);
+          setCeremonyPicks(normalized.ceremonyPicks);
+          setProducts(normalized.products);
+          setShowNewProducts(normalized.showNewProducts);
+          setTripOn(normalized.tripOn);
+          setTripDay(normalized.tripDay);
+          setTripAttendees(normalized.tripAttendees);
+        }
       }
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
     } catch (e) {
@@ -338,7 +334,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /** تطبيق حزمة قادمة من السحابة على الحالة */
-  const applyRemote = useCallback((remote: State) => {
+  const applyRemote = useCallback((remote: State, remoteRev: number) => {
+    // ألغِ أي رفع مؤجل لنسخة محلية أقدم قبل تطبيق النسخة القادمة.
+    if (pushTimer.current) {
+      window.clearTimeout(pushTimer.current);
+      pushTimer.current = null;
+    }
+    applyingRemoteRev.current = remoteRev;
     // عند تخطي الصور سحابيًا: نحتفظ بصور هذا الجهاز بدل استبدالها بفراغ
     if (CLOUD_SKIP_PHOTOS) {
       const localStudents = cloudDataRef.current?.students ?? [];
@@ -350,8 +352,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }),
       };
     }
-    // تعيين علامة أن هذا تحديث قادم من السحابة لمنع الرفع الإرجاعي
-    isRemoteUpdateRef.current = true;
     setStudents(remote.students);
     setWeek(remote.week);
     setWeekNameState(remote.weekName);
@@ -376,7 +376,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const norm = stateFromPartial(remote.data as Partial<State>);
           revRef.current = remote.rev;
           lastPushedRev.current = remote.rev;
-          applyRemote(norm);
+          applyRemote(norm, remote.rev);
           if (announce) toast("success", "تم جلب تحديثات جديدة من السحابة");
         } else if (!remote && revRef.current > 0) {
           // السحابة فارغة ولدينا بيانات حقيقية — ننشر نسختنا
@@ -391,7 +391,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [applyRemote, pushCloud, toast]
   );
 
-  // حفظ محلي + رفع سحابي عند كل تغيير (باستخدام Debounce)
+  // حفظ محلي + رفع سحابي عند كل تغيير
   useEffect(() => {
     const persistData: State = {
       students,
@@ -412,6 +412,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ? { ...persistData, students: persistData.students.map((s) => ({ ...s, photo: null })) }
       : persistData;
 
+    // تحديث قادم من Supabase: احفظه في localStorage فقط ولا تعِد رفعه.
+    if (applyingRemoteRev.current !== null) {
+      const remoteRev = applyingRemoteRev.current;
+      applyingRemoteRev.current = null;
+      revRef.current = remoteRev;
+      lastPushedRev.current = Math.max(lastPushedRev.current, remoteRev);
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: remoteRev }));
+      } catch {
+        /* تجاهل */
+      }
+      return;
+    }
+
     if (firstSave.current) {
       // أول تشغيل: نحفظ محليًا فقط ونقرأ رقم النسخة المخزون
       firstSave.current = false;
@@ -424,19 +438,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // إذا كان التحديث قادمًا من السحابة، لا نرفع شيئًا — فقط نحفظ محليًا
-    if (isRemoteUpdateRef.current) {
-      isRemoteUpdateRef.current = false; // إعادة تعيين العلامة
-      try {
-        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current }));
-      } catch {
-        /* تجاهل */
-      }
-      return;
-    }
-
-    // تعديل حقيقي من المستخدم: نرفع رقم النسخة ونحفظ ونجدول رفعًا سحابيًا (Debounce 2 ثانية)
-    const newRev = Date.now();
+    // تعديل حقيقي: نرفع رقم النسخة ونحفظ ونجدول رفعًا سحابيًا
+    const newRev = Math.max(Date.now(), revRef.current + 1);
     revRef.current = newRev;
     try {
       localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: newRev }));
@@ -445,7 +448,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     if (isCloudEnabled()) {
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
-      pushTimer.current = window.setTimeout(() => void pushCloud(newRev), 2000);
+      pushTimer.current = window.setTimeout(() => void pushCloud(newRev), 1500);
     }
   }, [students, week, weekName, weeksLog, sound, ceremonyPicks, products, showNewProducts, tripOn, tripDay, tripAttendees, pushCloud]);
 
@@ -454,14 +457,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!cloudEnabled) return;
     void pullCloud(false);
     return subscribeCloud((remote) => {
-      // قاعدة: السحابة هي المصدر الوحيد للحقائق — نقبل التحديث إذا كان أحدث
       if (remote.rev <= revRef.current) return;
       const normalized = stateFromPartial(remote.data as Partial<State>);
       revRef.current = remote.rev;
       lastPushedRev.current = remote.rev;
       cloudDataRef.current = normalized;
-      // applyRemote سيُطلق isRemoteUpdate ليمنع الرفع الإرجاعي
-      applyRemote(normalized);
+      applyRemote(normalized, remote.rev);
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
     });
   }, [applyRemote, cloudEnabled, pullCloud]);
