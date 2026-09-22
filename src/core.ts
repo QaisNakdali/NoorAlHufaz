@@ -53,10 +53,10 @@ export type RewardGrant = {
 };
 
 export const DEFAULT_REWARD_SETTINGS: RewardSettings = {
-  champions: { enabled: true, coins: 100 },
-  improved: { enabled: true, coins: 75 },
-  behavior: { enabled: true, coins: 50 },
-  trip: { enabled: false, coins: 30 },
+  champions: { enabled: true, coins: 0 },
+  improved: { enabled: true, coins: 0 },
+  behavior: { enabled: true, coins: 0 },
+  trip: { enabled: false, coins: 0 },
 };
 
 /** مشتريات خارجية في الحقيبة — الكمية + ما سُلم منها */
@@ -331,12 +331,18 @@ export const isEquipped = (s: Student, item: ShopItem): boolean => {
 
 /* ---------- الجوائز الأسبوعية ---------- */
 export type CeremonyPicks = {
+  /** حقول قديمة محفوظة للتوافق مع الأسابيع التي سبقت نظام الحلقات. */
   improved?: string;
   behavior?: string;
+  /** فائز واحد من كل حلقة؛ المفتاح هو halaqaId والقيمة هي studentId. */
+  improvedByHalaqa?: Record<string, string>;
+  behaviorByHalaqa?: Record<string, string>;
   champion1?: string;
   champion2?: string;
   champion3?: string;
 };
+
+export type PerHalaqaRewardKey = "improved" | "behavior";
 
 export const AWARDS_META: {
   key: keyof CeremonyPicks;

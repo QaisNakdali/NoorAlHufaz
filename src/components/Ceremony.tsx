@@ -7,7 +7,7 @@ import {
   championCriteria,
   isChampionEligible,
   TRIP_DAYS,
-  type CeremonyPicks,
+  type PerHalaqaRewardKey,
   type ShopProduct,
   type Student,
   type TripDay,
@@ -18,7 +18,7 @@ import CosmeticThumb from "./CosmeticThumb";
 import { BigBtn, Coin, heartFade, Icon, SectionHead } from "./ui";
 
 /* اقتراح للجوائز الفردية من الكشف */
-function suggest(key: keyof CeremonyPicks, students: Student[]): string | null {
+function suggest(key: PerHalaqaRewardKey, students: Student[]): string | null {
   if (students.length === 0) return null;
   if (key === "behavior")
     return [...students].sort((a, b) => a.heartsLostWeek - b.heartsLostWeek || b.hearts - a.hearts)[0].id;
@@ -66,12 +66,13 @@ function NewProductCard({ p, delay }: { p: ShopProduct; delay: number }) {
 export default function CeremonyPanel() {
   const {
     students,
+    halaqas,
     week,
     weekName,
     setWeekName,
     weeksLog,
     ceremonyPicks,
-    setCeremonyPick,
+    setCeremonyHalaqaPick,
     rewardSettings,
     setRewardSetting,
     removeWeekLog,
@@ -89,7 +90,8 @@ export default function CeremonyPanel() {
   const [openLog, setOpenLog] = useState<number | null>(null);
   const isRealPick = (v: string | null | undefined): boolean => !!v && v !== "none";
   const pickedCount =
-    AWARDS_META.filter((m) => isRealPick(ceremonyPicks[m.key])).length +
+    Object.values(ceremonyPicks.improvedByHalaqa ?? {}).filter(isRealPick).length +
+    Object.values(ceremonyPicks.behaviorByHalaqa ?? {}).filter(isRealPick).length +
     (rewardSettings.champions.enabled ? students.filter((s) => isChampionEligible(s, tripOn, tripAttendees)).length : 0);
 
   useEffect(() => {
@@ -130,7 +132,7 @@ export default function CeremonyPanel() {
             const setting = rewardSettings[key];
             return <label key={key} className={`rounded-2xl border-2 p-3 transition ${setting.enabled ? "border-grape-300 bg-grape-50" : "border-grape-100 bg-slate-50 opacity-70"}`}>
               <span className="flex items-center justify-between gap-2"><span className="font-display text-sm font-extrabold text-ink">{label}</span><input type="checkbox" checked={setting.enabled} onChange={(e) => setRewardSetting(key, { enabled: e.target.checked })} className="h-5 w-5 accent-violet-600" /></span>
-              <span className="mt-2 flex items-center gap-2 text-xs font-bold text-grape-500">العملات<input type="number" min="0" step="1" disabled={!setting.enabled} value={setting.coins} onChange={(e) => setRewardSetting(key, { coins: Number(e.target.value) })} className="field-control h-9 min-w-0 flex-1 text-center" /></span>
+              <span className="mt-2 flex items-center gap-2 text-xs font-bold text-grape-500">{key === "trip" ? "لكل طالب مستحق" : "لكل فائز"}<input type="number" min="0" step="1" disabled={!setting.enabled} value={setting.coins} onChange={(e) => setRewardSetting(key, { coins: Number(e.target.value) })} className="field-control h-9 min-w-0 flex-1 text-center" /></span>
             </label>;
           })}
         </div>
@@ -242,79 +244,69 @@ export default function CeremonyPanel() {
           {students.filter((s) => isChampionEligible(s, tripOn, tripAttendees)).length === 0 && <p className="text-xs font-bold text-grape-400">لا يوجد طالب استوفى جميع الشروط حتى الآن.</p>}
         </div>
       </div>
-      {/* ===== الجوائز الفردية ===== */}
+      {/* ===== الأكثر تطورًا وأفضل سلوك — فائز واحد من كل حلقة ===== */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         {AWARDS_META.map((m, i) => {
-          const k = m.key as keyof CeremonyPicks;
-          const value = ceremonyPicks[k] ?? "";
-          const canceled = value === "none";
-          const winner = canceled ? null : students.find((s) => s.id === value);
+          const reward = m.key as PerHalaqaRewardKey;
+          const mapKey = reward === "improved" ? "improvedByHalaqa" : "behaviorByHalaqa";
+          const picks = ceremonyPicks[mapKey] ?? {};
+          const setting = rewardSettings[reward];
           return (
-            <div
-              key={m.key}
-              className={`anim-slide-up card-shine rounded-3xl border-2 p-4 transition-all ${
-                canceled ? "border-grape-100 bg-grape-50/60 opacity-75 saturate-50" : "border-grape-200 bg-white"
-              }`}
-              style={{ animationDelay: `${i * 70}ms` }}
-            >
+            <div key={reward} className="anim-slide-up card-shine rounded-3xl border-2 border-grape-200 bg-white p-4" style={{ animationDelay: `${i * 70}ms` }}>
               <div className="flex items-center gap-3">
-                <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${canceled ? "bg-grape-100 text-grape-400" : "bg-gold-400/25 text-gold-600"}`}>
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gold-400/25 text-gold-600">
                   <Icon name={m.icon} className="h-6 w-6" strokeWidth={2.1} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-lg font-extrabold leading-6 text-ink">{m.title}</p>
-                  <p className="text-xs font-bold text-grape-700/65">
-                    {m.desc} · جائزة +{ar(m.key === "behavior" ? rewardSettings.behavior.coins : rewardSettings.improved.coins)} عملة فقط
-                  </p>
+                  <p className="text-xs font-bold text-grape-700/65">{m.desc}</p>
+                  <p className="mt-1 text-xs font-extrabold text-gold-600">عدد العملات لكل فائز: +{ar(setting.coins)}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setCeremonyPick(k, canceled ? null : "none")}
-                  title={canceled ? "إعادة الجائزة إلى الحفل" : "إلغاء هذه الجائزة لهذا الأسبوع"}
-                  className={`flex shrink-0 items-center gap-1 rounded-xl border-2 px-2.5 py-1.5 text-xs font-extrabold transition-all active:scale-95 ${
-                    canceled
-                      ? "border-mint-600/60 bg-mint-400/15 text-mint-600 hover:bg-mint-400/30"
-                      : "border-coral-400/50 bg-white text-coral-500 hover:bg-coral-500 hover:text-white"
-                  }`}
-                >
-                  <Icon name={canceled ? "refresh" : "x"} className="h-3.5 w-3.5" strokeWidth={3} />
-                  {canceled ? "استعادة" : "إلغاء"}
-                </button>
               </div>
-              <div className="mt-3 flex items-center gap-2">
-                <select
-                  value={value}
-                  onChange={(e) => setCeremonyPick(k, e.target.value === "" ? null : e.target.value)}
-                  className="h-11 min-w-0 flex-1 cursor-pointer rounded-2xl border-2 border-grape-200 bg-grape-50 px-3 font-display text-sm font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white"
-                >
-                  <option value="">— اختر الفائز —</option>
-                  <option value="none">— لا أحد —</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} (+{ar(s.weekXp)} نقطة أسبوعية)
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const s = suggest(k, students);
-                    if (s) setCeremonyPick(k, s);
-                  }}
-                  title="اقتراح تلقائي من الكشف"
-                  className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border-2 border-grape-200 bg-white text-grape-500 transition hover:border-grape-400 hover:bg-grape-50 active:scale-90"
-                >
-                  <Icon name="wand" className="h-5 w-5" strokeWidth={2.2} />
-                </button>
+              <div className="mt-3 space-y-2.5">
+                {halaqas.map((halaqa) => {
+                  const halaqaStudents = students.filter((student) => student.halaqaId === halaqa.id);
+                  const legacyPick = ceremonyPicks[reward];
+                  const legacyStudent = halaqaStudents.find((student) => student.id === legacyPick);
+                  const value = picks[halaqa.id] ?? legacyStudent?.id ?? "";
+                  const winner = halaqaStudents.find((student) => student.id === value);
+                  return (
+                    <div key={halaqa.id} className="rounded-2xl border-2 border-grape-100 bg-grape-50/70 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="font-display text-sm font-extrabold text-ink">{halaqa.name}</p>
+                        <span className="text-xs font-bold text-grape-400">{ar(halaqaStudents.length)} طالب</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={value}
+                          disabled={!setting.enabled || halaqaStudents.length === 0}
+                          onChange={(e) => setCeremonyHalaqaPick(reward, halaqa.id, e.target.value || null)}
+                          className="h-11 min-w-0 flex-1 cursor-pointer rounded-2xl border-2 border-grape-200 bg-white px-3 font-display text-sm font-bold text-ink outline-none transition focus:border-grape-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <option value="">— اختر فائز {halaqa.name} —</option>
+                          {halaqaStudents.map((student) => (
+                            <option key={student.id} value={student.id}>{student.name} (+{ar(student.weekXp)} نقطة أسبوعية)</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!setting.enabled || halaqaStudents.length === 0}
+                          onClick={() => {
+                            const studentId = suggest(reward, halaqaStudents);
+                            if (studentId) setCeremonyHalaqaPick(reward, halaqa.id, studentId);
+                          }}
+                          title={`اقتراح فائز من ${halaqa.name}`}
+                          className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border-2 border-grape-200 bg-white text-grape-500 transition hover:border-grape-400 hover:bg-grape-50 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Icon name="wand" className="h-5 w-5" strokeWidth={2.2} />
+                        </button>
+                      </div>
+                      {winner && <div className="anim-pop mt-2 flex items-center gap-2 rounded-xl bg-gold-400/15 px-2.5 py-1.5"><Avatar photo={winner.photo} name={winner.name} size={28} /><span className="text-xs font-extrabold text-gold-700">{winner.name} · +{ar(setting.coins)} عملة</span></div>}
+                    </div>
+                  );
+                })}
+                {halaqas.length === 0 && <p className="rounded-2xl border-2 border-dashed border-grape-200 p-4 text-center text-xs font-bold text-grape-400">أضف حلقة أولًا ليظهر اختيار الفائز الخاص بها.</p>}
               </div>
-              {value === "none" ? (
-                <p className="anim-fade mt-2.5 rounded-2xl bg-grape-50 px-3 py-1.5 text-center text-xs font-bold text-grape-400">لن تُسلَّم هذه الجائزة في الحفل</p>
-              ) : winner ? (
-                <div className="anim-pop mt-2.5 flex items-center gap-2 rounded-2xl bg-gold-400/15 px-3 py-1.5">
-                  <Avatar photo={winner.photo} name={winner.name} size={32} />
-                  <span className="text-sm font-extrabold text-gold-600">{winner.name} يستلم الجائزة في الحفل</span>
-                </div>
-              ) : null}
             </div>
           );
         })}
@@ -458,27 +450,34 @@ function ArmDelete({ onDelete }: { onDelete: () => void }) {
 type Stage =
   | { kind: "intro" }
   | { kind: "awardTitle"; title: string; icon: string; desc: string }
-  | { kind: "awardReveal"; title: string; icon: string; coins: number; xp: number; student: Student }
+  | { kind: "awardReveal"; title: string; awardKey: string; icon: string; coins: number; xp: number; student: Student }
   | { kind: "championsTitle" }
   | { kind: "champions"; students: Student[]; coins: number }
   | { kind: "newProducts"; items: ShopProduct[] }
   | { kind: "finale" };
 
 export function CeremonyShow() {
-  const { closeCeremony, sorted, ceremonyPicks, weekName, grantAward, startWeek, products, week, showNewProducts, rewardSettings, tripOn, tripAttendees } = useApp();
+  const { closeCeremony, sorted, halaqas, ceremonyPicks, weekName, grantAward, startWeek, products, week, showNewProducts, rewardSettings, tripOn, tripAttendees } = useApp();
   const [idx, setIdx] = useState(0);
   const granted = useRef<Set<string>>(new Set());
 
   const stages = useMemo<Stage[]>(() => {
     const st: Stage[] = [{ kind: "intro" }];
-    // الجوائز الفردية: صفحة اسم الجائزة ثم صفحة الكشف
+    // الأكثر تطورًا وأفضل سلوك: فائز واحد مستقل من كل حلقة.
     for (const m of AWARDS_META) {
-      const setting = m.key === "behavior" ? rewardSettings.behavior : rewardSettings.improved;
+      const reward = m.key as PerHalaqaRewardKey;
+      const setting = rewardSettings[reward];
       if (!setting.enabled) continue;
-      const student = sorted.find((s) => s.id === ceremonyPicks[m.key]);
-      if (student) {
-        st.push({ kind: "awardTitle", title: m.title, icon: m.icon, desc: m.desc });
-        st.push({ kind: "awardReveal", title: m.title, icon: m.icon, coins: setting.coins, xp: 0, student });
+      const map = reward === "improved" ? ceremonyPicks.improvedByHalaqa : ceremonyPicks.behaviorByHalaqa;
+      for (const halaqa of halaqas) {
+        const legacyId = ceremonyPicks[reward];
+        const legacyStudent = sorted.find((s) => s.id === legacyId && s.halaqaId === halaqa.id);
+        const studentId = map?.[halaqa.id] ?? legacyStudent?.id;
+        const student = sorted.find((s) => s.id === studentId && s.halaqaId === halaqa.id);
+        if (!student) continue;
+        const title = `${m.title} — ${halaqa.name}`;
+        st.push({ kind: "awardTitle", title, icon: m.icon, desc: `${m.desc} · ${halaqa.name}` });
+        st.push({ kind: "awardReveal", title, awardKey: `${reward}-halaqa-${halaqa.id}`, icon: m.icon, coins: setting.coins, xp: 0, student });
       }
     }
     const champions = rewardSettings.champions.enabled ? sorted.filter((s) => isChampionEligible(s, tripOn, tripAttendees)) : [];
@@ -511,10 +510,10 @@ export function CeremonyShow() {
     else if (stage.kind === "awardTitle" || stage.kind === "championsTitle") sfx.drum();
     else if (stage.kind === "awardReveal") {
       sfx.fanfare();
-      const gk = stage.title + stage.student.id;
+      const gk = stage.awardKey + stage.student.id;
       if (!granted.current.has(gk)) {
         granted.current.add(gk);
-        grantAward(stage.student.id, stage.title, stage.coins, stage.xp);
+        grantAward(stage.student.id, stage.title, stage.coins, stage.xp, stage.awardKey);
       }
     } else if (stage.kind === "champions") {
       sfx.fanfare();
