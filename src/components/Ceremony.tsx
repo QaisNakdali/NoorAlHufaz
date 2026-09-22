@@ -228,7 +228,7 @@ export default function CeremonyPanel() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="font-display text-lg font-extrabold leading-6 text-ink">أبطال الأسبوع — المراكز الثلاثة</p>
-            <p className="text-xs font-bold text-grape-700/65">الأول +٣٠ · الثاني +٢٠ · الثالث +١٠ عملة — البطولة استحقاق لأسبوع مكتمل فقط</p>
+            <p className="text-xs font-bold text-grape-700/65">كل بطل +٧ عملات — البطولة استحقاق لأسبوع مكتمل فقط</p>
           </div>
           <button
             type="button"

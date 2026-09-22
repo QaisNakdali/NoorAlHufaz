@@ -342,8 +342,8 @@ export const CHAMPION_TIERS: {
     key: "champion1",
     title: "بطل الأسبوع — المركز الأول",
     short: "المركز الأول",
-    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة",
-    coins: 30,
+    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة + أدب الحلقة",
+    coins: 7,
     icon: "trophy",
     medal: "bg-gold-500 text-white",
   },
@@ -351,8 +351,8 @@ export const CHAMPION_TIERS: {
     key: "champion2",
     title: "بطل الأسبوع — المركز الثاني",
     short: "المركز الثاني",
-    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة",
-    coins: 20,
+    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة + أدب الحلقة",
+    coins: 7,
     icon: "medal",
     medal: "bg-slate-400 text-white",
   },
@@ -360,8 +360,8 @@ export const CHAMPION_TIERS: {
     key: "champion3",
     title: "بطل الأسبوع — المركز الثالث",
     short: "المركز الثالث",
-    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة",
-    coins: 10,
+    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة + أدب الحلقة",
+    coins: 7,
     icon: "medal",
     medal: "bg-amber-600 text-white",
   },
@@ -373,17 +373,19 @@ export const attendedDays = (s: Student): number => DAYS.filter((d) => s.days[d.
 export const recitations = (s: Student): number =>
   DAYS.reduce((n, d) => n + (s.days[d.key].h ? 1 : 0) + (s.days[d.key].r ? 1 : 0), 0);
 
-/** استحقاق البطولة: أسبوع مكتمل (حضور كل الأيام + تسميع حفظ ومراجعة كل الأيام + الرحلة إن فُعّلت) */
+/** استحقاق البطولة: أسبوع مكتمل (حضور كل الأيام + تسميع حفظ ومراجعة كل الأيام + الرحلة إن فُعّلت + لم يفقد قلوب) */
 export const isChampionEligible = (s: Student, tripOn: boolean, tripAttendees: string[]): boolean =>
   attendedDays(s) === DAYS.length &&
   recitations(s) === DAYS.length * 2 &&
-  (!tripOn || tripAttendees.includes(s.id));
+  (!tripOn || tripAttendees.includes(s.id)) &&
+  s.heartsLostWeek === 0;
 
 /** شروط البطولة (للعرض) */
 export const championCriteria = (tripOn: boolean): { icon: string; label: string; active: boolean }[] => [
   { icon: "calendar", label: "حضر كل الأيام بلا غياب", active: true },
   { icon: "book", label: "سمّع الحفظ والمراجعة كل الأيام", active: true },
   { icon: "flag", label: tripOn ? "حضر الرحلة" : "الرحلة إن وُجدت", active: tripOn },
+  { icon: "heart", label: "لم يفقد قلوبًا — مؤدّب طوال الأسبوع", active: true },
 ];
 
 /** المؤهلون مرتّبون: الأقل فقدانًا للقلوب ثم الأعلى نقاطًا */
