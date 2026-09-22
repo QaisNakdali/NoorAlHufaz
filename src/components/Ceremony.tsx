@@ -81,6 +81,8 @@ export default function CeremonyPanel() {
     weeksLog,
     ceremonyPicks,
     setCeremonyPick,
+    rewardSettings,
+    setRewardSetting,
     removeWeekLog,
     tripOn,
     tripDay,
@@ -129,6 +131,24 @@ export default function CeremonyPanel() {
         }
       />
 
+      <div className="anim-slide-up mb-4 rounded-3xl border-2 border-grape-200 bg-white p-4">
+        <div className="mb-3"><h3 className="font-display text-lg font-extrabold text-ink">إعداد العملات قبل الحفل</h3><p className="text-xs font-bold text-grape-500">كل الجوائز عملات فقط ويمكن تعطيل أي جائزة أو تغيير قيمتها.</p></div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {([
+            ["champions", "🏆 أبطال الأسبوع"],
+            ["improved", "🚀 الأكثر تطورًا"],
+            ["behavior", "⭐ أفضل سلوك"],
+            ["trip", "🎒 جائزة الرحلة"],
+          ] as const).map(([key, label]) => {
+            const setting = rewardSettings[key];
+            return <label key={key} className={`rounded-2xl border-2 p-3 transition ${setting.enabled ? "border-grape-300 bg-grape-50" : "border-grape-100 bg-slate-50 opacity-70"}`}>
+              <span className="flex items-center justify-between gap-2"><span className="font-display text-sm font-extrabold text-ink">{label}</span><input type="checkbox" checked={setting.enabled} onChange={(e) => setRewardSetting(key, { enabled: e.target.checked })} className="h-5 w-5 accent-violet-600" /></span>
+              <span className="mt-2 flex items-center gap-2 text-xs font-bold text-grape-500">العملات<input type="number" min="0" step="1" disabled={!setting.enabled} value={setting.coins} onChange={(e) => setRewardSetting(key, { coins: Number(e.target.value) })} className="field-control h-9 min-w-0 flex-1 text-center" /></span>
+            </label>;
+          })}
+        </div>
+      </div>
+
       {/* ===== كشف الرحلة (اختياري) ===== */}
       <div className="anim-slide-up rounded-3xl border-2 border-mint-400/50 bg-gradient-to-b from-mint-400/12 to-white p-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -138,7 +158,7 @@ export default function CeremonyPanel() {
           <div className="flex-1 min-w-52">
             <p className="font-display text-lg font-extrabold leading-6 text-ink">كشف الرحلة (اختياري)</p>
             <p className="text-xs font-bold text-grape-700/65">
-              ليست كل الأسابيع فيها رحلة — فعّلها عند الحاجة. من يحضر الرحلة يأخذ +٢٠ عملة وتزداد فرصته ليكون بطل الأسبوع
+              ليست كل الأسابيع فيها رحلة — فعّلها عند الحاجة. الحضور يُسجّل هنا، والعملات تُصرف في الحفل فقط إذا كانت جائزة الرحلة مفعلة.
             </p>
           </div>
           <button
@@ -228,7 +248,7 @@ export default function CeremonyPanel() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="font-display text-lg font-extrabold leading-6 text-ink">أبطال الأسبوع — المراكز الثلاثة</p>
-            <p className="text-xs font-bold text-grape-700/65">الأول +٣٠ · الثاني +٢٠ · الثالث +١٠ عملة — البطولة استحقاق لأسبوع مكتمل فقط</p>
+            <p className="text-xs font-bold text-grape-700/65">كل فائز يحصل على +{ar(rewardSettings.champions.coins)} عملة — البطولة استحقاق لأسبوع مكتمل فقط</p>
           </div>
           <button
             type="button"
@@ -306,7 +326,7 @@ export default function CeremonyPanel() {
                   </span>
                   <div className="flex-1">
                     <p className="font-display text-sm font-extrabold leading-4 text-ink">{t.short}</p>
-                    <p className="text-xs font-bold text-grape-700/55">{t.desc} · +{ar(t.coins)} عملة</p>
+                    <p className="text-xs font-bold text-grape-700/55">{t.desc} · +{ar(rewardSettings.champions.coins)} عملة</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -379,7 +399,7 @@ export default function CeremonyPanel() {
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-lg font-extrabold leading-6 text-ink">{m.title}</p>
                   <p className="text-xs font-bold text-grape-700/65">
-                    {m.desc} · جائزة +{ar(m.coins)} عملة{m.key === "improved" ? " وترفع المستوى" : ""}
+                    {m.desc} · جائزة +{ar(m.key === "behavior" ? rewardSettings.behavior.coins : rewardSettings.improved.coins)} عملة فقط
                   </p>
                 </div>
                 <button
@@ -580,7 +600,7 @@ type Stage =
   | { kind: "finale" };
 
 export function CeremonyShow() {
-  const { closeCeremony, sorted, ceremonyPicks, weekName, grantAward, startWeek, products, week, showNewProducts } = useApp();
+  const { closeCeremony, sorted, ceremonyPicks, weekName, grantAward, startWeek, products, week, showNewProducts, rewardSettings, tripOn, tripAttendees } = useApp();
   const [idx, setIdx] = useState(0);
   const [revealedCount, setRevealedCount] = useState(0); // عدد الأبطال المكشوفين في صفحة الأبطال
   const granted = useRef<Set<string>>(new Set());
@@ -589,15 +609,16 @@ export function CeremonyShow() {
     const st: Stage[] = [{ kind: "intro" }];
     // الجوائز الفردية: صفحة اسم الجائزة ثم صفحة الكشف
     for (const m of AWARDS_META) {
+      const setting = m.key === "behavior" ? rewardSettings.behavior : rewardSettings.improved;
+      if (!setting.enabled) continue;
       const student = sorted.find((s) => s.id === ceremonyPicks[m.key]);
       if (student) {
         st.push({ kind: "awardTitle", title: m.title, icon: m.icon, desc: m.desc });
-        // الأكثر تطوّرًا فقط يرفع المستوى (خبرة) — البقية عملات فقط
-        st.push({ kind: "awardReveal", title: m.title, icon: m.icon, coins: m.coins, xp: m.key === "improved" ? m.coins : 0, student });
+        st.push({ kind: "awardReveal", title: m.title, icon: m.icon, coins: setting.coins, xp: 0, student });
       }
     }
     // أبطال الأسبوع الثلاثة في صفحة واحدة
-    const tiers = CHAMPION_TIERS.map((tier) => ({ tier, student: sorted.find((s) => s.id === ceremonyPicks[tier.key]) }))
+    const tiers = (rewardSettings.champions.enabled ? CHAMPION_TIERS : []).map((tier) => ({ tier: { ...tier, coins: rewardSettings.champions.coins }, student: sorted.find((s) => s.id === ceremonyPicks[tier.key]) }))
       .filter((x): x is { tier: (typeof CHAMPION_TIERS)[number]; student: Student } => !!x.student);
     if (tiers.length > 0) {
       st.push({ kind: "championsTitle" });
@@ -614,6 +635,13 @@ export function CeremonyShow() {
   }, []);
 
   const stage = stages[Math.min(idx, stages.length - 1)];
+
+  useEffect(() => {
+    if (!tripOn || !rewardSettings.trip.enabled) return;
+    for (const studentId of tripAttendees) grantAward(studentId, "جائزة الرحلة", rewardSettings.trip.coins, 0);
+    // grantAward نفسه يمنع التكرار عند إعادة فتح الحفل.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // صوت عند دخول كل صفحة + إعادة ضبط عدّاد الأبطال
   useEffect(() => {

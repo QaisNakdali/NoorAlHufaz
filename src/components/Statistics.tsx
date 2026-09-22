@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
 import { ar, DAYS, type Student } from "../core";
+import { analyzeStudent } from "../analytics";
 import Avatar from "./Avatar";
 import { Icon, Modal, SectionHead } from "./ui";
 
@@ -344,6 +345,8 @@ function StudentStatCard({ stats }: { stats: OverallStudentStats }) {
 
 /** نافذة تفاصيل الطالب */
 function StudentDetailModal({ stats, onClose }: { stats: OverallStudentStats; onClose: () => void }) {
+  const { weeksLog } = useApp();
+  const analysis = analyzeStudent(stats.student, weeksLog);
   return (
     <Modal open onClose={onClose} wide>
       <div className="p-6">
@@ -365,6 +368,13 @@ function StudentDetailModal({ stats, onClose }: { stats: OverallStudentStats; on
           <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-grape-100 text-grape-600 transition hover:bg-grape-200">
             <Icon name="x" className="h-5 w-5" strokeWidth={3} />
           </button>
+        </div>
+
+        <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border-2 border-grape-200 bg-white p-4"><p className="text-xs font-bold text-grape-500">جلسات التسميع</p><p className="mt-1 font-display text-2xl font-extrabold text-grape-700">{ar(analysis.recitationSessions)}</p></div>
+          <div className="rounded-2xl border-2 border-grape-200 bg-white p-4"><p className="text-xs font-bold text-grape-500">صفحات الحفظ</p><p className="mt-1 font-display text-2xl font-extrabold text-grape-700">{ar(analysis.memorization.pages)}</p><p className="text-xs font-bold text-grape-400">{ar(analysis.memorization.verses)} آية · {ar(analysis.memorization.lines)} سطر{analysis.memorization.pagesEstimated ? " · تقديري" : ""}</p></div>
+          <div className="rounded-2xl border-2 border-gold-400/50 bg-gold-50 p-4"><p className="text-xs font-bold text-gold-600">صفحات المراجعة</p><p className="mt-1 font-display text-2xl font-extrabold text-gold-700">{ar(analysis.review.pages)}</p><p className="text-xs font-bold text-gold-600/70">{ar(analysis.review.verses)} آية · {ar(analysis.review.lines)} سطر{analysis.review.pagesEstimated ? " · تقديري" : ""}</p></div>
+          <div className="rounded-2xl border-2 border-mint-400/50 bg-mint-50 p-4"><p className="text-xs font-bold text-mint-600">معدل الحفظ الحالي</p><p className="mt-1 font-display text-2xl font-extrabold text-mint-700">{ar(analysis.memorization.averagePagesPerDay)}</p><p className="text-xs font-bold text-mint-600/70">صفحة يوميًا</p></div>
         </div>
 
         <div className="mb-6 grid gap-3 sm:grid-cols-2">
@@ -508,6 +518,13 @@ function StudentDetailModal({ stats, onClose }: { stats: OverallStudentStats; on
         </div>
         
         {/* الملخص العام */}
+        <div className="mt-6 rounded-2xl border-2 border-gold-400/50 bg-gold-50 p-5">
+          <h4 className="font-display text-lg font-extrabold text-ink">💡 توصيات للمعلم</h4>
+          <p className="mt-1 text-xs font-bold text-grape-500">اقتراح الورد القادم: {ar(analysis.suggestedMinPages)}–{ar(analysis.suggestedMaxPages)} صفحة يوميًا. القرار النهائي للمعلم.</p>
+          <ul className="mt-3 space-y-2">{analysis.recommendations.map((tip) => <li key={tip} className="rounded-xl bg-white px-3 py-2 text-sm font-bold leading-6 text-grape-700">• {tip}</li>)}</ul>
+          {analysis.changePercent !== null && <p className={`mt-3 text-sm font-extrabold ${analysis.changePercent >= 0 ? "text-mint-600" : "text-coral-500"}`}>مقارنة بآخر أسبوع محفوظ: {analysis.changePercent >= 0 ? "+" : ""}{ar(analysis.changePercent)}٪</p>}
+        </div>
+
         <div className="mt-6 rounded-2xl border-2 border-grape-200 bg-grape-50 p-5">
           <h4 className="flex items-center gap-2 font-display text-lg font-extrabold text-ink mb-3">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-grape-200 text-grape-600">
