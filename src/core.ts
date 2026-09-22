@@ -328,50 +328,8 @@ export const AWARDS_META: {
   },
 ];
 
-/* ---------- أبطال الأسبوع — المراكز الثلاثة ---------- */
-export const CHAMPION_TIERS: {
-  key: keyof CeremonyPicks;
-  title: string;
-  short: string;
-  desc: string;
-  coins: number;
-  icon: string;
-  medal: string;
-}[] = [
-  {
-    key: "champion1",
-    title: "بطل الأسبوع — المركز الأول",
-    short: "المركز الأول",
-    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة + أدب الحلقة",
-    coins: 7,
-    icon: "trophy",
-    medal: "bg-gold-500 text-white",
-  },
-  {
-    key: "champion2",
-    title: "بطل الأسبوع — المركز الثاني",
-    short: "المركز الثاني",
-    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة + أدب الحلقة",
-    coins: 7,
-    icon: "medal",
-    medal: "bg-slate-400 text-white",
-  },
-  {
-    key: "champion3",
-    title: "بطل الأسبوع — المركز الثالث",
-    short: "المركز الثالث",
-    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة + أدب الحلقة",
-    coins: 7,
-    icon: "medal",
-    medal: "bg-amber-600 text-white",
-  },
-];
-
-/** عدد أيام الحضور هذا الأسبوع */
-export const attendedDays = (s: Student): number => DAYS.filter((d) => s.days[d.key].a).length;
-/** عدد خانات التسميع (حفظ + مراجعة) هذا الأسبوع */
-export const recitations = (s: Student): number =>
-  DAYS.reduce((n, d) => n + (s.days[d.key].h ? 1 : 0) + (s.days[d.key].r ? 1 : 0), 0);
+/* ---------- أبطال الأسبوع — كل المؤهلين بنفس المستوى ---------- */
+export const CHAMPION_COINS = 7;
 
 /** استحقاق البطولة: أسبوع مكتمل (حضور كل الأيام + تسميع حفظ ومراجعة كل الأيام + الرحلة إن فُعّلت + لم يفقد قلوب) */
 export const isChampionEligible = (s: Student, tripOn: boolean, tripAttendees: string[]): boolean =>
@@ -388,15 +346,9 @@ export const championCriteria = (tripOn: boolean): { icon: string; label: string
   { icon: "heart", label: "لم يفقد قلوبًا — مؤدّب طوال الأسبوع", active: true },
 ];
 
-/** المؤهلون مرتّبون: الأقل فقدانًا للقلوب ثم الأعلى نقاطًا */
-export function championTop(students: Student[], tripOn: boolean, tripAttendees: string[]): Student[] {
-  return students
-    .filter((s) => isChampionEligible(s, tripOn, tripAttendees))
-    .sort(
-      (a, b) =>
-        a.heartsLostWeek - b.heartsLostWeek || b.weekXp - a.weekXp || b.xp - a.xp
-    )
-    .slice(0, 3);
+/** كل الطلاب المؤهلين للبطولة — بدون ترتيب لأنهم كلهم في نفس المستوى */
+export function championEligible(students: Student[], tripOn: boolean, tripAttendees: string[]): Student[] {
+  return students.filter((s) => isChampionEligible(s, tripOn, tripAttendees));
 }
 
 /* ---------- الرحلة الأسبوعية ---------- */
