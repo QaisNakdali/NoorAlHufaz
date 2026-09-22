@@ -15,7 +15,6 @@ import {
   bagQty,
   BG_MIGRATION,
   championTop,
-  CHAMPION_TIERS,
   DAYS,
   DAY_PARTS,
   DEFAULT_REWARD_SETTINGS,
@@ -29,7 +28,6 @@ import {
   LEVEL_COIN_REWARD,
   MAX_HEARTS,
   seedStudents,
-  TRIP_COIN_REWARD,
   uid,
   weekCoinsOf,
   weekXpOf,
@@ -45,11 +43,13 @@ import {
   type ShopItem,
   type Student,
   type RewardSettings,
+  type RewardKey,
   type Tab,
   type TripDay,
   type WeekDays,
   type WeekLog,
 } from "./core";
+import { measureStudentWork } from "./analytics";
 import { sfx, setSoundEnabled } from "./sound";
 import {
   cloudLoad,
@@ -1050,36 +1050,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const startWeek = useCallback(() => {
     // أرشفة الأسبوع المنتهي
     const champs = championTop(students, tripOn, tripAttendees);
-    const awards: { title: string; studentName: string }[] = [];
-    for (const m of CHAMPION_TIERS) {
-      const pick = ceremonyPicks[m.key];
-      const st = students.find((s) => s.id === pick);
-      if (st) awards.push({ title: m.title, studentName: st.name });
+    const awards: { title: string; studentName: string; coins?: number; reward?: RewardKey }[] = [];
+    if (rewardSettings.champions.enabled) {
+      champs.forEach((st) => awards.push({ title: "بطل الأسبوع", studentName: st.name, coins: rewardSettings.champions.coins, reward: "champions" }));
     }
+    const allEntries = students.map((s) => {
+      const memorization = measureStudentWork(s, "memorization");
+      const review = measureStudentWork(s, "review");
+      return {
+        id: s.id, name: s.name, photo: s.photo, xp: s.xp, weekXp: s.weekXp,
+        level: levelInfo(s.xp).level, coins: s.coins, hearts: s.hearts,
+        frame: s.frame ?? null, crown: s.crown ?? null,
+        attendanceDays: DAYS.filter((d) => s.days[d.key].a).length,
+        memorizationLines: memorization.lines, reviewLines: review.lines,
+        memorizationVerses: memorization.verses, reviewVerses: review.verses,
+        memorizationPages: memorization.pages, reviewPages: review.pages,
+      };
+    });
     const log: WeekLog = {
       week,
       name: weekName,
       savedAt: new Date().toLocaleDateString("ar", { day: "numeric", month: "long" }),
-      top: [...students]
+      students: allEntries,
+      top: [...allEntries]
         .sort((a, b) => b.weekXp - a.weekXp || b.xp - a.xp)
         .slice(0, 10)
-        .map((s) => ({
-          id: s.id,
-          name: s.name,
-          photo: s.photo,
-          xp: s.xp,
-          weekXp: s.weekXp,
-          level: levelInfo(s.xp).level,
-          coins: s.coins,
-          hearts: s.hearts,
-          frame: s.frame ?? null,
-          crown: s.crown ?? null,
-          attendanceDays: DAYS.filter((d) => s.days[d.key].a).length,
-          memorizationLines: DAYS.filter((d) => s.days[d.key].h).reduce((n, d) => n + s.ward[d.key].memorizationLines, 0),
-          reviewLines: DAYS.filter((d) => s.days[d.key].r).reduce((n, d) => n + s.ward[d.key].reviewLines, 0),
-          memorizationVerses: DAYS.filter((d) => s.days[d.key].h).reduce((n, d) => n + s.ward[d.key].memorizationVerses, 0),
-          reviewVerses: DAYS.filter((d) => s.days[d.key].r).reduce((n, d) => n + s.ward[d.key].reviewVerses, 0),
-        })),
+        ,
       awards,
       trip:
         tripOn && tripDay
@@ -1100,7 +1096,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTripAttendees([]);
     sfx.sparkle();
     toast("success", "بدأ أسبوع جديد — كشف نظيف للجميع، والقلوب كما هي");
-  }, [ceremonyPicks, students, toast, tripAttendees, tripDay, tripOn, week, weekName]);
+  }, [rewardSettings, students, toast, tripAttendees, tripDay, tripOn, week, weekName]);
 
   const setWeekName = useCallback((name: string) => setWeekNameState(name), []);
 
