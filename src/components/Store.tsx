@@ -483,7 +483,7 @@ export default function StoreTab() {
         desc="أضف منتجاتك بصورها وكمياتها — خصائص البروفايل تُرسم صورتها تلقائيًا بلونها"
         color="bg-mint-400/20 text-mint-600"
         extra={
-          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setAwardsOpen(true)} className="rounded-2xl border-2 border-gold-500/50 bg-gold-400/20 px-4 py-2.5 font-display text-sm font-extrabold text-gold-700">🎁 جوائز الأسبوع</button><BigBtn
+          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setAwardsOpen(true)} className="rounded-2xl border-2 border-gold-500/50 bg-gold-400/20 px-4 py-2.5 font-display text-sm font-extrabold text-gold-700">🎁 جوائز المستويات</button><BigBtn
             onClick={() => {
               setEditing(null);
               setEditorOpen(true);

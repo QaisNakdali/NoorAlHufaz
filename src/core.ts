@@ -76,6 +76,10 @@ export type DailyWard = {
   reviewVerses: number;
   memorizationLines: number;
   reviewLines: number;
+  memorizationFromVerse?: number;
+  memorizationToVerse?: number;
+  reviewFromVerse?: number;
+  reviewToVerse?: number;
 };
 export type WeeklyWard = Record<DayKey, DailyWard>;
 
@@ -338,55 +342,14 @@ export const AWARDS_META: {
   key: keyof CeremonyPicks;
   title: string;
   desc: string;
-  coins: number;
   icon: string;
 }[] = [
-  { key: "behavior", title: "جائزة أفضل سلوك", desc: "قدوة في أدب الحلقة — بلا قلوب مفقودة", coins: 20, icon: "heart" },
+  { key: "behavior", title: "جائزة أفضل سلوك", desc: "قدوة في أدب الحلقة — بلا قلوب مفقودة", icon: "heart" },
   {
     key: "improved",
     title: "جائزة الأكثر تطوّرًا",
     desc: "اجتهد أكثر من ورده — الأكثر تسميعًا للحفظ والمراجعة",
-    coins: 20,
     icon: "trend",
-  },
-];
-
-/* ---------- أبطال الأسبوع — المراكز الثلاثة ---------- */
-export const CHAMPION_TIERS: {
-  key: keyof CeremonyPicks;
-  title: string;
-  short: string;
-  desc: string;
-  coins: number;
-  icon: string;
-  medal: string;
-}[] = [
-  {
-    key: "champion1",
-    title: "بطل الأسبوع — المركز الأول",
-    short: "المركز الأول",
-    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة",
-    coins: 30,
-    icon: "trophy",
-    medal: "bg-gold-500 text-white",
-  },
-  {
-    key: "champion2",
-    title: "بطل الأسبوع — المركز الثاني",
-    short: "المركز الثاني",
-    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة",
-    coins: 20,
-    icon: "medal",
-    medal: "bg-slate-400 text-white",
-  },
-  {
-    key: "champion3",
-    title: "بطل الأسبوع — المركز الثالث",
-    short: "المركز الثالث",
-    desc: "أكمل أسبوعه: حضور + تسميع حفظ ومراجعة + الرحلة",
-    coins: 10,
-    icon: "medal",
-    medal: "bg-amber-600 text-white",
   },
 ];
 
@@ -412,15 +375,9 @@ export const championCriteria = (tripOn: boolean): { icon: string; label: string
   { icon: "flag", label: tripOn ? "حضر الرحلة" : "الرحلة إن وُجدت", active: tripOn },
 ];
 
-/** المؤهلون مرتّبون: الأقل فقدانًا للقلوب ثم الأعلى نقاطًا */
+/** جميع المؤهلين أبطال بالدرجة نفسها؛ لا ترتيب ولا مفاضلة بينهم. */
 export function championTop(students: Student[], tripOn: boolean, tripAttendees: string[]): Student[] {
-  return students
-    .filter((s) => isChampionEligible(s, tripOn, tripAttendees))
-    .sort(
-      (a, b) =>
-        a.heartsLostWeek - b.heartsLostWeek || b.weekXp - a.weekXp || b.xp - a.xp
-    )
-    .slice(0, 3);
+  return students.filter((s) => isChampionEligible(s, tripOn, tripAttendees));
 }
 
 /* ---------- الرحلة الأسبوعية ---------- */
@@ -430,7 +387,6 @@ export const TRIP_DAYS: { key: TripDay; label: string }[] = [
   { key: "fri", label: "الجمعة" },
   { key: "sat", label: "السبت" },
 ];
-export const TRIP_COIN_REWARD = 20;
 
 /* ---------- القلوب ---------- */
 export const MAX_HEARTS = 3;
@@ -453,6 +409,8 @@ export type WeekLogEntry = {
   reviewLines?: number;
   memorizationVerses?: number;
   reviewVerses?: number;
+  memorizationPages?: number;
+  reviewPages?: number;
 };
 
 export type WeekLog = {
@@ -460,6 +418,8 @@ export type WeekLog = {
   name: string;
   savedAt: string;
   top: WeekLogEntry[];
+  /** لقطة آمنة لكل الطلاب من هذا الأسبوع؛ top يبقى للتوافق مع الأرشيف القديم. */
+  students?: WeekLogEntry[];
   awards: { title: string; studentName: string; coins?: number; reward?: RewardKey }[];
   trip?: { day: TripDay; attendeeNames: string[] } | null;
 };

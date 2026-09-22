@@ -5,8 +5,6 @@ import {
   ar,
   AWARDS_META,
   championCriteria,
-  championTop,
-  CHAMPION_TIERS,
   isChampionEligible,
   TRIP_DAYS,
   type CeremonyPicks,
@@ -29,13 +27,6 @@ function suggest(key: keyof CeremonyPicks, students: Student[]): string | null {
       .map((s) => ({ s, rec: s.days ? Object.values(s.days).reduce((n, d) => n + (d.h ? 1 : 0) + (d.r ? 1 : 0), 0) : 0 }))
       .sort((a, b) => b.rec - a.rec || b.s.weekXp - a.s.weekXp)[0].s.id;
   return null;
-}
-
-/* اقتراح بطل الأسبوع لكل مركز — من المؤهلين فقط */
-function suggestChampion(key: keyof CeremonyPicks, students: Student[], tripOn: boolean, trip: string[]): string | null {
-  const top = championTop(students, tripOn, trip);
-  const idx = key === "champion1" ? 0 : key === "champion2" ? 1 : 2;
-  return top[idx]?.id ?? null;
 }
 
 /* ===== صفحة منتج في إعلان «وصل حديثًا» ===== */
@@ -99,11 +90,7 @@ export default function CeremonyPanel() {
   const isRealPick = (v: string | null | undefined): boolean => !!v && v !== "none";
   const pickedCount =
     AWARDS_META.filter((m) => isRealPick(ceremonyPicks[m.key])).length +
-    CHAMPION_TIERS.filter((t) => isRealPick(ceremonyPicks[t.key])).length;
-
-  /* إلغاء بطولات الأسبوع لهذا الأسبوع (تُضبط المراكز الثلاثة على "لا أحد") */
-  const champsCanceled = CHAMPION_TIERS.every((t) => ceremonyPicks[t.key] === "none");
-  const toggleChamps = () => CHAMPION_TIERS.forEach((t) => setCeremonyPick(t.key, champsCanceled ? null : "none"));
+    (rewardSettings.champions.enabled ? students.filter((s) => isChampionEligible(s, tripOn, tripAttendees)).length : 0);
 
   useEffect(() => {
     if (!armWeek) return;
@@ -190,7 +177,7 @@ export default function CeremonyPanel() {
                 </button>
               ))}
             </div>
-            <p className="mt-2.5 text-xs font-extrabold text-grape-700">من حضر الرحلة؟ (اضغط على الصورة — كل حضور = +٢٠ عملة):</p>
+            <p className="mt-2.5 text-xs font-extrabold text-grape-700">من حضر الرحلة؟ (اضغط على الصورة{rewardSettings.trip.enabled ? ` — جائزة الحضور +${ar(rewardSettings.trip.coins)} عملة` : " — الجائزة غير مفعلة"}):</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {students.map((s) => {
                 const on = tripAttendees.includes(s.id);
@@ -234,149 +221,27 @@ export default function CeremonyPanel() {
         </button>
       </div>
 
-      {/* ===== أبطال الأسبوع — المراكز الثلاثة ===== */}
-      <div
-        className={`anim-slide-up card-shine mt-4 rounded-3xl border-2 p-4 transition-all ${
-          champsCanceled
-            ? "border-grape-100 bg-grape-50/60 opacity-75 saturate-50"
-            : "border-gold-500/50 bg-gradient-to-b from-gold-400/15 to-white"
-        }`}
-      >
+      {/* ===== أبطال الأسبوع — جميع المستوفين متساوون ===== */}
+      <div className="anim-slide-up card-shine mt-4 rounded-3xl border-2 border-gold-500/50 bg-gradient-to-b from-gold-400/15 to-white p-4">
         <div className="flex items-center gap-3">
-          <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${champsCanceled ? "bg-grape-100 text-grape-400" : "bg-gold-500 text-white shadow-[0_3px_0_#b57a0a]"}`}>
-            <Icon name="trophy" className="h-6 w-6" strokeWidth={2.1} />
-          </span>
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gold-500 text-white shadow-[0_3px_0_#b57a0a]"><Icon name="trophy" className="h-6 w-6" strokeWidth={2.1} /></span>
           <div className="min-w-0 flex-1">
-            <p className="font-display text-lg font-extrabold leading-6 text-ink">أبطال الأسبوع — المراكز الثلاثة</p>
-            <p className="text-xs font-bold text-grape-700/65">كل فائز يحصل على +{ar(rewardSettings.champions.coins)} عملة — البطولة استحقاق لأسبوع مكتمل فقط</p>
+            <p className="font-display text-lg font-extrabold leading-6 text-ink">أبطال الأسبوع</p>
+            <p className="text-xs font-bold text-grape-700/65">كل طالب يستوفي الشروط بطل بالدرجة نفسها ويحصل على +{ar(rewardSettings.champions.coins)} عملة.</p>
           </div>
-          <button
-            type="button"
-            onClick={toggleChamps}
-            title={champsCanceled ? "إعادة بطولات الأسبوع إلى الحفل" : "إلغاء بطولات الأسبوع لهذا الأسبوع"}
-            className={`flex shrink-0 items-center gap-1 rounded-xl border-2 px-2.5 py-1.5 text-xs font-extrabold transition-all active:scale-95 ${
-              champsCanceled
-                ? "border-mint-600/60 bg-mint-400/15 text-mint-600 hover:bg-mint-400/30"
-                : "border-coral-400/50 bg-white text-coral-500 hover:bg-coral-500 hover:text-white"
-            }`}
-          >
-            <Icon name={champsCanceled ? "refresh" : "x"} className="h-3.5 w-3.5" strokeWidth={3} />
-            {champsCanceled ? "استعادة" : "إلغاء"}
-          </button>
         </div>
-
-        {champsCanceled && (
-          <p className="anim-fade mt-3 rounded-2xl bg-grape-50 px-3 py-2 text-center text-xs font-bold text-grape-400">
-            لن تُسلَّم بطولات الأسبوع في حفل هذا الأسبوع
-          </p>
-        )}
-
-        {!champsCanceled && (
-        <>
-        {/* شروط البطولة */}
-        <div className="mt-3 rounded-2xl border-2 border-gold-500/30 bg-white/85 p-3">
-          <p className="mb-2 flex items-center gap-1.5 font-display text-xs font-extrabold text-gold-600">
-            <Icon name="shield" className="h-4 w-4" strokeWidth={2.4} />
-            لا يستحق البطولة إلا من جمع الصفات الثلاث:
-          </p>
-          <div className="flex flex-wrap gap-1.5 text-xs font-bold">
-            {championCriteria(tripOn).map((c) => (
-              <span key={c.label} className={`flex items-center gap-1 rounded-full px-2.5 py-1 ${c.active ? "bg-mint-400/20 text-mint-600" : "bg-grape-100 text-grape-400"}`}>
-                <Icon name={c.icon} className="h-3.5 w-3.5" strokeWidth={2.6} /> {c.label}
-              </span>
-            ))}
-          </div>
-          {(() => {
-            const eligible = students.filter((s) => isChampionEligible(s, tripOn, tripAttendees));
-            return (
-              <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t-2 border-dashed border-gold-500/25 pt-2.5">
-                <span className="text-xs font-extrabold text-ink">
-                  المؤهلون للبطولة: <span className="text-gold-600">{ar(eligible.length)}</span> من {ar(students.length)}
-                </span>
-                {eligible.slice(0, 6).map((s) => (
-                  <span key={s.id} className="flex items-center gap-1 rounded-full bg-gold-400/20 px-2 py-0.5 text-xs font-extrabold text-gold-600">
-                    {s.name}
-                    {tripOn && tripAttendees.includes(s.id) && " ✦"}
-                  </span>
-                ))}
-                {eligible.length === 0 && (
-                  <span className="text-xs font-bold text-grape-400">لم يكمل أحد أسبوعه بعد — البطولة لمن يستحق</span>
-                )}
-              </div>
-            );
-          })()}
+        <div className="mt-3 flex flex-wrap gap-1.5 text-xs font-bold">
+          {championCriteria(tripOn).map((c) => (
+            <span key={c.label} className={`flex items-center gap-1 rounded-full px-2.5 py-1 ${c.active ? "bg-mint-400/20 text-mint-600" : "bg-grape-100 text-grape-400"}`}><Icon name={c.icon} className="h-3.5 w-3.5" strokeWidth={2.6} /> {c.label}</span>
+          ))}
         </div>
-
-        <div className="mt-3 grid gap-2.5 lg:grid-cols-3">
-          {CHAMPION_TIERS.map((t, ti) => {
-            const value = ceremonyPicks[t.key] ?? "";
-            const winner = value === "none" ? null : students.find((s) => s.id === value);
-            const takenByOthers = CHAMPION_TIERS.filter((x) => x.key !== t.key)
-              .map((x) => ceremonyPicks[x.key])
-              .filter((v): v is string => !!v && v !== "none");
-            const options = students.filter(
-              (s) => isChampionEligible(s, tripOn, tripAttendees) && (!takenByOthers.includes(s.id) || s.id === value)
-            );
-            const suggestion = suggestChampion(t.key, students, tripOn, tripAttendees);
-            return (
-              <div key={t.key} className="rounded-2xl border-2 border-gold-500/30 bg-white/80 p-3">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full font-display text-base font-extrabold ${t.medal}`}>
-                    {ar(ti + 1)}
-                  </span>
-                  <div className="flex-1">
-                    <p className="font-display text-sm font-extrabold leading-4 text-ink">{t.short}</p>
-                    <p className="text-xs font-bold text-grape-700/55">{t.desc} · +{ar(rewardSettings.champions.coins)} عملة</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={value}
-                    onChange={(e) => setCeremonyPick(t.key, e.target.value === "" ? null : e.target.value)}
-                    className="h-10 min-w-0 flex-1 cursor-pointer rounded-xl border-2 border-grape-200 bg-grape-50 px-2.5 font-display text-xs font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white"
-                  >
-                    <option value="">— اختر البطل —</option>
-                    <option value="none">— لا أحد —</option>
-                    {options.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                        {tripOn && tripAttendees.includes(s.id) ? " ✦ حضر الرحلة" : ""} (+{ar(s.weekXp)})
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => suggestion && setCeremonyPick(t.key, suggestion)}
-                    disabled={!suggestion}
-                    title="اقتراح تلقائي من المؤهلين"
-                    className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border-2 border-grape-200 bg-white text-grape-500 transition hover:border-grape-400 hover:bg-grape-50 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Icon name="wand" className="h-4 w-4" strokeWidth={2.2} />
-                  </button>
-                </div>
-                {value === "none" ? (
-                  <p className="mt-2 rounded-xl bg-grape-50 px-2.5 py-1.5 text-center text-xs font-bold text-grape-400">لن يُسلَّم هذا المركز في الحفل</p>
-                ) : winner ? (
-                  <div className="anim-pop mt-2 flex items-center gap-2 rounded-xl bg-gold-400/15 px-2.5 py-1.5">
-                    <Avatar photo={winner.photo} name={winner.name} size={26} />
-                    <span className="truncate text-xs font-extrabold text-gold-600">
-                      {winner.name}
-                      {tripOn && tripAttendees.includes(winner.id) && " ✦"}
-                    </span>
-                  </div>
-                ) : (
-                  <p className="mt-2 rounded-xl bg-grape-50 px-2.5 py-1.5 text-center text-xs font-bold text-grape-400">
-                    {options.length === 0 ? "لا مؤهلين متاحين لهذا المركز" : "لم يُحدَّد بعد"}
-                  </p>
-                )}
-              </div>
-            );
-          })}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {students.filter((s) => isChampionEligible(s, tripOn, tripAttendees)).map((s) => (
+            <span key={s.id} className="flex items-center gap-2 rounded-full bg-gold-400/20 px-3 py-1.5 text-xs font-extrabold text-gold-700"><Avatar photo={s.photo} name={s.name} size={26} /> {s.name}</span>
+          ))}
+          {students.filter((s) => isChampionEligible(s, tripOn, tripAttendees)).length === 0 && <p className="text-xs font-bold text-grape-400">لا يوجد طالب استوفى جميع الشروط حتى الآن.</p>}
         </div>
-        </>
-        )}
       </div>
-
       {/* ===== الجوائز الفردية ===== */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         {AWARDS_META.map((m, i) => {
@@ -595,14 +460,13 @@ type Stage =
   | { kind: "awardTitle"; title: string; icon: string; desc: string }
   | { kind: "awardReveal"; title: string; icon: string; coins: number; xp: number; student: Student }
   | { kind: "championsTitle" }
-  | { kind: "champions"; tiers: { tier: (typeof CHAMPION_TIERS)[number]; student: Student }[] }
+  | { kind: "champions"; students: Student[]; coins: number }
   | { kind: "newProducts"; items: ShopProduct[] }
   | { kind: "finale" };
 
 export function CeremonyShow() {
   const { closeCeremony, sorted, ceremonyPicks, weekName, grantAward, startWeek, products, week, showNewProducts, rewardSettings, tripOn, tripAttendees } = useApp();
   const [idx, setIdx] = useState(0);
-  const [revealedCount, setRevealedCount] = useState(0); // عدد الأبطال المكشوفين في صفحة الأبطال
   const granted = useRef<Set<string>>(new Set());
 
   const stages = useMemo<Stage[]>(() => {
@@ -617,12 +481,10 @@ export function CeremonyShow() {
         st.push({ kind: "awardReveal", title: m.title, icon: m.icon, coins: setting.coins, xp: 0, student });
       }
     }
-    // أبطال الأسبوع الثلاثة في صفحة واحدة
-    const tiers = (rewardSettings.champions.enabled ? CHAMPION_TIERS : []).map((tier) => ({ tier: { ...tier, coins: rewardSettings.champions.coins }, student: sorted.find((s) => s.id === ceremonyPicks[tier.key]) }))
-      .filter((x): x is { tier: (typeof CHAMPION_TIERS)[number]; student: Student } => !!x.student);
-    if (tiers.length > 0) {
+    const champions = rewardSettings.champions.enabled ? sorted.filter((s) => isChampionEligible(s, tripOn, tripAttendees)) : [];
+    if (champions.length > 0) {
       st.push({ kind: "championsTitle" });
-      st.push({ kind: "champions", tiers });
+      st.push({ kind: "champions", students: champions, coins: rewardSettings.champions.coins });
     }
     // إعلان منتجات المتجر الجديدة لهذا الأسبوع (اختياري)
     if (showNewProducts) {
@@ -643,9 +505,8 @@ export function CeremonyShow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // صوت عند دخول كل صفحة + إعادة ضبط عدّاد الأبطال
+  // صوت عند دخول كل صفحة وصرف الجوائز مرة واحدة فقط.
   useEffect(() => {
-    if (stage.kind === "champions") setRevealedCount(0);
     if (stage.kind === "intro") sfx.drum();
     else if (stage.kind === "awardTitle" || stage.kind === "championsTitle") sfx.drum();
     else if (stage.kind === "awardReveal") {
@@ -655,6 +516,15 @@ export function CeremonyShow() {
         granted.current.add(gk);
         grantAward(stage.student.id, stage.title, stage.coins, stage.xp);
       }
+    } else if (stage.kind === "champions") {
+      sfx.fanfare();
+      stage.students.forEach((student) => {
+        const key = `champion-${student.id}`;
+        if (!granted.current.has(key)) {
+          granted.current.add(key);
+          grantAward(student.id, "بطل الأسبوع", stage.coins, 0);
+        }
+      });
     } else if (stage.kind === "newProducts") sfx.sparkle();
     else sfx.sparkle();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -666,22 +536,6 @@ export function CeremonyShow() {
       setIdx((v) => v + 1);
       sfx.click();
     }
-  };
-
-  /* كشف البطل التالي في صفحة الأبطال — الترتيب: الثالث ← الثاني ← الأول */
-  type TierEntry = { tier: (typeof CHAMPION_TIERS)[number]; student: Student };
-  const revealNextChampion = (tiers: TierEntry[]) => {
-    const orderIdx = tiers.length - 1 - revealedCount;
-    const entry = tiers[orderIdx];
-    if (!entry) return;
-    setRevealedCount((c) => c + 1);
-    const gk = entry.tier.title + entry.student.id;
-    if (!granted.current.has(gk)) {
-      granted.current.add(gk);
-      grantAward(entry.student.id, entry.tier.title, entry.tier.coins);
-    }
-    if (revealedCount + 1 >= tiers.length) sfx.fanfare();
-    else sfx.drum();
   };
 
   return (
@@ -757,90 +611,32 @@ export function CeremonyShow() {
           <div className="anim-pop text-center">
             <Icon name="trophy" className="anim-wiggle mx-auto h-20 w-20 text-gold-400" strokeWidth={1.8} />
             <h2 className="mt-6 font-display text-4xl font-extrabold text-gold-300 sm:text-5xl">أبطال الأسبوع</h2>
-            <p className="mt-3 font-display text-xl font-extrabold text-white">المركز الأول · الثاني · الثالث</p>
+            <p className="mt-3 font-display text-xl font-extrabold text-white">كل من استوفى الشروط بطل بالدرجة نفسها</p>
             <p className="mt-2 max-w-md text-sm font-bold leading-6 text-grape-300">
               من أكملوا أسبوعهم: حضور كل الأيام + تسميع الحفظ والمراجعة + الرحلة إن وُجدت
             </p>
           </div>
         )}
 
-        {/* ===== منصة الأبطال — الكشف تصاعديًا ===== */}
+        {/* ===== أبطال الأسبوع — بلا ترتيب ===== */}
         {stage.kind === "champions" && (
           <div className="w-full text-center">
-            <h2 className="anim-slide-down font-display text-2xl font-extrabold text-white sm:text-3xl">
-              {revealedCount < stage.tiers.length ? "منصة أبطال الأسبوع" : "مبروك لأبطال الأسبوع!"}
-            </h2>
-            <div className="mt-8 flex items-end justify-center gap-3 sm:gap-6">
-              {[1, 2, 3].map((place) => {
-                const entry = stage.tiers.find((t) => t.tier.key === ("champion" + place));
-                if (!entry) return null;
-                /* يُكشف تصاعديًا: الثالث أولًا ثم الثاني ثم الأول */
-                const isShown = revealedCount >= stage.tiers.length - stage.tiers.indexOf(entry);
-                const heights = { 1: "h-40", 2: "h-28", 3: "h-20" } as const;
-                const bgs = {
-                  1: "border-gold-500 bg-gradient-to-b from-gold-300 to-gold-500 shadow-[0_0_40px_rgba(247,183,51,0.45)]",
-                  2: "border-slate-300 bg-gradient-to-b from-slate-100 to-slate-300",
-                  3: "border-amber-500 bg-gradient-to-b from-amber-200 to-amber-400",
-                } as const;
-                return (
-                  <div key={entry.tier.key} className="flex w-28 flex-col items-center sm:w-36">
-                    {place === 1 && isShown && <Icon name="crown" className="anim-bounce-soft mb-1 h-9 w-9 text-gold-400" strokeWidth={2} />}
-                    <div className="relative">
-                      {isShown ? (
-                        <div className={`anim-pop ${heartFade(entry.student.hearts)}`}>
-                          <Avatar
-                            photo={entry.student.photo}
-                            name={entry.student.name}
-                            size={place === 1 ? 104 : 84}
-                            frame={entry.student.frame}
-                            crown={place === 1 ? entry.student.crown : null}
-                            glow={entry.student.glow}
-                          />
-                        </div>
-                      ) : (
-                        <div className="grid place-items-center rounded-[20px] border-4 border-dashed border-white/25 bg-white/5" style={{ width: place === 1 ? 104 : 84, height: place === 1 ? 104 : 84 }}>
-                          <span className="font-display text-3xl font-extrabold text-white/40">؟</span>
-                        </div>
-                      )}
-                      <span className={`absolute -bottom-3 left-1/2 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full border-4 border-grape-900 font-display text-base font-extrabold ${entry.tier.medal}`}>
-                        {ar(place)}
-                      </span>
-                    </div>
-                    <p className="mt-4 max-w-full truncate font-display text-base font-extrabold text-white sm:text-lg">
-                      {isShown ? entry.student.name : "؟"}
-                    </p>
-                    <p className={`mt-0.5 rounded-full px-2.5 py-0.5 text-xs font-extrabold ${isShown ? "bg-gold-400 text-ink" : "bg-white/10 text-white/40"}`}>
-                      {isShown ? `+${ar(entry.tier.coins)} عملة` : entry.tier.short}
-                    </p>
-                    <div className={`mt-2 w-full rounded-t-2xl border-2 border-b-0 ${heights[place as 1 | 2 | 3]} ${bgs[place as 1 | 2 | 3]}`} />
+            <h2 className="anim-slide-down font-display text-3xl font-extrabold text-white">مبروك لأبطال الأسبوع!</h2>
+            <p className="mt-2 font-bold text-gold-300">كل بطل يحصل على +{ar(stage.coins)} عملة</p>
+            <div className="mx-auto mt-8 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+              {stage.students.map((student) => (
+                <div key={student.id} className="anim-pop rounded-3xl border-2 border-gold-400/40 bg-white/10 p-4">
+                  <div className={heartFade(student.hearts)}>
+                    <Avatar photo={student.photo} name={student.name} size={86} frame={student.frame} crown={student.crown} glow={student.glow} />
                   </div>
-                );
-              })}
+                  <p className="mt-3 font-display text-lg font-extrabold text-white">{student.name}</p>
+                  <p className="mt-1 text-xs font-extrabold text-gold-300">🏆 بطل الأسبوع</p>
+                </div>
+              ))}
             </div>
-
-            {revealedCount < stage.tiers.length ? (
-              <button
-                type="button"
-                onClick={() => revealNextChampion(stage.tiers)}
-                className="anim-slide-up mx-auto mt-8 flex items-center gap-2 rounded-2xl bg-gold-500 px-10 py-3.5 font-display text-xl font-extrabold text-ink shadow-[0_5px_0_#b57a0a] transition-all hover:brightness-110 active:translate-y-1 active:shadow-none"
-              >
-                {revealedCount === 0
-                  ? "اكشف المركز الثالث"
-                  : revealedCount === 1
-                  ? "اكشف المركز الثاني"
-                  : "اكشف المركز الأول"}
-                <Icon name="chevron" className="h-5 w-5 rotate-180" strokeWidth={3} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={next}
-                className="anim-slide-up mx-auto mt-8 flex items-center gap-2 rounded-2xl bg-gold-500 px-10 py-3.5 font-display text-xl font-extrabold text-ink shadow-[0_5px_0_#b57a0a] transition-all hover:brightness-110 active:translate-y-1 active:shadow-none"
-              >
-                كل الأبطال ظهروا — متابعة
-                <Icon name="chevron" className="h-5 w-5 rotate-180" strokeWidth={3} />
-              </button>
-            )}
+            <button type="button" onClick={next} className="anim-slide-up mx-auto mt-8 flex items-center gap-2 rounded-2xl bg-gold-500 px-10 py-3.5 font-display text-xl font-extrabold text-ink shadow-[0_5px_0_#b57a0a] transition-all hover:brightness-110 active:translate-y-1 active:shadow-none">
+              متابعة <Icon name="chevron" className="h-5 w-5 rotate-180" strokeWidth={3} />
+            </button>
           </div>
         )}
 
