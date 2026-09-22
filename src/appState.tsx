@@ -44,6 +44,7 @@ import {
   type Student,
   type RewardSettings,
   type RewardKey,
+  type PerHalaqaRewardKey,
   type Tab,
   type TripDay,
   type WeekDays,
@@ -125,8 +126,9 @@ type Ctx = State & {
   removeProduct: (id: string) => void;
   restockProduct: (id: string, amount: number) => void;
 
-  grantAward: (id: string, title: string, coins?: number, xp?: number) => void;
+  grantAward: (id: string, title: string, coins?: number, xp?: number, uniqueKey?: string) => void;
   setCeremonyPick: (key: keyof CeremonyPicks, id: string | null) => void;
+  setCeremonyHalaqaPick: (reward: PerHalaqaRewardKey, halaqaId: string, id: string | null) => void;
   setRewardSetting: (key: keyof RewardSettings, value: Partial<RewardSettings[keyof RewardSettings]>) => void;
   removeWeekLog: (week: number) => void;
   /* الرحلة الأسبوعية */
@@ -980,14 +982,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /* ===== الجوائز والأسبوع ===== */
   /** منح جائزة أسبوعية بعملات فقط وبشكل آمن ضد التكرار. */
   const grantAward = useCallback(
-    (id: string, title: string, coins = 0, _xp = 0) => {
+    (id: string, title: string, coins = 0, _xp = 0, uniqueKey?: string) => {
       const st = students.find((s) => s.id === id);
       if (!st) return;
-      if (st.awards.some((a) => a.week === week && a.title === title)) return;
+      const awardId = `week-${week}-${id}-${uniqueKey ?? title}`;
+      const legacyTitle = title.split(" — ")[0];
+      if (st.awards.some((a) => a.id === awardId || (a.week === week && (a.title === title || (uniqueKey && a.title === legacyTitle))))) return;
       const next: Student = {
         ...st,
         coins: st.coins + Math.max(0, coins),
-        awards: [...st.awards, { id: `week-${week}-${id}-${title}`, title, week, coins: Math.max(0, coins) }],
+        awards: [...st.awards, { id: awardId, title, week, coins: Math.max(0, coins) }],
       };
       setStudents((ss) => ss.map((s) => (s.id === id ? next : s)));
       sfx.fanfare();
@@ -998,6 +1002,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setCeremonyPick = useCallback((key: keyof CeremonyPicks, id: string | null) => {
     setCeremonyPicks((p) => ({ ...p, [key]: id ?? undefined }));
+  }, []);
+
+  const setCeremonyHalaqaPick = useCallback((reward: PerHalaqaRewardKey, halaqaId: string, id: string | null) => {
+    const mapKey = reward === "improved" ? "improvedByHalaqa" : "behaviorByHalaqa";
+    setCeremonyPicks((current) => {
+      const previous = current[mapKey] ?? {};
+      const next = { ...previous };
+      if (id) next[halaqaId] = id;
+      else delete next[halaqaId];
+      return { ...current, [mapKey]: next };
+    });
   }, []);
 
   const setRewardSetting = useCallback((key: keyof RewardSettings, value: Partial<RewardSettings[keyof RewardSettings]>) => {
@@ -1150,6 +1165,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     restockProduct,
     grantAward,
     setCeremonyPick,
+    setCeremonyHalaqaPick,
     setRewardSetting,
     removeWeekLog,
     startWeek,
