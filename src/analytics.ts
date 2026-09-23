@@ -142,7 +142,7 @@ type TrackSnapshot = {
 export function buildTrackSnapshot(student: Student, kind: LearningTrack): TrackSnapshot {
   const part = trackPart(kind);
   const plannedDays = DAYS.filter((day) => hasPlannedWork(student, day.key, kind));
-  const completedDays = plannedDays.filter((day) => student.days[day.key][part]).length;
+  const completedDays = DAYS.filter((day) => student.days[day.key][part]).length;
   const expectedPagesValue = plannedDays.reduce((sum, day) => sum + pagesForWardDay(student, day.key, kind).pages, 0);
   let excellent = 0;
   let veryGood = 0;
@@ -155,7 +155,7 @@ export function buildTrackSnapshot(student: Student, kind: LearningTrack): Track
   return {
     pages: measureStudentWork(student, kind).pages,
     completedDays,
-    expectedDays: plannedDays.length || null,
+    expectedDays: DAYS.length,
     expectedPages: expectedPagesValue > 0 ? round(expectedPagesValue, 2) : null,
     excellent,
     veryGood,
@@ -189,7 +189,8 @@ function requirementFrom(dayRate: number | null, quantityRate: number | null): R
 const average = (values: number[]): number => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
 
 function detectTrend(history: TrackSnapshot[], current: TrackSnapshot): TrackTrend {
-  const series = [...history, current].slice(-6);
+  // كامل المسيرة يبني خط الأساس، بينما آخر أسبوعين مع الحالي يمثلون الأداء القريب.
+  const series = [...history, current];
   const comparable = series
     .map((snapshot) => {
       const dayRate = ratio(snapshot.completedDays, snapshot.expectedDays);
@@ -203,14 +204,17 @@ function detectTrend(history: TrackSnapshot[], current: TrackSnapshot): TrackTre
     .filter((snapshot) => snapshot.excellent + snapshot.veryGood > 0)
     .map((snapshot) => (snapshot.excellent * 2 + snapshot.veryGood) / (snapshot.excellent + snapshot.veryGood));
   const legacyPages = history.map((snapshot) => snapshot.pages);
-  if (current.expectedDays && current.completedDays >= current.expectedDays) legacyPages.push(current.pages);
-  const source = comparable.length >= 2 ? comparable : ratingSeries.length >= 2 ? ratingSeries : legacyPages.length >= 2 ? legacyPages : [];
+  legacyPages.push(current.pages);
+  const hasBroadComparableHistory = comparable.length >= Math.max(2, Math.ceil(series.length * 0.6));
+  const source = hasBroadComparableHistory ? comparable : legacyPages.length >= 2 ? legacyPages : ratingSeries.length >= 2 ? ratingSeries : [];
   if (source.length < 2) return "insufficient-data";
-  const split = Math.max(1, Math.floor(source.length / 2));
-  const before = average(source.slice(0, split));
-  const recent = average(source.slice(split));
+  const recentSize = Math.min(3, Math.max(1, Math.ceil(source.length / 3)));
+  const historical = source.slice(0, -recentSize);
+  const recentValues = source.slice(-recentSize);
+  const before = average(historical.length ? historical : source.slice(0, -1));
+  const recent = average(recentValues);
   const change = recent - before;
-  const threshold = comparable.length >= 2 ? 0.12 : 0.25;
+  const threshold = hasBroadComparableHistory ? 0.12 : 0.25;
   if (change >= threshold) return "improving";
   if (change <= -threshold) return "declining";
   return "stable";
@@ -219,7 +223,7 @@ function detectTrend(history: TrackSnapshot[], current: TrackSnapshot): TrackTre
 function detectRatingTransition(student: Student, kind: LearningTrack): RatingTransition {
   const part = trackPart(kind);
   const ratings = DAYS
-    .filter((day) => hasPlannedWork(student, day.key, kind) && student.days[day.key][part])
+    .filter((day) => student.days[day.key][part])
     .map((day) => student.recitationRatings?.[day.key]?.[part])
     .filter((rating): rating is "excellent" | "very-good" => !!rating);
   if (ratings.length < 2) return null;
@@ -236,7 +240,7 @@ function consecutiveMisses(student: Student, kind: LearningTrack): number {
   const part = trackPart(kind);
   let current = 0;
   let longest = 0;
-  for (const day of DAYS.filter((item) => hasPlannedWork(student, item.key, kind))) {
+  for (const day of DAYS) {
     if (student.days[day.key][part]) current = 0;
     else {
       current += 1;
@@ -323,11 +327,16 @@ export function buildRegisterInsight(student: Student, weeksLog: WeekLog[]): Reg
   else if (r.ratingTransition === "very-good-to-excellent" && m.requirement === "meets") advice = "المراجعة في تحسن واضح من جيد جدًا إلى ممتاز، والحفظ يحقق المطلوب.";
   else if (m.ratingTransition === "excellent-to-very-good") advice = "تراجع تقييم الحفظ مؤخرًا من ممتاز إلى جيد جدًا؛ يُفضّل متابعة السبب خلال الأيام القادمة.";
   else if (r.ratingTransition === "excellent-to-very-good") advice = "تراجع تقييم المراجعة مؤخرًا من ممتاز إلى جيد جدًا؛ يُفضّل متابعة السبب خلال الأيام القادمة.";
-  else if (m.trend === "improving" && r.trend === "improving") advice = "يوجد تحسن واضح في الحفظ والمراجعة؛ تابع مدى بلوغ الخطة المطلوبة.";
+  else if (m.trend === "improving" && r.trend === "improving" && m.requirement === "meets" && r.requirement === "meets") advice = "يوجد تحسن واضح ومستمر في الحفظ والمراجعة، وقد وصل الطالب حاليًا إلى تحقيق المطلوب.";
+  else if (m.trend === "improving" && r.trend === "improving") advice = `يوجد تحسن واضح في الحفظ والمراجعة، لكن ${m.requirement !== "meets" ? `الحفظ ما زال ${m.completedDays} من ${m.expectedDays ?? 4}` : `المراجعة ما زالت ${r.completedDays} من ${r.expectedDays ?? 4}`} أيام مطلوبة.`;
   else if (m.trend === "improving" && r.trend === "declining") advice = "الحفظ في تحسن، لكن المراجعة تتراجع مقارنة بالمستوى السابق وتحتاج متابعة.";
   else if (m.trend === "declining" && r.trend === "declining") advice = "يوجد تراجع في الحفظ والمراجعة؛ يُفضّل متابعة الطالب ومعرفة السبب.";
+  else if (m.trend === "declining") advice = `يوجد تراجع في انتظام الحفظ مقارنة بمستوى الطالب المعتاد؛ يحقق حاليًا ${m.completedDays} من ${m.expectedDays ?? 4} أيام، ويُفضّل متابعة السبب.`;
+  else if (r.trend === "declining") advice = `يوجد تراجع في انتظام المراجعة مقارنة بمستوى الطالب المعتاد؛ يحقق حاليًا ${r.completedDays} من ${r.expectedDays ?? 4} أيام، ويُفضّل متابعة السبب.`;
   else if (m.trend === "improving" && (m.requirement === "below" || m.requirement === "far-below")) advice = `الحفظ يتحسن مقارنة بالفترة السابقة، لكنه ما زال أقل من المطلوب (${m.completedDays} من ${m.expectedDays ?? "؟"} أيام).`;
   else if (r.trend === "improving" && (r.requirement === "below" || r.requirement === "far-below")) advice = `المراجعة تتحسن مقارنة بالفترة السابقة، لكنها ما زالت أقل من المطلوب (${r.completedDays} من ${r.expectedDays ?? "؟"} أيام).`;
+  else if (m.trend === "stable" && (m.requirement === "below" || m.requirement === "far-below")) advice = `الحفظ أقل من المطلوب بشكل مستمر؛ يحقق الطالب ${m.completedDays} من ${m.expectedDays ?? 4} أيام، ويُفضّل وضع هدف تدريجي لرفع الانتظام.`;
+  else if (r.trend === "stable" && (r.requirement === "below" || r.requirement === "far-below")) advice = `المراجعة أقل من المطلوب بشكل مستمر؛ يحقق الطالب ${r.completedDays} من ${r.expectedDays ?? 4} أيام، ويُفضّل متابعة سبب النقص.`;
   else if (m.requirement === "meets" && (r.requirement === "below" || r.requirement === "far-below")) advice = `الحفظ يحقق المطلوب، لكن المراجعة أنجزت ${r.completedDays} من ${r.expectedDays ?? "؟"} أيام وتحتاج اهتمامًا أكثر.`;
   else if (r.requirement === "meets" && (m.requirement === "below" || m.requirement === "far-below")) advice = `المراجعة تحقق المطلوب، لكن الحفظ أنجز ${m.completedDays} من ${m.expectedDays ?? "؟"} أيام فقط.`;
   else if (m.consecutiveMisses >= 2 && r.consecutiveMisses >= 2) advice = "يتكرر عدم إنجاز الحفظ والمراجعة في أيام متتالية؛ وهذه حالة تستحق متابعة المعلم.";
