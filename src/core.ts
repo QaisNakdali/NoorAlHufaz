@@ -246,6 +246,29 @@ export function levelInfo(xp: number): { level: number; into: number; need: numb
   return { level, into: rest, need: xpNeed(level), maxed: false, legend };
 }
 
+/** ترتيب كثيف حسب النقاط الحالية: المتساوون في النقاط يأخذون المركز نفسه دون أرقام مفقودة. */
+export function denseXpRanking(students: Student[]): { student: Student; rank: number }[] {
+  const ordered = [...students].sort((a, b) => b.xp - a.xp || a.name.localeCompare(b.name, "ar"));
+  let rank = 0;
+  let previousXp: number | null = null;
+  return ordered.map((student) => {
+    if (previousXp === null || student.xp !== previousXp) rank += 1;
+    previousXp = student.xp;
+    return { student, rank };
+  });
+}
+
+export function denseWeekRanking(students: Student[]): { student: Student; rank: number }[] {
+  const ordered = [...students].sort((a, b) => b.weekXp - a.weekXp || a.name.localeCompare(b.name, "ar"));
+  let rank = 0;
+  let previousPoints: number | null = null;
+  return ordered.map((student) => {
+    if (previousPoints === null || student.weekXp !== previousPoints) rank += 1;
+    previousPoints = student.weekXp;
+    return { student, rank };
+  });
+}
+
 export const TITLES = ["براعم النور", "قارئ ماهر", "نجم الحفظ", "فارس الحفظ", "تاج الحفاظ"];
 export const LEGEND_TITLE = "أسطورة الحفاظ";
 
