@@ -52,7 +52,7 @@ import {
   type WeekDays,
   type WeekLog,
 } from "./core";
-import { measureStudentWork } from "./analytics";
+import { buildTrackSnapshot, measureStudentWork } from "./analytics";
 import { sfx, setSoundEnabled } from "./sound";
 import {
   cloudLoad,
@@ -1103,6 +1103,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const allEntries = students.map((s) => {
       const memorization = measureStudentWork(s, "memorization");
       const review = measureStudentWork(s, "review");
+      const memorizationSnapshot = buildTrackSnapshot(s, "memorization");
+      const reviewSnapshot = buildTrackSnapshot(s, "review");
       return {
         id: s.id, name: s.name, photo: s.photo, xp: s.xp, weekXp: s.weekXp,
         level: levelInfo(s.xp).level, coins: s.coins, hearts: s.hearts,
@@ -1111,6 +1113,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         memorizationLines: memorization.lines, reviewLines: review.lines,
         memorizationVerses: memorization.verses, reviewVerses: review.verses,
         memorizationPages: memorization.pages, reviewPages: review.pages,
+        memorizationDays: memorizationSnapshot.completedDays,
+        reviewDays: reviewSnapshot.completedDays,
+        memorizationExpectedDays: memorizationSnapshot.expectedDays ?? undefined,
+        reviewExpectedDays: reviewSnapshot.expectedDays ?? undefined,
+        memorizationExpectedPages: memorizationSnapshot.expectedPages ?? undefined,
+        reviewExpectedPages: reviewSnapshot.expectedPages ?? undefined,
+        memorizationExcellent: memorizationSnapshot.excellent,
+        memorizationVeryGood: memorizationSnapshot.veryGood,
+        reviewExcellent: reviewSnapshot.excellent,
+        reviewVeryGood: reviewSnapshot.veryGood,
       };
     });
     const log: WeekLog = {

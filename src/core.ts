@@ -426,6 +426,17 @@ export type WeekLogEntry = {
   reviewVerses?: number;
   memorizationPages?: number;
   reviewPages?: number;
+  /** مؤشرات تحليلية اختيارية؛ غيابها في الأرشيف القديم لا يغيّر السجل. */
+  memorizationDays?: number;
+  reviewDays?: number;
+  memorizationExpectedDays?: number;
+  reviewExpectedDays?: number;
+  memorizationExpectedPages?: number;
+  reviewExpectedPages?: number;
+  memorizationExcellent?: number;
+  memorizationVeryGood?: number;
+  reviewExcellent?: number;
+  reviewVeryGood?: number;
 };
 
 export type WeekLog = {
