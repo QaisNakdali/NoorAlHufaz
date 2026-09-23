@@ -25,6 +25,21 @@ export type StudentAnalysis = {
   cumulativeReviewPages: number;
 };
 
+export type LearningTrack = "memorization" | "review";
+export type TrackTrend = "excellent" | "improving" | "stable" | "declining" | "needs-attention" | "insufficient-data";
+export type TrackAnalysis = {
+  trend: TrackTrend;
+  label: string;
+  currentPages: number;
+  weeklyPages: number[];
+};
+
+export type RegisterInsight = {
+  memorization: TrackAnalysis;
+  review: TrackAnalysis;
+  advice: string;
+};
+
 const round = (n: number, digits = 1) => Number(n.toFixed(digits));
 
 export function measureStudentWork(student: Student, kind: "memorization" | "review"): WorkMeasure {
@@ -92,4 +107,70 @@ export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAn
   if (recitationSessions === 0) recommendations.push("لا توجد جلسات تسميع مكتملة كافية لبناء توصية موثوقة هذا الأسبوع.");
 
   return { attendanceDays, absenceDays, recitationSessions, memorization, review, previousPages, changePercent, suggestedMinPages, suggestedMaxPages, recommendations, cumulativeMemorizationPages, cumulativeReviewPages };
+}
+
+const trackLabel = (kind: LearningTrack, trend: TrackTrend): string => {
+  const noun = kind === "memorization" ? "الحفظ" : "المراجعة";
+  const suffix: Record<TrackTrend, string> = {
+    excellent: "ممتاز",
+    improving: "يتحسن",
+    stable: "مستقر",
+    declining: "يتراجع",
+    "needs-attention": "يحتاج متابعة",
+    "insufficient-data": "لا توجد بيانات كافية",
+  };
+  return `${noun} ${suffix[trend]}`;
+};
+
+/** يحلل مسارًا واحدًا فقط، ولا يقرأ أي بيانات من المسار الآخر. */
+export function analyzeLearningTrack(student: Student, weeksLog: WeekLog[], kind: LearningTrack): TrackAnalysis {
+  const current = measureStudentWork(student, kind);
+  const field = kind === "memorization" ? "memorizationPages" : "reviewPages";
+  const linesField = kind === "memorization" ? "memorizationLines" : "reviewLines";
+  const history = [...weeksLog]
+    .sort((a, b) => a.week - b.week)
+    .map((log) => (log.students ?? log.top).find((entry) => entry.id === student.id))
+    .filter((entry): entry is NonNullable<typeof entry> => !!entry)
+    .map((entry) => round(entry[field] ?? (entry[linesField] ?? 0) / 15, 2));
+  const weeklyPages = [...history, current.pages].slice(-6);
+  const activeWeeks = weeklyPages.filter((pages) => pages > 0).length;
+
+  let trend: TrackTrend;
+  if (weeklyPages.length < 2) trend = current.sessions === 0 ? "insufficient-data" : "stable";
+  else {
+    const split = Math.max(1, Math.floor(weeklyPages.length / 2));
+    const earlier = weeklyPages.slice(0, split);
+    const recent = weeklyPages.slice(split);
+    const avg = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+    const earlierAverage = avg(earlier);
+    const recentAverage = avg(recent);
+    const baseline = Math.max(0.25, earlierAverage);
+    const change = (recentAverage - earlierAverage) / baseline;
+    if (activeWeeks === 0 || (current.sessions === 0 && recentAverage === 0)) trend = "needs-attention";
+    else if (change >= 0.2) trend = "improving";
+    else if (change <= -0.2) trend = "declining";
+    else if (current.pages >= 1.5 && activeWeeks >= Math.min(3, weeklyPages.length)) trend = "excellent";
+    else trend = "stable";
+  }
+
+  return { trend, label: trackLabel(kind, trend), currentPages: current.pages, weeklyPages };
+}
+
+export function buildRegisterInsight(student: Student, weeksLog: WeekLog[]): RegisterInsight {
+  const memorization = analyzeLearningTrack(student, weeksLog, "memorization");
+  const review = analyzeLearningTrack(student, weeksLog, "review");
+  const m = memorization.trend;
+  const r = review.trend;
+  let advice: string;
+
+  if ((m === "improving" || m === "excellent") && (r === "improving" || r === "excellent")) advice = "الطالب يتقدم في الحفظ والمراجعة معًا بشكل جيد.";
+  else if (m === "declining" && r === "declining") advice = "يوجد تراجع في الحفظ والمراجعة مؤخرًا؛ يُفضّل متابعة الطالب ومعرفة السبب.";
+  else if ((m === "improving" || m === "excellent") && (r === "declining" || r === "needs-attention")) advice = "الحفظ يتقدم جيدًا، لكن المراجعة غير مستقرة وتحتاج إلى متابعة.";
+  else if (m === "stable" && (r === "improving" || r === "excellent")) advice = "الحفظ مستقر، بينما المراجعة تتحسن بشكل ملحوظ.";
+  else if (m === "declining" && (r === "stable" || r === "excellent")) advice = "يوجد تراجع في معدل الحفظ، بينما المراجعة مستقرة حاليًا.";
+  else if ((m === "declining" || m === "needs-attention") && (r === "improving" || r === "excellent")) advice = "المراجعة جيدة، ويُفضّل متابعة مقدار الحفظ الجديد.";
+  else if (m === "insufficient-data" && r === "insufficient-data") advice = "لا توجد بيانات تاريخية كافية بعد؛ استمر في التسجيل لبناء تحليل أدق.";
+  else advice = `${memorization.label}، و${review.label}؛ حافظ على المتابعة قبل تغيير مقدار الورد.`;
+
+  return { memorization, review, advice };
 }

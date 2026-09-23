@@ -20,6 +20,7 @@ import {
   DEFAULT_REWARD_SETTINGS,
   DEFAULT_SHOP_ITEMS,
   emptyWeekDays,
+  emptyRecitationRatings,
   emptyWeeklyWard,
   equipOn,
   findItem,
@@ -38,6 +39,7 @@ import {
   type CrownKind,
   type DayKey,
   type DayPart,
+  type RecitationRating,
   type DailyWard,
   type Mode,
   type ShopItem,
@@ -107,7 +109,7 @@ type Ctx = State & {
   addHalaqa: (name: string) => void;
   renameHalaqa: (id: string, name: string) => void;
   removeHalaqa: (id: string) => void;
-  markDay: (id: string, day: DayKey, part: DayPart) => void;
+  markDay: (id: string, day: DayKey, part: DayPart, rating?: RecitationRating) => void;
   updateWard: (id: string, day: DayKey, ward: DailyWard) => void;
 
   addXp: (id: string, amount: number) => void;
@@ -161,6 +163,18 @@ function normStudent(s: Student): Student {
   return {
     ...s,
     days: out,
+    recitationRatings: (() => {
+      const ratings = emptyRecitationRatings();
+      const source = s.recitationRatings;
+      if (!source) return ratings;
+      for (const d of DAYS) {
+        for (const part of ["h", "r"] as const) {
+          const rating = source[d.key]?.[part];
+          if (rating === "excellent" || rating === "very-good") ratings[d.key][part] = rating;
+        }
+      }
+      return ratings;
+    })(),
     ward: (() => {
       const normalized = emptyWeeklyWard();
       const source = s.ward;
@@ -603,9 +617,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ===== الكشف: حضور / حفظ / مراجعة ===== */
   const markDay = useCallback(
-    (id: string, day: DayKey, part: DayPart) => {
+    (id: string, day: DayKey, part: DayPart, rating?: RecitationRating) => {
       const st = students.find((s) => s.id === id);
       if (!st) return;
+      if ((part === "h" || part === "r") && st.days[day][part] && rating) {
+        setStudents((ss) => ss.map((s) => s.id === id ? {
+          ...s,
+          recitationRatings: {
+            ...(s.recitationRatings ?? emptyRecitationRatings()),
+            [day]: { ...(s.recitationRatings?.[day] ?? {}), [part]: rating },
+          },
+        } : s));
+        return;
+      }
       const def = DAY_PARTS.find((p) => p.key === part)!;
       const turningOn = !st.days[day][part];
       // العملات تُجمع دائمًا — أما نقاط المستوى فتتوقف عند نفاد القلوب
@@ -619,6 +643,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ss.map((s) => {
           if (s.id !== id) return s;
           const days: WeekDays = { ...s.days, [day]: { ...s.days[day], [part]: turningOn } };
+          const recitationRatings = part === "h" || part === "r" ? {
+            ...(s.recitationRatings ?? emptyRecitationRatings()),
+            [day]: {
+              ...(s.recitationRatings?.[day] ?? {}),
+              [part]: turningOn ? (rating ?? s.recitationRatings?.[day]?.[part] ?? "excellent") : undefined,
+            },
+          } : s.recitationRatings;
           const { student, leveled } = applyXp(s, xpDelta);
           if (leveled) {
             leveledName = student.name;
@@ -633,7 +664,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 ...(part === "r" && ward.review ? { review: { text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines, day: dayLabel, at: Date.now() } } : {}),
               }
             : s.lastHeard;
-          return { ...student, days, lastHeard, weekXp: weekXpOf(days), weekCoins: weekCoinsOf(days), coins: Math.max(0, student.coins + coinDelta) };
+          return { ...student, days, recitationRatings, lastHeard, weekXp: weekXpOf(days), weekCoins: weekCoinsOf(days), coins: Math.max(0, student.coins + coinDelta) };
         })
       );
 
@@ -1104,7 +1135,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // أسبوع جديد: كشف نظيف — والقلوب تبقى كما هي (تُستعاد بالشراء أو بمنحة المعلم فقط)
     setWeek((w) => w + 1);
     setWeekNameState("");
-    setStudents((ss) => ss.map((s) => ({ ...s, days: emptyWeekDays(), weekXp: 0, weekCoins: 0, heartsLostWeek: 0 })));
+    setStudents((ss) => ss.map((s) => ({ ...s, days: emptyWeekDays(), recitationRatings: emptyRecitationRatings(), weekXp: 0, weekCoins: 0, heartsLostWeek: 0 })));
     setCeremonyPicks({});
     setTripOn(false);
     setTripDay(null);
