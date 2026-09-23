@@ -64,8 +64,11 @@ export type BagEntry = { itemId: string; qty: number; receivedQty: number };
 
 export type DayKey = "sun" | "mon" | "tue" | "wed";
 export type DayPart = "a" | "h" | "r"; // حضور | تسميع حفظ | تسميع مراجعة
+export type RecitationPart = "h" | "r";
+export type RecitationRating = "excellent" | "very-good";
 export type DayEntry = Record<DayPart, boolean>;
 export type WeekDays = Record<DayKey, DayEntry>;
+export type RecitationRatings = Record<DayKey, Partial<Record<RecitationPart, RecitationRating>>>;
 
 /** الورد ثابت بين الأسابيع، بينما حالة إنجازه موجودة في days وتُصفّر أسبوعيًا. */
 export type WardUnit = "lines" | "pages";
@@ -107,6 +110,10 @@ export const RECITE_COINS = 5;
 export function emptyWeekDays(): WeekDays {
   const mk = (): DayEntry => ({ a: false, h: false, r: false });
   return { sun: mk(), mon: mk(), tue: mk(), wed: mk() };
+}
+
+export function emptyRecitationRatings(): RecitationRatings {
+  return { sun: {}, mon: {}, tue: {}, wed: {} };
 }
 
 export function emptyWeeklyWard(): WeeklyWard {
@@ -171,6 +178,8 @@ export type Student = {
   weekCoins: number; // عملات هذا الأسبوع من الكشف
   coins: number;
   days: WeekDays;
+  /** وصف جودة التسميع فقط؛ المكافأة تظل مرتبطة بقيمة days المنجزة. */
+  recitationRatings?: RecitationRatings;
   ward: WeeklyWard; // الخطة اليومية؛ لا تتصفّر عند بدء أسبوع جديد
   lastHeard?: LastHeard; // آخر حفظ ومراجعة سمعهما الطالب؛ لا يتصفّران أسبوعيًا
   inventory: string[]; // ids خصائص البروفايل المملوكة

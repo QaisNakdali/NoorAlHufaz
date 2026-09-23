@@ -1,6 +1,7 @@
 /* كشف الحلقة — مرتب أبجديًا: حضور + تسميع حفظ + تسميع مراجعة لكل يوم */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../appState";
+import { buildRegisterInsight, type TrackTrend } from "../analytics";
 import {
   ar,
   ATTEND_COINS,
@@ -14,6 +15,7 @@ import {
   RECITE_XP,
   xpForLevel,
   type DayPart,
+  type RecitationRating,
   type Student,
 } from "../core";
 import { compressImage } from "../photos";
@@ -186,12 +188,21 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
 
 /* ===== صف طالب في الكشف ===== */
 function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onManage: () => void }) {
-  const { markDay, updateWard, removeHeart, removeStudent, setMode, setTab, halaqas } = useApp();
+  const { markDay, updateWard, removeHeart, removeStudent, setMode, setTab, halaqas, weeksLog } = useApp();
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
   const { level, into, need } = levelInfo(s.xp);
   const levelPct = Math.max(4, Math.round((into / need) * 100));
   const checkedCount = DAYS.reduce((n, d) => n + DAY_PARTS.filter((p) => s.days[d.key][p.key]).length, 0);
+  const insight = useMemo(() => buildRegisterInsight(s, weeksLog), [s, weeksLog]);
+  const trendStyle: Record<TrackTrend, string> = {
+    excellent: "bg-mint-100 text-mint-700",
+    improving: "bg-mint-100 text-mint-700",
+    stable: "bg-sky-100 text-sky-700",
+    declining: "bg-coral-100 text-coral-600",
+    "needs-attention": "bg-amber-100 text-amber-700",
+    "insufficient-data": "bg-grape-100 text-grape-500",
+  };
 
   return (
     <article
@@ -216,6 +227,11 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
               <HeartsRow hearts={s.hearts} max={MAX_HEARTS} size="w-6 h-6" />
               {noHearts && <span className="rounded-full bg-coral-100 px-2 py-1 text-xs font-extrabold text-coral-600">نفدت القلوب</span>}
             </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${trendStyle[insight.memorization.trend]}`}>{insight.memorization.label}</span>
+              <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${trendStyle[insight.review.trend]}`}>{insight.review.label}</span>
+            </div>
+            <p className="mt-2 max-w-2xl text-xs font-bold leading-5 text-grape-600">💡 {insight.advice}</p>
           </div>
         </div>
 
@@ -283,7 +299,26 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
                 <div className="mt-3 grid grid-cols-3 gap-2 border-t border-grape-100 pt-3">
                   {DAY_PARTS.map((p) => {
                     const on = s.days[d.key][p.key];
-                    return <button key={p.key} type="button" onClick={() => markDay(s.id, d.key, p.key)} className={`flex h-9 items-center justify-center gap-1 rounded-lg border text-xs font-extrabold transition active:scale-95 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"}`}><Icon name={on ? "check" : p.icon} className="h-3.5 w-3.5" strokeWidth={2.7} />{p.label}</button>;
+                    if (p.key === "a") return <button key={p.key} type="button" onClick={() => markDay(s.id, d.key, p.key)} className={`flex h-9 items-center justify-center gap-1 rounded-lg border text-xs font-extrabold transition active:scale-95 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"}`}><Icon name={on ? "check" : p.icon} className="h-3.5 w-3.5" strokeWidth={2.7} />{p.label}</button>;
+                    const rating = on ? (s.recitationRatings?.[d.key]?.[p.key] ?? "excellent") : "";
+                    const emptyLabel = p.key === "h" ? "لم يحفظ" : "لم يراجع";
+                    return (
+                      <select
+                        key={p.key}
+                        aria-label={`حالة ${p.label} ${d.label}`}
+                        value={rating}
+                        onChange={(event) => {
+                          const value = event.target.value as RecitationRating | "";
+                          if (value) markDay(s.id, d.key, p.key, value);
+                          else if (on) markDay(s.id, d.key, p.key);
+                        }}
+                        className={`h-9 rounded-lg border px-1 text-center text-xs font-extrabold outline-none transition ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400"}`}
+                      >
+                        <option value="">{emptyLabel}</option>
+                        <option value="excellent">ممتاز</option>
+                        <option value="very-good">جيد جدًا</option>
+                      </select>
+                    );
                   })}
                 </div>
               </section>
@@ -399,39 +434,6 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/* ===== نجوم الأسبوع ===== */
-function WeekStars() {
-  const { students } = useApp();
-  const top = [...students].filter((s) => s.weekXp > 0).sort((a, b) => b.weekXp - a.weekXp || b.xp - a.xp).slice(0, 3);
-  if (top.length === 0) return null;
-  const medal = ["bg-gold-500 text-white", "bg-slate-400 text-white", "bg-amber-600 text-white"];
-  return (
-    <div className="anim-slide-up rounded-[24px] border-2 border-gold-500/40 bg-gradient-to-l from-gold-400/25 via-white to-white p-5">
-      <p className="mb-4 flex items-center gap-2 font-display text-lg font-extrabold text-ink">
-        <Icon name="trophy" className="h-5 w-5 text-gold-600" strokeWidth={2.2} />
-        نجوم هذا الأسبوع — الأعلى نقاطًا في الكشف
-      </p>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {top.map((s, i) => (
-          <div key={s.id} className="card-shine flex items-center gap-3 rounded-2xl border-2 border-grape-100 bg-white p-3">
-            <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full font-display text-base font-extrabold ${medal[i]}`}>
-              {ar(i + 1)}
-            </span>
-            <div className={heartFade(s.hearts)}>
-              <Avatar photo={s.photo} name={s.name} size={46} frame={s.frame} crown={s.crown} glow={s.glow} />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate font-display text-base font-extrabold text-ink">{s.name}</p>
-              <p className="text-xs font-bold text-gold-600">+{ar(s.weekXp)} نقطة هذا الأسبوع</p>
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="mt-3 text-center text-xs font-bold text-grape-700/55">هذه النتيجة تظهر للطلاب في وضع العرض وفي الحفل الأسبوعي</p>
-    </div>
-  );
-}
-
 /* ===== الكشف ===== */
 export default function Register() {
   const { students, halaqas, addHalaqa, removeHalaqa, week, weekName } = useApp();
@@ -514,10 +516,6 @@ export default function Register() {
           ))}
         </div>
       )}
-
-      <div className="mt-8">
-        <WeekStars />
-      </div>
 
       {addOpen && <AddStudentModal onClose={() => setAddOpen(false)} />}
       {manageId && <ManageStudentModal id={manageId} onClose={() => setManageId(null)} />}

@@ -5,21 +5,37 @@ import { ar, levelInfo, rankOf, type Student } from "../core";
 import Avatar from "./Avatar";
 import { Coin, heartFade, Icon, SectionHead } from "./ui";
 
+type RankedStudent = { student: Student; rank: number };
+
+function denseRank(students: Student[]): RankedStudent[] {
+  let rank = 0;
+  let previousKey = "";
+  return students.map((student) => {
+    // الاسم يُستخدم لتثبيت ترتيب العرض فقط، ولا يكسر التعادل في المركز.
+    const key = `${levelInfo(student.xp).level}:${student.xp}`;
+    if (key !== previousKey) {
+      rank += 1;
+      previousKey = key;
+    }
+    return { student, rank };
+  });
+}
+
 export default function TermFinale() {
   const { students, weeksLog, week } = useApp();
   const [showFinale, setShowFinale] = useState(false);
 
   const ranking = useMemo(
-    () =>
+    () => denseRank(
       [...students].sort(
         (a, b) =>
           levelInfo(b.xp).level - levelInfo(a.xp).level || b.xp - a.xp || a.name.localeCompare(b.name, "ar")
-      ),
+      )),
     [students]
   );
 
   const totalPoints = students.reduce((n, s) => n + s.xp, 0);
-  const topLevel = ranking.length ? levelInfo(ranking[0].xp).level : 0;
+  const topLevel = ranking.length ? levelInfo(ranking[0].student.xp).level : 0;
   const completedWeeks = weeksLog.length;
 
   return (
@@ -80,7 +96,7 @@ function FinaleOverlay({
   ranking,
   onClose,
 }: {
-  ranking: Student[];
+  ranking: RankedStudent[];
   onClose: () => void;
 }) {
   return (
@@ -103,9 +119,8 @@ function FinaleOverlay({
 
         {/* منصة الأوائل */}
         <div className="mt-10 flex items-end justify-center gap-4">
-          {[1, 2, 3].map((place) => {
-            const s = ranking[place - 1];
-            if (!s) return null;
+          {ranking.slice(0, 3).map(({ student: s, rank }, index) => {
+            const place = index + 1;
             const { level } = levelInfo(s.xp);
             const heights = { 1: "h-36", 2: "h-26", 3: "h-20" } as const;
             const bgs = {
@@ -122,7 +137,7 @@ function FinaleOverlay({
                 <p className="mt-2 max-w-full truncate font-display text-base font-extrabold text-white">{s.name}</p>
                 <p className="text-xs font-bold text-grape-300">مستوى {ar(level)} · {rankOf(level)}</p>
                 <div className={`mt-2 w-full rounded-t-2xl border-2 border-b-0 ${heights[place as 1 | 2 | 3]} ${bgs[place as 1 | 2 | 3]} grid place-items-start justify-center pt-2`}>
-                  <span className="font-display text-xl font-extrabold text-grape-900">{ar(place)}</span>
+                  <span className="font-display text-xl font-extrabold text-grape-900">{ar(rank)}</span>
                 </div>
               </div>
             );
@@ -148,10 +163,10 @@ function FinaleOverlay({
   );
 }
 
-function RankList({ ranking }: { ranking: Student[] }) {
+function RankList({ ranking }: { ranking: RankedStudent[] }) {
   return (
     <div className="space-y-2">
-      {ranking.map((s, i) => {
+      {ranking.map(({ student: s, rank }, i) => {
         const { level } = levelInfo(s.xp);
         const medals = ["bg-gold-500 text-white", "bg-slate-400 text-white", "bg-amber-600 text-white"];
         return (
@@ -160,8 +175,8 @@ function RankList({ ranking }: { ranking: Student[] }) {
             className="anim-slide-up flex items-center gap-3 rounded-2xl border-2 border-white/10 bg-white/5 px-3 py-2.5 backdrop-blur-sm"
             style={{ animationDelay: `${i * 50}ms` }}
           >
-            <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full font-display text-base font-extrabold ${i < 3 ? medals[i] : "bg-white/10 text-grape-300"}`}>
-              {ar(i + 1)}
+            <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full font-display text-base font-extrabold ${rank <= 3 ? medals[rank - 1] : "bg-white/10 text-grape-300"}`}>
+              {ar(rank)}
             </span>
             <div className={heartFade(s.hearts)}>
               <Avatar photo={s.photo} name={s.name} size={48} frame={s.frame} crown={s.crown} glow={s.glow} />
