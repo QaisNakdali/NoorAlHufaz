@@ -15,15 +15,17 @@ import TermFinale from "./components/TermFinale";
 import StatisticsPage from "./components/Statistics";
 import { Coin, HeartIcon, Icon } from "./components/ui";
 
+
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "register", label: "الكشف", icon: "calendar" },
   { id: "store", label: "المتجر", icon: "store" },
   { id: "deliveries", label: "التسليمات", icon: "gift" },
-  { id: "board", label: "المتصدرون", icon: "trophy" },
+  { id: "board", label: "ترتيب الطلاب", icon: "trophy" },
   { id: "stats", label: "الإحصائيات", icon: "chart" },
   { id: "ceremony", label: "الحفل", icon: "sparkle" },
   { id: "term", label: "ختام الترم", icon: "flag" },
 ];
+
 
 function Logo() {
   return (
@@ -42,6 +44,7 @@ function Logo() {
     </div>
   );
 }
+
 
 /* مؤشر المزامنة السحابية — يعرض حالة الاتصال ويُحدّث يدويًا عند الضغط */
 function CloudChip() {
@@ -89,6 +92,7 @@ function CloudChip() {
     </button>
   );
 }
+
 
 function Nav() {
   const { tab, setTab, mode, setMode, sound, toggleSound } = useApp();
@@ -171,6 +175,7 @@ function Nav() {
   );
 }
 
+
 const TOAST_STYLE: Record<Toast["kind"], { cls: string; icon: ReactNode }> = {
   xp: { cls: "border-grape-500 bg-grape-700 text-white", icon: <Icon name="bolt" fill className="h-5 w-5 text-grape-300" /> },
   coin: { cls: "border-gold-500 bg-gold-400 text-ink", icon: <Coin className="h-5 w-5" /> },
@@ -180,6 +185,7 @@ const TOAST_STYLE: Record<Toast["kind"], { cls: string; icon: ReactNode }> = {
   success: { cls: "border-mint-400 bg-mint-600 text-white", icon: <Icon name="check" className="h-5 w-5" strokeWidth={3} /> },
   heart: { cls: "border-coral-400 bg-white text-coral-500", icon: <HeartIcon filled className="h-5 w-5" /> },
 };
+
 
 function Toasts() {
   const { toasts } = useApp();
@@ -198,6 +204,7 @@ function Toasts() {
     document.body
   );
 }
+
 
 function Shell() {
   const { mode, tab, showCeremony } = useApp();
@@ -236,6 +243,7 @@ function Shell() {
     </div>
   );
 }
+
 
 export default function App() {
   return (
