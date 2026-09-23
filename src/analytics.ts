@@ -127,16 +127,17 @@ export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAn
   const cumulativeReviewPages = round(review.pages + history.reduce((n, e) => n + (e.reviewPages ?? (e.reviewLines ?? 0) / 15), 0), 2);
   const currentPages = memorization.pages + review.pages;
   const changePercent = previousPages && previousPages > 0 ? round(((currentPages - previousPages) / previousPages) * 100, 0) : null;
-  const base = memorization.averagePagesPerDay;
+  const base = student.isTesting ? 0 : memorization.averagePagesPerDay;
   const suggestedMinPages = round(Math.max(0.25, base * 0.8), 2);
   const suggestedMaxPages = round(Math.max(0.5, base * 1.05), 2);
   const recommendations: string[] = [];
 
+  if (student.isTesting) recommendations.push("الطالب في فترة اختبار؛ تُقرأ الكمية الحالية كمؤشر على ثبات المحفوظ وجودة الاسترجاع، ولا تُستخدم لتقدير قدرته اليومية على الحفظ الجديد.");
   if (absenceDays >= 2) recommendations.push(`لدى الطالب ${absenceDays} أيام غياب مسجلة هذا الأسبوع؛ تابع انتظام الحضور دون احتسابها ضعفًا في الحفظ أو المراجعة.`);
   if (memorization.pages >= 1 && review.pages < memorization.pages * 0.5) recommendations.push("الحفظ جيد، لكن مقدار المراجعة أقل من نصفه؛ يُفضّل تقوية المراجعة قبل زيادة الجديد.");
-  if (changePercent !== null && changePercent <= -20) recommendations.push(`الأداء انخفض ${Math.abs(changePercent)}٪ عن آخر أسبوع محفوظ؛ راجع سبب الانخفاض مع الطالب.`);
+  if (!student.isTesting && history.length >= 2 && changePercent !== null && changePercent <= -20) recommendations.push(`الأداء انخفض ${Math.abs(changePercent)}٪ عن آخر أسبوع محفوظ؛ راجع سبب الانخفاض مع الطالب.`);
   if (changePercent !== null && changePercent >= 15 && review.sessions >= 2) recommendations.push("التقدم واضح مع وجود مراجعة منتظمة؛ يمكن زيادة الورد قليلًا مع متابعة الثبات.");
-  if (memorization.averagePagesPerDay >= 1.5 && review.sessions < memorization.sessions) recommendations.push("الطالب قادر على حفظ كمية كبيرة، لكن يلزم التأكد من ثباتها بالمراجعة قبل رفع المقدار.");
+  if (!student.isTesting && history.length >= 2 && memorization.averagePagesPerDay >= 1.5 && review.sessions < memorization.sessions) recommendations.push("كمية الحفظ الجديد مرتفعة عبر أكثر من أسبوع، لكن يلزم التأكد من ثباتها بالمراجعة قبل رفع المقدار.");
   if (recommendations.length === 0 && recitationSessions > 0) recommendations.push("الأداء مستقر حاليًا؛ حافظ على المقدار نفسه أسبوعًا آخر قبل اتخاذ قرار بالزيادة.");
   if (recitationSessions === 0) recommendations.push("لا توجد جلسات تسميع مكتملة كافية لبناء توصية موثوقة هذا الأسبوع.");
 
@@ -310,16 +311,18 @@ export function analyzeAttendance(student: Student, weeksLog: WeekLog[]): Attend
 export function analyzeLearningTrack(student: Student, weeksLog: WeekLog[], kind: LearningTrack): TrackAnalysis {
   const noun = kind === "memorization" ? "الحفظ" : "المراجعة";
   const current = buildTrackSnapshot(student, kind);
-  const history = [...weeksLog]
+  const historyEntries = [...weeksLog]
     .sort((a, b) => a.week - b.week)
     .map((log) => (log.students ?? log.top).find((entry) => entry.id === student.id))
-    .filter((entry): entry is NonNullable<typeof entry> => !!entry)
+    .filter((entry): entry is NonNullable<typeof entry> => !!entry);
+  const history = (kind === "memorization" ? historyEntries.filter((entry) => entry.isTesting !== true) : historyEntries)
     .map((entry) => historySnapshot(entry, kind));
   const completionRate = ratio(current.completedDays, current.expectedDays);
   const quantityRate = ratio(current.pages, current.expectedPages);
   const requirement = requirementFrom(completionRate, quantityRate);
   const ratingTransition = detectRatingTransition(student, kind);
-  const trend = ratingTransition === "very-good-to-excellent"
+  const limitedHistory = history.length < 2;
+  const trend = student.isTesting && kind === "memorization" ? "insufficient-data" : limitedHistory ? "insufficient-data" : ratingTransition === "very-good-to-excellent"
     ? "improving"
     : ratingTransition === "excellent-to-very-good"
       ? "declining"
@@ -352,7 +355,9 @@ export function analyzeLearningTrack(student: Student, weeksLog: WeekLog[], kind
     : ratingTransition === "excellent-to-very-good"
       ? "؛ انخفض التقييم مؤخرًا من ممتاز إلى جيد جدًا"
       : "";
-  const explanation = `${noun} ${requirementText[requirement]} (${dayEvidence}) ${trendText[trend]}${transitionText}${misses >= 2 ? `؛ توجد ${misses} أيام متتالية دون إنجاز` : ""}.`;
+  const testText = student.isTesting && kind === "memorization" ? "؛ الطالب في فترة اختبار، لذلك لا تُستخدم كمية التسميع الحالية للحكم على قدرة الحفظ الجديد" : "";
+  const newStudentText = limitedHistory && !student.isTesting ? "؛ لا توجد أسابيع تاريخية كافية للحكم على تحسن أو تراجع الطالب" : "";
+  const explanation = `${noun} ${requirementText[requirement]} (${dayEvidence}) ${trendText[trend]}${transitionText}${testText}${newStudentText}${misses >= 2 ? `؛ توجد ${misses} أيام متتالية دون إنجاز` : ""}.`;
 
   return {
     trend,
@@ -380,7 +385,8 @@ export function buildRegisterInsight(student: Student, weeksLog: WeekLog[]): Reg
   const r = review;
   let advice: string;
 
-  if (m.ratingTransition === "very-good-to-excellent" && r.requirement === "meets") advice = "الحفظ في تحسن واضح من جيد جدًا إلى ممتاز، والمراجعة تحقق المطلوب.";
+  if (student.isTesting) advice = `الطالب في فترة اختبار؛ ${m.completedDays > 0 ? "بيانات التسميع الحالية تقيس ثبات المحفوظ ولا تحدد قدرته الطبيعية على الحفظ الجديد" : "لم تُسجّل جلسات اختبار مكتملة بعد"}. ${r.explanation}`;
+  else if (m.ratingTransition === "very-good-to-excellent" && r.requirement === "meets") advice = "الحفظ في تحسن واضح من جيد جدًا إلى ممتاز، والمراجعة تحقق المطلوب.";
   else if (r.ratingTransition === "very-good-to-excellent" && m.requirement === "meets") advice = "المراجعة في تحسن واضح من جيد جدًا إلى ممتاز، والحفظ يحقق المطلوب.";
   else if (m.ratingTransition === "excellent-to-very-good") advice = "تراجع تقييم الحفظ مؤخرًا من ممتاز إلى جيد جدًا؛ يُفضّل متابعة السبب خلال الأيام القادمة.";
   else if (r.ratingTransition === "excellent-to-very-good") advice = "تراجع تقييم المراجعة مؤخرًا من ممتاز إلى جيد جدًا؛ يُفضّل متابعة السبب خلال الأيام القادمة.";

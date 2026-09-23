@@ -188,7 +188,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
 
 /* ===== صف طالب في الكشف ===== */
 function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onManage: () => void }) {
-  const { markDay, markAbsent, updateWard, removeHeart, removeStudent, setMode, setTab, halaqas, weeksLog } = useApp();
+  const { markDay, markAbsent, updateWard, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog } = useApp();
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
   const { level, into, need } = levelInfo(s.xp);
@@ -212,7 +212,9 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
   return (
     <article
       className={`anim-slide-up overflow-hidden rounded-[24px] border bg-white shadow-[0_18px_45px_-34px_rgba(55,32,120,.35)] transition-all ${
-        noHearts
+        s.isTesting
+          ? "border-sky-300 bg-sky-50/50 ring-2 ring-sky-200"
+          : noHearts
           ? "border-slate-200 bg-slate-50"
           : "border-grape-200 hover:border-grape-300 hover:shadow-[0_24px_65px_-42px_rgba(88,59,195,.55)]"
       }`}
@@ -225,6 +227,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="truncate font-display text-lg font-extrabold leading-tight text-ink sm:text-xl">{s.name}</h3>
+              {s.isTesting && <span className="shrink-0 rounded-full bg-sky-600 px-2.5 py-1 text-xs font-extrabold text-white">اختبار</span>}
               <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-xs! shadow-none!" />
               <span className="shrink-0 rounded-full bg-grape-100 px-2 py-0.5 text-xs font-extrabold text-grape-500">{halaqas.find((h) => h.id === s.halaqaId)?.name ?? "بلا حلقة"}</span>
             </div>
@@ -261,6 +264,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
             <p className="mt-1 text-xs font-bold text-grape-500">عملة</p>
           </div>
           <button type="button" onClick={() => removeHeart(s.id)} disabled={noHearts} title="خصم قلب" className="grid h-10 w-10 place-items-center rounded-xl bg-coral-500/10 text-coral-500 transition hover:bg-coral-500 hover:text-white disabled:opacity-30"><Icon name="heart" fill className="h-4.5 w-4.5" /></button>
+          <button type="button" onClick={() => toggleStudentTesting(s.id)} className={`h-10 rounded-xl px-3 text-xs font-extrabold ${s.isTesting ? "bg-sky-600 text-white" : "border-2 border-sky-200 bg-sky-50 text-sky-700"}`}>{s.isTesting ? "إنهاء الاختبار" : "اختبار"}</button>
           <button type="button" onClick={onManage} title="إعدادات الطالب" className="grid h-10 w-10 place-items-center rounded-xl bg-grape-100 text-grape-600 transition hover:bg-grape-600 hover:text-white"><Icon name="wand" className="h-4.5 w-4.5" /></button>
           <DeleteBtn label="" onDelete={() => removeStudent(s.id)} />
         </div>
