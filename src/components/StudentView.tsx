@@ -186,9 +186,11 @@ export default function StudentView() {
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {DAYS.map((d) => {
                   const attended = s.days[d.key].a;
+                  const absent = s.days[d.key].absent === true;
                   return (
-                    <div key={d.key} className={`flex flex-col items-center gap-1.5 rounded-xl border-2 py-2.5 ${attended ? "border-mint-600 bg-mint-400/15" : "border-dashed border-grape-200 bg-grape-50"}`}>
-                      <span className={`text-xs font-extrabold ${attended ? "text-mint-600" : "text-grape-300"}`}>{d.label}</span>
+                    <div key={d.key} className={`flex flex-col items-center gap-1.5 rounded-xl border-2 py-2.5 ${absent ? "border-coral-300 bg-coral-50" : attended ? "border-mint-600 bg-mint-400/15" : "border-dashed border-grape-200 bg-grape-50"}`}>
+                      <span className={`text-xs font-extrabold ${absent ? "text-coral-600" : attended ? "text-mint-600" : "text-grape-300"}`}>{d.label}</span>
+                      {absent ? <span className="rounded-full bg-coral-500 px-2 py-1 text-[10px] font-extrabold text-white">غائب</span> :
                       <div className="flex items-center gap-1">
                         {DAY_PARTS.map((p) => {
                           const on = s.days[d.key][p.key];
@@ -208,7 +210,7 @@ export default function StudentView() {
                             </span>
                           );
                         })}
-                      </div>
+                      </div>}
                     </div>
                   );
                 })}

@@ -188,7 +188,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
 
 /* ===== صف طالب في الكشف ===== */
 function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onManage: () => void }) {
-  const { markDay, updateWard, removeHeart, removeStudent, setMode, setTab, halaqas, weeksLog } = useApp();
+  const { markDay, markAbsent, updateWard, removeHeart, removeStudent, setMode, setTab, halaqas, weeksLog } = useApp();
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
   const { level, into, need } = levelInfo(s.xp);
@@ -278,40 +278,43 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
         <div className="grid gap-3 xl:grid-cols-2">
           {DAYS.map((d) => {
             const ward = s.ward[d.key];
+            const absent = s.days[d.key].absent === true;
             const cnt = DAY_PARTS.filter((p) => s.days[d.key][p.key]).length;
             return (
               <section key={d.key} className="rounded-2xl border border-grape-100 bg-white p-4 shadow-[0_8px_24px_-22px_rgba(55,32,120,.4)]">
                 <div className="mb-2.5 flex items-center justify-between">
                   <h5 className="font-display text-sm font-extrabold text-grape-700">{d.label}</h5>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-extrabold ${cnt === 3 ? "bg-mint-100 text-mint-600" : "bg-grape-100 text-grape-500"}`}>{ar(cnt)} / ٣</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-extrabold ${absent ? "bg-coral-100 text-coral-600" : cnt === 3 ? "bg-mint-100 text-mint-600" : "bg-grape-100 text-grape-500"}`}>{absent ? "غائب — لا تقييم" : `${ar(cnt)} / ٣`}</span>
                 </div>
                 <div className="space-y-3">
                   <div className="rounded-xl bg-grape-50 p-2.5">
                     <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-grape-700"><Icon name="book" className="h-4 w-4" />الحفظ الجديد</div>
                     <div className="grid gap-2 grid-cols-[minmax(0,1fr)_88px_78px]">
-                      <input aria-label={`سورة الحفظ ${d.label}`} value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder="اسم السورة" className="field-control" />
-                      <input aria-label={`عدد آيات الحفظ ${d.label}`} type="number" min="0" value={ward.memorizationVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationVerses: Number(e.target.value) })} placeholder="الآيات" className="field-control text-center" />
-                      <input aria-label={`عدد أسطر الحفظ ${d.label}`} type="number" min="0" step="0.5" value={ward.memorizationLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationLines: Number(e.target.value) })} placeholder="الأسطر" className="field-control text-center font-extrabold text-grape-700" />
+                      <input disabled={absent} aria-label={`سورة الحفظ ${d.label}`} value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder={absent ? "غائب" : "اسم السورة"} className="field-control disabled:cursor-not-allowed disabled:opacity-50" />
+                      <input disabled={absent} aria-label={`عدد آيات الحفظ ${d.label}`} type="number" min="0" value={ward.memorizationVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationVerses: Number(e.target.value) })} placeholder="الآيات" className="field-control text-center disabled:cursor-not-allowed disabled:opacity-50" />
+                      <input disabled={absent} aria-label={`عدد أسطر الحفظ ${d.label}`} type="number" min="0" step="0.5" value={ward.memorizationLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationLines: Number(e.target.value) })} placeholder="الأسطر" className="field-control text-center font-extrabold text-grape-700 disabled:cursor-not-allowed disabled:opacity-50" />
                     </div>
                   </div>
                   <div className="rounded-xl bg-amber-50 p-2.5">
                     <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-amber-700"><Icon name="refresh" className="h-4 w-4" />المراجعة</div>
                     <div className="grid gap-2 grid-cols-[minmax(0,1fr)_88px_78px]">
-                      <input aria-label={`سورة المراجعة ${d.label}`} value={ward.review} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder="اسم السورة أو السور" className="field-control border-amber-200" />
-                      <input aria-label={`عدد آيات المراجعة ${d.label}`} type="number" min="0" value={ward.reviewVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewVerses: Number(e.target.value) })} placeholder="الآيات" className="field-control border-amber-200 text-center" />
-                      <input aria-label={`عدد أسطر المراجعة ${d.label}`} type="number" min="0" step="0.5" value={ward.reviewLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewLines: Number(e.target.value) })} placeholder="الأسطر" className="field-control border-amber-200 text-center font-extrabold text-amber-700" />
+                      <input disabled={absent} aria-label={`سورة المراجعة ${d.label}`} value={ward.review} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder={absent ? "غائب" : "اسم السورة أو السور"} className="field-control border-amber-200 disabled:cursor-not-allowed disabled:opacity-50" />
+                      <input disabled={absent} aria-label={`عدد آيات المراجعة ${d.label}`} type="number" min="0" value={ward.reviewVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewVerses: Number(e.target.value) })} placeholder="الآيات" className="field-control border-amber-200 text-center disabled:cursor-not-allowed disabled:opacity-50" />
+                      <input disabled={absent} aria-label={`عدد أسطر المراجعة ${d.label}`} type="number" min="0" step="0.5" value={ward.reviewLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewLines: Number(e.target.value) })} placeholder="الأسطر" className="field-control border-amber-200 text-center font-extrabold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50" />
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-grape-100 pt-3">
+                <div className="mt-3 grid grid-cols-2 gap-2 border-t border-grape-100 pt-3 sm:grid-cols-4">
+                  <button type="button" onClick={() => markAbsent(s.id, d.key)} className={`flex h-9 items-center justify-center gap-1 rounded-lg border text-xs font-extrabold transition active:scale-95 ${absent ? "border-coral-400 bg-coral-500 text-white" : "border-coral-200 bg-white text-coral-500 hover:bg-coral-50"}`}><Icon name={absent ? "check" : "alert"} className="h-3.5 w-3.5" strokeWidth={2.7} />غائب</button>
                   {DAY_PARTS.map((p) => {
                     const on = s.days[d.key][p.key];
-                    if (p.key === "a") return <button key={p.key} type="button" onClick={() => markDay(s.id, d.key, p.key)} className={`flex h-9 items-center justify-center gap-1 rounded-lg border text-xs font-extrabold transition active:scale-95 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"}`}><Icon name={on ? "check" : p.icon} className="h-3.5 w-3.5" strokeWidth={2.7} />{p.label}</button>;
+                    if (p.key === "a") return <button disabled={absent} key={p.key} type="button" onClick={() => markDay(s.id, d.key, p.key)} className={`flex h-9 items-center justify-center gap-1 rounded-lg border text-xs font-extrabold transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"}`}><Icon name={on ? "check" : p.icon} className="h-3.5 w-3.5" strokeWidth={2.7} />{p.label}</button>;
                     const rating = on ? (s.recitationRatings?.[d.key]?.[p.key] ?? "excellent") : "";
                     const emptyLabel = p.key === "h" ? "لم يحفظ" : "لم يراجع";
                     return (
                       <select
                         key={p.key}
+                        disabled={absent}
                         aria-label={`حالة ${p.label} ${d.label}`}
                         value={rating}
                         onChange={(event) => {
@@ -319,7 +322,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
                           if (value) markDay(s.id, d.key, p.key, value);
                           else if (on) markDay(s.id, d.key, p.key);
                         }}
-                        className={`h-9 rounded-lg border px-1 text-center text-xs font-extrabold outline-none transition ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400"}`}
+                        className={`h-9 rounded-lg border px-1 text-center text-xs font-extrabold outline-none transition disabled:cursor-not-allowed disabled:opacity-40 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400"}`}
                       >
                         <option value="">{emptyLabel}</option>
                         <option value="excellent">ممتاز</option>

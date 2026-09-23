@@ -110,6 +110,7 @@ type Ctx = State & {
   renameHalaqa: (id: string, name: string) => void;
   removeHalaqa: (id: string) => void;
   markDay: (id: string, day: DayKey, part: DayPart, rating?: RecitationRating) => void;
+  markAbsent: (id: string, day: DayKey) => void;
   updateWard: (id: string, day: DayKey, ward: DailyWard) => void;
 
   addXp: (id: string, amount: number) => void;
@@ -157,7 +158,7 @@ function normStudent(s: Student): Student {
     if (typeof v === "boolean") out[d.key] = { a: v, h: v, r: false };
     else if (v && typeof v === "object") {
       const e = v as Record<string, unknown>;
-      out[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r };
+      out[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true };
     }
   }
   return {
@@ -620,6 +621,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (id: string, day: DayKey, part: DayPart, rating?: RecitationRating) => {
       const st = students.find((s) => s.id === id);
       if (!st) return;
+      if (st.days[day].absent) {
+        toast("error", `${st.name}: ألغِ حالة الغياب أولًا قبل تسجيل الحضور أو التسميع`);
+        return;
+      }
       if ((part === "h" || part === "r") && st.days[day][part] && rating) {
         setStudents((ss) => ss.map((s) => s.id === id ? {
           ...s,
@@ -685,6 +690,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [students, toast]
   );
+
+  /** الغياب حالة وصفية مستقلة ولا يضيف أو يخصم نقاطًا أو عملات. */
+  const markAbsent = useCallback((id: string, day: DayKey) => {
+    const st = students.find((s) => s.id === id);
+    if (!st) return;
+    const entry = st.days[day];
+    const turningOn = !entry.absent;
+    if (turningOn && (entry.a || entry.h || entry.r)) {
+      toast("error", `${st.name}: توجد بيانات مسجلة لهذا اليوم؛ ألغِها يدويًا قبل تحديده كغائب حتى لا نفقد أي سجل`);
+      return;
+    }
+    setStudents((ss) => ss.map((s) => s.id === id
+      ? { ...s, days: { ...s.days, [day]: { ...s.days[day], absent: turningOn } } }
+      : s));
+    toast(turningOn ? "success" : "xp", turningOn ? `سُجّل ${st.name} غائبًا دون تقييم الحفظ والمراجعة` : `أُلغيت حالة الغياب عن ${st.name}`);
+  }, [students, toast]);
 
   const updateWard = useCallback((id: string, day: DayKey, ward: DailyWard) => {
     setStudents((ss) => ss.map((s) => s.id === id
@@ -1110,6 +1131,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         level: levelInfo(s.xp).level, coins: s.coins, hearts: s.hearts,
         frame: s.frame ?? null, crown: s.crown ?? null,
         attendanceDays: DAYS.filter((d) => s.days[d.key].a).length,
+        absenceDays: DAYS.filter((d) => s.days[d.key].absent === true).length,
+        evaluatedDays: DAYS.filter((d) => s.days[d.key].a || s.days[d.key].absent === true).length,
         memorizationLines: memorization.lines, reviewLines: review.lines,
         memorizationVerses: memorization.verses, reviewVerses: review.verses,
         memorizationPages: memorization.pages, reviewPages: review.pages,
@@ -1191,6 +1214,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     renameHalaqa,
     removeHalaqa,
     markDay,
+    markAbsent,
     updateWard,
     addXp,
     addCoins,

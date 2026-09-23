@@ -66,7 +66,8 @@ export type DayKey = "sun" | "mon" | "tue" | "wed";
 export type DayPart = "a" | "h" | "r"; // حضور | تسميع حفظ | تسميع مراجعة
 export type RecitationPart = "h" | "r";
 export type RecitationRating = "excellent" | "very-good";
-export type DayEntry = Record<DayPart, boolean>;
+/** absent حالة مستقلة اختيارية؛ غيابها في البيانات القديمة يعني أن اليوم غير محدد، لا أنه غياب. */
+export type DayEntry = Record<DayPart, boolean> & { absent?: boolean };
 export type WeekDays = Record<DayKey, DayEntry>;
 export type RecitationRatings = Record<DayKey, Partial<Record<RecitationPart, RecitationRating>>>;
 
@@ -108,7 +109,7 @@ export const RECITE_XP = 10;
 export const RECITE_COINS = 5;
 
 export function emptyWeekDays(): WeekDays {
-  const mk = (): DayEntry => ({ a: false, h: false, r: false });
+  const mk = (): DayEntry => ({ a: false, h: false, r: false, absent: false });
   return { sun: mk(), mon: mk(), tue: mk(), wed: mk() };
 }
 
@@ -443,6 +444,8 @@ export type WeekLogEntry = {
   frame: FrameKind | null;
   crown: CrownKind | null;
   attendanceDays?: number;
+  absenceDays?: number;
+  evaluatedDays?: number;
   memorizationLines?: number;
   reviewLines?: number;
   memorizationVerses?: number;

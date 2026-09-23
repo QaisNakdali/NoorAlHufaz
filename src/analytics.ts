@@ -25,6 +25,18 @@ export type StudentAnalysis = {
   cumulativeReviewPages: number;
 };
 
+export type AttendanceTrend = "improving" | "stable" | "declining" | "insufficient-data";
+export type AttendanceAnalysis = {
+  presentDays: number;
+  absentDays: number;
+  evaluatedDays: number;
+  unrecordedDays: number;
+  attendanceRate: number | null;
+  trend: AttendanceTrend;
+  frequentAbsence: boolean;
+  explanation: string;
+};
+
 export type LearningTrack = "memorization" | "review";
 export type TrackTrend = "improving" | "stable" | "declining" | "insufficient-data";
 export type RequirementStatus = "meets" | "near" | "below" | "far-below" | "unknown";
@@ -47,6 +59,7 @@ export type TrackAnalysis = {
 };
 
 export type RegisterInsight = {
+  attendance: AttendanceAnalysis;
   memorization: TrackAnalysis;
   review: TrackAnalysis;
   advice: string;
@@ -80,7 +93,7 @@ function pagesForWardDay(student: Student, day: DayKey, kind: LearningTrack): { 
 
 export function measureStudentWork(student: Student, kind: "memorization" | "review"): WorkMeasure {
   const part = kind === "memorization" ? "h" : "r";
-  const completed = DAYS.filter((d) => student.days[d.key][part]);
+  const completed = DAYS.filter((d) => !student.days[d.key].absent && student.days[d.key][part]);
   const verses = completed.reduce((sum, d) => sum + (kind === "memorization" ? student.ward[d.key].memorizationVerses : student.ward[d.key].reviewVerses), 0);
   const enteredLines = completed.reduce((sum, d) => sum + (kind === "memorization" ? student.ward[d.key].memorizationLines : student.ward[d.key].reviewLines), 0);
   const pageMeasures = completed.map((d) => pagesForWardDay(student, d.key, kind));
@@ -99,7 +112,7 @@ export function measureStudentWork(student: Student, kind: "memorization" | "rev
 
 export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAnalysis {
   const attendanceDays = DAYS.filter((d) => student.days[d.key].a).length;
-  const absenceDays = DAYS.length - attendanceDays;
+  const absenceDays = DAYS.filter((d) => student.days[d.key].absent === true).length;
   const memorization = measureStudentWork(student, "memorization");
   const review = measureStudentWork(student, "review");
   const recitationSessions = memorization.sessions + review.sessions;
@@ -119,7 +132,7 @@ export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAn
   const suggestedMaxPages = round(Math.max(0.5, base * 1.05), 2);
   const recommendations: string[] = [];
 
-  if (absenceDays >= 2) recommendations.push("الغياب مؤثر على القياس هذا الأسبوع؛ راعِ انتظام الحضور قبل زيادة الورد.");
+  if (absenceDays >= 2) recommendations.push(`لدى الطالب ${absenceDays} أيام غياب مسجلة هذا الأسبوع؛ تابع انتظام الحضور دون احتسابها ضعفًا في الحفظ أو المراجعة.`);
   if (memorization.pages >= 1 && review.pages < memorization.pages * 0.5) recommendations.push("الحفظ جيد، لكن مقدار المراجعة أقل من نصفه؛ يُفضّل تقوية المراجعة قبل زيادة الجديد.");
   if (changePercent !== null && changePercent <= -20) recommendations.push(`الأداء انخفض ${Math.abs(changePercent)}٪ عن آخر أسبوع محفوظ؛ راجع سبب الانخفاض مع الطالب.`);
   if (changePercent !== null && changePercent >= 15 && review.sessions >= 2) recommendations.push("التقدم واضح مع وجود مراجعة منتظمة؛ يمكن زيادة الورد قليلًا مع متابعة الثبات.");
@@ -141,8 +154,12 @@ type TrackSnapshot = {
 
 export function buildTrackSnapshot(student: Student, kind: LearningTrack): TrackSnapshot {
   const part = trackPart(kind);
-  const plannedDays = DAYS.filter((day) => hasPlannedWork(student, day.key, kind));
-  const completedDays = DAYS.filter((day) => student.days[day.key][part]).length;
+  const evaluableDays = DAYS.filter((day) => {
+    const entry = student.days[day.key];
+    return entry.absent !== true && (entry.a || entry.h || entry.r);
+  });
+  const plannedDays = evaluableDays.filter((day) => hasPlannedWork(student, day.key, kind));
+  const completedDays = evaluableDays.filter((day) => student.days[day.key][part]).length;
   const expectedPagesValue = plannedDays.reduce((sum, day) => sum + pagesForWardDay(student, day.key, kind).pages, 0);
   let excellent = 0;
   let veryGood = 0;
@@ -155,7 +172,7 @@ export function buildTrackSnapshot(student: Student, kind: LearningTrack): Track
   return {
     pages: measureStudentWork(student, kind).pages,
     completedDays,
-    expectedDays: DAYS.length,
+    expectedDays: evaluableDays.length,
     expectedPages: expectedPagesValue > 0 ? round(expectedPagesValue, 2) : null,
     excellent,
     veryGood,
@@ -223,7 +240,7 @@ function detectTrend(history: TrackSnapshot[], current: TrackSnapshot): TrackTre
 function detectRatingTransition(student: Student, kind: LearningTrack): RatingTransition {
   const part = trackPart(kind);
   const ratings = DAYS
-    .filter((day) => student.days[day.key][part])
+    .filter((day) => !student.days[day.key].absent && student.days[day.key][part])
     .map((day) => student.recitationRatings?.[day.key]?.[part])
     .filter((rating): rating is "excellent" | "very-good" => !!rating);
   if (ratings.length < 2) return null;
@@ -241,6 +258,8 @@ function consecutiveMisses(student: Student, kind: LearningTrack): number {
   let current = 0;
   let longest = 0;
   for (const day of DAYS) {
+    const entry = student.days[day.key];
+    if (entry.absent || (!entry.a && !entry.h && !entry.r)) continue;
     if (student.days[day.key][part]) current = 0;
     else {
       current += 1;
@@ -248,6 +267,43 @@ function consecutiveMisses(student: Student, kind: LearningTrack): number {
     }
   }
   return longest;
+}
+
+/** مصدر موحّد للحضور: الغياب الصريح فقط، واليوم غير المحدد يبقى «غير مسجل». */
+export function analyzeAttendance(student: Student, weeksLog: WeekLog[]): AttendanceAnalysis {
+  const presentDays = DAYS.filter((day) => student.days[day.key].a).length;
+  const absentDays = DAYS.filter((day) => student.days[day.key].absent === true).length;
+  const evaluatedDays = presentDays + absentDays;
+  const attendanceRate = evaluatedDays > 0 ? round((presentDays / evaluatedDays) * 100, 1) : null;
+  const historicRates = [...weeksLog]
+    .sort((a, b) => a.week - b.week)
+    .map((log) => (log.students ?? log.top).find((entry) => entry.id === student.id))
+    .filter((entry): entry is WeekLogEntry => !!entry && entry.absenceDays !== undefined)
+    .map((entry) => {
+      const total = entry.evaluatedDays ?? ((entry.attendanceDays ?? 0) + (entry.absenceDays ?? 0));
+      return total > 0 ? (entry.attendanceDays ?? 0) / total : null;
+    })
+    .filter((value): value is number => value !== null);
+  const currentRate = attendanceRate === null ? null : attendanceRate / 100;
+  const trendSource = currentRate === null ? historicRates : [...historicRates, currentRate];
+  let trend: AttendanceTrend = "insufficient-data";
+  if (trendSource.length >= 2) {
+    const recentSize = Math.min(2, Math.max(1, Math.ceil(trendSource.length / 3)));
+    const historical = trendSource.slice(0, -recentSize);
+    const recent = trendSource.slice(-recentSize);
+    const change = average(recent) - average(historical.length ? historical : trendSource.slice(0, -1));
+    trend = change >= 0.15 ? "improving" : change <= -0.15 ? "declining" : "stable";
+  }
+  const frequentAbsence = absentDays >= 2 || historicRates.filter((rate) => rate <= 0.5).length >= 2;
+  let explanation = evaluatedDays === 0
+    ? "لم تُسجّل حالة الحضور أو الغياب لهذا الأسبوع بعد."
+    : absentDays === 0
+      ? `الحضور ${presentDays} من ${evaluatedDays} أيام مسجلة، ولا يوجد غياب صريح هذا الأسبوع.`
+      : `الحضور ${presentDays} أيام والغياب ${absentDays} أيام من أصل ${evaluatedDays} أيام مسجلة.`;
+  if (trend === "declining") explanation += " ارتفع الغياب مؤخرًا مقارنة بالفترة السابقة.";
+  else if (trend === "improving") explanation += " تحسن الانتظام مؤخرًا مقارنة بالفترة السابقة.";
+  else if (frequentAbsence) explanation += " يظهر نمط غياب متكرر ويستحسن متابعة الانتظام.";
+  return { presentDays, absentDays, evaluatedDays, unrecordedDays: Math.max(0, DAYS.length - evaluatedDays), attendanceRate, trend, frequentAbsence, explanation };
 }
 
 /** يحلل مسارًا واحدًا فقط، ولا يقرأ أي بيانات من المسار الآخر. */
@@ -317,6 +373,7 @@ export function analyzeLearningTrack(student: Student, weeksLog: WeekLog[], kind
 }
 
 export function buildRegisterInsight(student: Student, weeksLog: WeekLog[]): RegisterInsight {
+  const attendance = analyzeAttendance(student, weeksLog);
   const memorization = analyzeLearningTrack(student, weeksLog, "memorization");
   const review = analyzeLearningTrack(student, weeksLog, "review");
   const m = memorization;
@@ -346,5 +403,12 @@ export function buildRegisterInsight(student: Student, weeksLog: WeekLog[]): Reg
   else if (m.requirement === "unknown" && r.requirement === "unknown") advice = `لا يمكن قياس المطلوب للمستوى ${levelInfo(student.xp).level} قبل تحديد خطة الحفظ والمراجعة.`;
   else advice = `${m.explanation} ${r.explanation}`;
 
-  return { memorization, review, advice };
+  if (attendance.absentDays > 0) {
+    const attendanceNote = attendance.frequentAbsence
+      ? `لدى الطالب غياب متكرر (${attendance.absentDays} أيام هذا الأسبوع)، ويستحسن متابعة الانتظام.`
+      : `أداء الطالب في أيام التقييم منفصل عن غيابه؛ يوجد ${attendance.absentDays} يوم غياب مسجل هذا الأسبوع.`;
+    advice = `${advice} ${attendanceNote}`;
+  }
+
+  return { attendance, memorization, review, advice };
 }
