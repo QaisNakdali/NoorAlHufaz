@@ -1,11 +1,11 @@
 /* وضع الطالب — يشاهد مستواه ونقاطه ونتيجة الأسبوع، ويدخل متجره وحقيبته */
 import { useEffect, useState } from "react";
 import { useApp } from "../appState";
-import { ar, attendedDays, DAYS, DAY_PARTS, levelInfo, MAX_LEVEL, rankOf, xpForLevel, type BgKind } from "../core";
+import { ar, attendedDays, denseWeekRanking, denseXpRanking, DAYS, DAY_PARTS, levelInfo, MAX_LEVEL, rankOf, xpForLevel, type BgKind } from "../core";
 import Avatar from "./Avatar";
 import StudentBag from "./Bag";
 import { StudentShop } from "./Store";
-import { Coin, CoinChip, heartFade, HeartsRow, Icon, LevelBadge, Modal, XpBar } from "./ui";
+import { CoinChip, heartFade, HeartsRow, Icon, LevelBadge, Modal, XpBar } from "./ui";
 import { sfx } from "../sound";
 
 /* ===== خلفيات بطاقة البروفايل وألوان النص المناسبة ===== */
@@ -98,9 +98,8 @@ export default function StudentView() {
 
   const s = sorted.find((x) => x.id === activeId) ?? null;
   const { level, legend } = s ? levelInfo(s.xp) : { level: 1, legend: 0 };
-  const totalRank = sorted.findIndex((x) => x.id === activeId) + 1;
-  const weekTop = [...sorted].filter((x) => x.weekXp > 0).sort((a, b) => b.weekXp - a.weekXp || b.xp - a.xp).slice(0, 3);
-  const weekRank = [...sorted].sort((a, b) => b.weekXp - a.weekXp || b.xp - a.xp).findIndex((x) => x.id === activeId) + 1;
+  const totalRank = denseXpRanking(sorted).find((entry) => entry.student.id === activeId)?.rank ?? 0;
+  const weekRank = denseWeekRanking(sorted).find((entry) => entry.student.id === activeId)?.rank ?? 0;
   const checkedDays = s ? attendedDays(s) : 0;
   const checkedSlots = s ? DAYS.reduce((n, d) => n + DAY_PARTS.filter((p) => s.days[d.key][p.key]).length, 0) : 0;
   const dark = s ? cardIsDark(s.cardBg) : false;
@@ -219,36 +218,6 @@ export default function StudentView() {
                 <span className="flex items-center gap-1"><Icon name="book" className="h-3 w-3" strokeWidth={2.4} /> تسميع حفظ</span>
                 <span className="flex items-center gap-1"><Icon name="refresh" className="h-3 w-3" strokeWidth={2.4} /> تسميع مراجعة</span>
               </p>
-            </div>
-
-            {/* نتيجة الأسبوع */}
-            <div className="rounded-[24px] border-2 border-gold-500/40 bg-gradient-to-l from-gold-400/20 via-white to-white p-5">
-              <p className="mb-3 flex items-center gap-2 font-display text-lg font-extrabold text-ink">
-                <Icon name="trophy" className="h-5 w-5 text-gold-600" strokeWidth={2.2} />
-                نجوم هذا الأسبوع
-              </p>
-              {weekTop.length === 0 ? (
-                <p className="rounded-2xl border-2 border-dashed border-grape-200 bg-white p-6 text-center text-sm font-bold text-grape-400">
-                  لم تُسجَّل نقاط بعد هذا الأسبوع — كن أنت الأول!
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {weekTop.map((st, i) => (
-                    <div key={st.id} className={`flex items-center gap-3 rounded-2xl border-2 p-2.5 ${i === 0 ? "border-gold-500/60 bg-gold-400/15" : "border-grape-100 bg-white"}`}>
-                      <span className={`grid h-9 w-9 place-items-center rounded-full font-display text-base font-extrabold ${i === 0 ? "bg-gold-500 text-white" : i === 1 ? "bg-slate-400 text-white" : "bg-amber-600 text-white"}`}>
-                        {ar(i + 1)}
-                      </span>
-                      <div className={heartFade(st.hearts)}>
-                        <Avatar photo={st.photo} name={st.name} size={42} frame={st.frame} crown={st.crown} glow={st.glow} />
-                      </div>
-                      <span className="font-display text-base font-extrabold text-ink">{st.name}</span>
-                      <span className="ms-auto flex items-center gap-1 rounded-full bg-gold-400/25 px-2.5 py-1 text-xs font-extrabold text-gold-600">
-                        <Coin className="h-3.5 w-3.5" />+{ar(st.weekXp)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* الجوائز والممتلكات */}

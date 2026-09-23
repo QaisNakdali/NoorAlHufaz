@@ -196,13 +196,18 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
   const checkedCount = DAYS.reduce((n, d) => n + DAY_PARTS.filter((p) => s.days[d.key][p.key]).length, 0);
   const insight = useMemo(() => buildRegisterInsight(s, weeksLog), [s, weeksLog]);
   const trendStyle: Record<TrackTrend, string> = {
-    excellent: "bg-mint-100 text-mint-700",
     improving: "bg-mint-100 text-mint-700",
     stable: "bg-sky-100 text-sky-700",
     declining: "bg-coral-100 text-coral-600",
-    "needs-attention": "bg-amber-100 text-amber-700",
     "insufficient-data": "bg-grape-100 text-grape-500",
   };
+  const requirementStyle = {
+    meets: "bg-mint-100 text-mint-700",
+    near: "bg-sky-100 text-sky-700",
+    below: "bg-amber-100 text-amber-700",
+    "far-below": "bg-coral-100 text-coral-600",
+    unknown: "bg-grape-100 text-grape-500",
+  } as const;
 
   return (
     <article
@@ -228,8 +233,10 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
               {noHearts && <span className="rounded-full bg-coral-100 px-2 py-1 text-xs font-extrabold text-coral-600">نفدت القلوب</span>}
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${trendStyle[insight.memorization.trend]}`}>{insight.memorization.label}</span>
-              <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${trendStyle[insight.review.trend]}`}>{insight.review.label}</span>
+              <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${requirementStyle[insight.memorization.requirement]}`}>{insight.memorization.label}</span>
+              <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${requirementStyle[insight.review.requirement]}`}>{insight.review.label}</span>
+              {insight.memorization.trend !== "insufficient-data" && <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${trendStyle[insight.memorization.trend]}`}>اتجاه الحفظ: {insight.memorization.trend === "improving" ? "يتحسن" : insight.memorization.trend === "declining" ? "يتراجع" : "ثابت"}</span>}
+              {insight.review.trend !== "insufficient-data" && <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${trendStyle[insight.review.trend]}`}>اتجاه المراجعة: {insight.review.trend === "improving" ? "يتحسن" : insight.review.trend === "declining" ? "يتراجع" : "ثابت"}</span>}
             </div>
             <p className="mt-2 max-w-2xl text-xs font-bold leading-5 text-grape-600">💡 {insight.advice}</p>
           </div>
