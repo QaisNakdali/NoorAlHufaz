@@ -431,7 +431,8 @@ export const TRIP_DAYS: { key: TripDay; label: string }[] = [
 
 /* ---------- القلوب ---------- */
 export const MAX_HEARTS = 3;
-export const HEART_PRICE = 40;
+/** السعر الابتدائي للبيانات القديمة فقط؛ الشراء يستخدم إعداد الحالة المتزامن. */
+export const DEFAULT_HEART_PRICE = 40;
 
 /* ---------- أرشيف الأسابيع ---------- */
 export type WeekLogEntry = {

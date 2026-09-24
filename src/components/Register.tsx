@@ -8,7 +8,6 @@ import {
   ATTEND_XP,
   DAYS,
   DAY_PARTS,
-  HEART_PRICE,
   levelInfo,
   MAX_HEARTS,
   RECITE_COINS,
@@ -64,7 +63,7 @@ function DeleteBtn({ onDelete, label = "" }: { onDelete: () => void; label?: str
 
 /* ===== نافذة إعدادات الطالب (عملات / خبرة / قلوب) ===== */
 function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { students, halaqas, updateStudentProfile, addCoins, addXp, removeHeart, restoreHeart, removeStudent, toast } = useApp();
+  const { students, halaqas, updateStudentProfile, addCoins, addXp, removeHeart, restoreHeart, removeStudent, toast, heartPrice } = useApp();
   const s = students.find((x) => x.id === id);
   const [name, setName] = useState(s?.name ?? "");
   const [photo, setPhoto] = useState<string | null>(s?.photo ?? null);
@@ -173,7 +172,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
                 </button>
               </div>
             </div>
-            <p className="mt-2 text-xs text-grape-700/60">من يفقد كل قلوبه يستمر بجمع العملات فقط حتى يشتري قلبًا ({ar(HEART_PRICE)} عملة) أو تمنحه قلبًا من هنا.</p>
+            <p className="mt-2 text-xs text-grape-700/60">من يفقد كل قلوبه يستمر بجمع العملات فقط حتى يشتري قلبًا ({ar(heartPrice)} عملة) أو تمنحه قلبًا من هنا.</p>
           </div>
         </div>
 
@@ -188,7 +187,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
 
 /* ===== صف طالب في الكشف ===== */
 function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onManage: () => void }) {
-  const { markDay, markAbsent, updateWard, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog } = useApp();
+  const { markDay, markAbsent, updateWard, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice } = useApp();
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
   const { level, into, need } = levelInfo(s.xp);
@@ -344,7 +343,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
       {noHearts && (
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-100 px-5 py-3">
           <p className="text-xs font-extrabold text-slate-500">
-            نفدت قلوب {s.name} — سجّل له الحضور والتسميع ليجمع العملات، ثم يشتري قلبًا من متجره ({ar(HEART_PRICE)} عملة) ويعود لنقاط المستوى
+            نفدت قلوب {s.name} — سجّل له الحضور والتسميع ليجمع العملات، ثم يشتري قلبًا من متجره ({ar(heartPrice)} عملة) ويعود لنقاط المستوى
           </p>
           <button
             type="button"
