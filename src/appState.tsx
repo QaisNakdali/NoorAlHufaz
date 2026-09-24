@@ -292,6 +292,99 @@ function readStoredRev(): number {
   return 0;
 }
 
+function readStoredDirty(): boolean {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) return (JSON.parse(raw) as { __dirty?: boolean }).__dirty === true;
+  } catch {
+    /* تجاهل */
+  }
+  return false;
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+function arrayItemKey(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  for (const field of ["id", "week", "itemId", "key"] as const) {
+    const key = item[field];
+    if (typeof key === "string" || typeof key === "number") return `${field}:${String(key)}`;
+  }
+  return null;
+}
+
+/**
+ * يطبق فقط الفروق التي صنعها هذا الجهاز فوق أحدث نسخة سحابية.
+ * بهذه الطريقة لا يؤدي تعديل قلب أو سعر إلى إعادة قائمة طلاب قديمة كاملة.
+ */
+function mergeLocalChanges(base: unknown, local: unknown, remote: unknown): unknown {
+  if (sameValue(local, base)) return remote;
+  if (sameValue(remote, base) || sameValue(local, remote)) return local;
+
+  if (Array.isArray(base) && Array.isArray(local) && Array.isArray(remote)) {
+    const keyed = [...base, ...local, ...remote].every((item) => arrayItemKey(item) !== null);
+    if (keyed) {
+      const baseMap = new Map(base.map((item) => [arrayItemKey(item) as string, item]));
+      const localMap = new Map(local.map((item) => [arrayItemKey(item) as string, item]));
+      const remoteMap = new Map(remote.map((item) => [arrayItemKey(item) as string, item]));
+      const order = [...remoteMap.keys(), ...[...localMap.keys()].filter((key) => !remoteMap.has(key))];
+      const merged: unknown[] = [];
+      for (const key of order) {
+        const hadBase = baseMap.has(key);
+        const hasLocal = localMap.has(key);
+        const hasRemote = remoteMap.has(key);
+        if (hadBase && !hasLocal) continue; // حذف محلي مقصود
+        if (!hasLocal && hasRemote) {
+          merged.push(remoteMap.get(key));
+          continue;
+        }
+        if (hasLocal && !hasRemote) {
+          if (!hadBase) merged.push(localMap.get(key)); // إضافة محلية
+          continue; // حذف بعيد مع عدم تعديل محلي
+        }
+        merged.push(mergeLocalChanges(baseMap.get(key), localMap.get(key), remoteMap.get(key)));
+      }
+      return merged;
+    }
+
+    // قوائم القيم البسيطة: نطبق إضافات وحذوفات هذا الجهاز فوق القائمة البعيدة.
+    const result = [...remote];
+    for (const oldItem of base) {
+      if (!local.some((item) => sameValue(item, oldItem))) {
+        const index = result.findIndex((item) => sameValue(item, oldItem));
+        if (index >= 0) result.splice(index, 1);
+      }
+    }
+    for (const item of local) {
+      if (!base.some((oldItem) => sameValue(oldItem, item)) && !result.some((current) => sameValue(current, item))) result.push(item);
+    }
+    return result;
+  }
+
+  if (base && local && remote && typeof base === "object" && typeof local === "object" && typeof remote === "object") {
+    const b = base as Record<string, unknown>;
+    const l = local as Record<string, unknown>;
+    const r = remote as Record<string, unknown>;
+    const result: Record<string, unknown> = { ...r };
+    for (const key of new Set([...Object.keys(b), ...Object.keys(l), ...Object.keys(r)])) {
+      if (key in b && !(key in l)) delete result[key];
+      else if (key in l) result[key] = mergeLocalChanges(b[key], l[key], r[key]);
+    }
+    return result;
+  }
+
+  // تعارض على نفس القيمة: تعديل هذا الجهاز هو الأحدث لهذا الحقل فقط.
+  return local;
+}
+
 const AppCtx = createContext<Ctx | null>(null);
 
 export function useApp(): Ctx {
@@ -339,61 +432,100 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lastSyncAt: null,
     lastError: null,
   });
-  const revRef = useRef(0); // رقم نسخة البيانات المحلية
-  const lastPushedRev = useRef(0); // آخر نسخة رُفعت للسحابة
+  const revRef = useRef(0); // آخر رقم نسخة سحابية بُنيت عليه الحالة المحلية
+  const syncedBaseRef = useRef<State | null>(null); // آخر حالة مؤكدة من السحابة للمقارنة والدمج
+  const dirtyRef = useRef(false); // توجد فروق محلية لم تُحفظ بعد
   const cloudDataRef = useRef<State | null>(null); // مرآة البيانات لأغراض الرفع
   const pushTimer = useRef<number | null>(null);
   const firstSave = useRef(true);
-  // رقم النسخة البعيدة الجاري تطبيقها. يمنع مؤثر الحفظ من إعادة رفعها كسجل محلي جديد.
-  const applyingRemoteRev = useRef<number | null>(null);
+  const pushInFlight = useRef(false);
+  const pushAgain = useRef(false);
+  // يحدد إن كانت اللقطة الجاري تطبيقها نظيفة أم تحتوي دمجًا محليًا يحتاج رفعًا جديدًا.
+  const applyingSnapshot = useRef<{ rev: number; dirty: boolean } | null>(null);
 
-  /** رفع نسخة إلى السحابة */
-  const pushCloud = useCallback(async (rev: number, force = false) => {
-    if (!isCloudEnabled()) return;
-    const data = cloudDataRef.current;
-    if (!data) return;
-    if (!force && rev <= lastPushedRev.current) return;
-    setCloud((c) => ({ ...c, status: "syncing" }));
-    try {
-      const saved = await cloudSave({ rev, data });
-      lastPushedRev.current = Math.max(lastPushedRev.current, saved.rev);
-      // عند أول نقل للصور إلى Storage نستبدل dataURL بروابط خفيفة محليًا أيضًا.
-      if (saved.data !== data || saved.rev !== rev) {
-        const normalized = stateFromPartial(saved.data as Partial<State>);
-        applyingRemoteRev.current = saved.rev;
-        revRef.current = saved.rev;
-        cloudDataRef.current = normalized;
-        setStudents(normalized.students);
-        if (saved.rev !== rev) {
-          setHalaqas(normalized.halaqas);
-          setWeek(normalized.week);
-          setWeekNameState(normalized.weekName);
-          setWeeksLog(normalized.weeksLog);
-          setSound(normalized.sound);
-          setCeremonyPicks(normalized.ceremonyPicks);
-          setProducts(normalized.products);
-          setHeartPriceState(normalized.heartPrice);
-          setShowNewProducts(normalized.showNewProducts);
-          setTripOn(normalized.tripOn);
-          setTripDay(normalized.tripDay);
-          setTripAttendees(normalized.tripAttendees);
-          setRewardSettings(normalized.rewardSettings);
-        }
-      }
-      setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
-    } catch (e) {
-      setCloud((c) => ({ ...c, status: "error", lastError: errMsg(e) }));
-    }
-  }, []);
-
-  /** تطبيق حزمة قادمة من السحابة على الحالة */
-  const applyRemote = useCallback((remote: State, remoteRev: number) => {
-    // ألغِ أي رفع مؤجل لنسخة محلية أقدم قبل تطبيق النسخة القادمة.
+  /** تطبيق لقطة كاملة مع إبقاء جميع المعرفات والسجلات كما وردت. */
+  const applySnapshot = useCallback((next: State, rev: number, dirty: boolean) => {
     if (pushTimer.current) {
       window.clearTimeout(pushTimer.current);
       pushTimer.current = null;
     }
-    applyingRemoteRev.current = remoteRev;
+    applyingSnapshot.current = { rev, dirty };
+    setStudents(next.students);
+    setHalaqas(next.halaqas);
+    setWeek(next.week);
+    setWeekNameState(next.weekName);
+    setWeeksLog(next.weeksLog);
+    setSound(next.sound);
+    setCeremonyPicks(next.ceremonyPicks);
+    setProducts(next.products);
+    setHeartPriceState(next.heartPrice);
+    setShowNewProducts(next.showNewProducts);
+    setTripOn(next.tripOn);
+    setTripDay(next.tripDay);
+    setTripAttendees(next.tripAttendees);
+    setRewardSettings(next.rewardSettings);
+  }, []);
+
+  /** رفع نسخة إلى السحابة */
+  const pushCloud = useCallback(async (force = false) => {
+    if (!isCloudEnabled()) return;
+    if (pushInFlight.current) {
+      pushAgain.current = true;
+      return;
+    }
+    if (!force && !dirtyRef.current) return;
+    const initialLocal = cloudDataRef.current;
+    if (!initialLocal) return;
+    pushInFlight.current = true;
+    setCloud((c) => ({ ...c, status: "syncing" }));
+    try {
+      let base = syncedBaseRef.current ?? initialLocal;
+      let candidate = initialLocal;
+      let expectedRev = revRef.current;
+      let savedState: State | null = null;
+      let savedRev = expectedRev;
+
+      // عند التعارض ندمج فروق هذا الجهاز فوق النسخة الفائزة ثم نعيد المحاولة ذريًا.
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const result = await cloudSave({ rev: expectedRev + 1, data: candidate }, expectedRev);
+        const normalized = stateFromPartial(result.data as Partial<State>);
+        if (result.applied) {
+          savedState = normalized;
+          savedRev = result.rev;
+          break;
+        }
+        candidate = stateFromPartial(mergeLocalChanges(base, candidate, normalized) as Partial<State>);
+        base = normalized;
+        expectedRev = result.rev;
+      }
+
+      if (!savedState) throw new Error("تعذر تثبيت التغييرات بعد عدة محاولات متزامنة");
+
+      // إن حدث تعديل جديد أثناء الرفع، نحتفظ به كفرق فوق النسخة التي تم تثبيتها.
+      const currentLocal = cloudDataRef.current ?? initialLocal;
+      const finalLocal = stateFromPartial(mergeLocalChanges(initialLocal, currentLocal, savedState) as Partial<State>);
+      const stillDirty = !sameValue(finalLocal, savedState);
+      revRef.current = savedRev;
+      syncedBaseRef.current = savedState;
+      dirtyRef.current = stillDirty;
+      cloudDataRef.current = finalLocal;
+      applySnapshot(finalLocal, savedRev, stillDirty);
+      if (stillDirty) pushAgain.current = true;
+      setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
+    } catch (e) {
+      setCloud((c) => ({ ...c, status: "error", lastError: errMsg(e) }));
+    } finally {
+      pushInFlight.current = false;
+      if (pushAgain.current || dirtyRef.current) {
+        pushAgain.current = false;
+        if (pushTimer.current) window.clearTimeout(pushTimer.current);
+        pushTimer.current = window.setTimeout(() => void pushCloud(), 250);
+      }
+    }
+  }, [applySnapshot]);
+
+  /** تطبيق حزمة قادمة من السحابة على الحالة */
+  const prepareRemote = useCallback((remote: State): State => {
     // عند تخطي الصور سحابيًا: نحتفظ بصور هذا الجهاز بدل استبدالها بفراغ
     if (CLOUD_SKIP_PHOTOS) {
       const localStudents = cloudDataRef.current?.students ?? [];
@@ -405,21 +537,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }),
       };
     }
-    setStudents(remote.students);
-    setHalaqas(remote.halaqas);
-    setWeek(remote.week);
-    setWeekNameState(remote.weekName);
-    setWeeksLog(remote.weeksLog);
-    setSound(remote.sound);
-    setCeremonyPicks(remote.ceremonyPicks);
-    setProducts(remote.products);
-    setHeartPriceState(remote.heartPrice);
-    setShowNewProducts(remote.showNewProducts);
-    setTripOn(remote.tripOn);
-    setTripDay(remote.tripDay);
-    setTripAttendees(remote.tripAttendees);
-    setRewardSettings(remote.rewardSettings);
+    return remote;
   }, []);
+
+  /** استقبال نسخة أحدث مع حماية أي تعديل محلي لم يصل للسحابة بعد. */
+  const receiveRemote = useCallback((incoming: State, remoteRev: number) => {
+    const remote = prepareRemote(incoming);
+    const local = cloudDataRef.current ?? remote;
+    const base = syncedBaseRef.current ?? local;
+    const merged = dirtyRef.current
+      ? stateFromPartial(mergeLocalChanges(base, local, remote) as Partial<State>)
+      : remote;
+    const dirty = !sameValue(merged, remote);
+    revRef.current = remoteRev;
+    syncedBaseRef.current = remote;
+    dirtyRef.current = dirty;
+    cloudDataRef.current = merged;
+    applySnapshot(merged, remoteRev, dirty);
+  }, [applySnapshot, prepareRemote]);
 
   /** سحب أحدث نسخة من السحابة وتطبيقها إن كانت أحدث من المحلية */
   const pullCloud = useCallback(
@@ -430,21 +565,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const remote = await cloudLoad();
         if (remote && remote.rev > revRef.current) {
           const norm = stateFromPartial(remote.data as Partial<State>);
-          revRef.current = remote.rev;
-          lastPushedRev.current = remote.rev;
-          applyRemote(norm, remote.rev);
+          receiveRemote(norm, remote.rev);
           if (announce) toast("success", "تم جلب تحديثات جديدة من السحابة");
-        } else if (!remote && revRef.current > 0) {
+        } else if (!remote) {
           // السحابة فارغة ولدينا بيانات حقيقية — ننشر نسختنا
-          await pushCloud(revRef.current, true);
+          dirtyRef.current = true;
+          await pushCloud(true);
           return; // pushCloud حدّث الحالة بالفعل
+        } else if (dirtyRef.current) {
+          await pushCloud(true);
+          return;
         }
         setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
       } catch (e) {
         setCloud((c) => ({ ...c, status: "error", lastError: errMsg(e) }));
       }
     },
-    [applyRemote, pushCloud, toast]
+    [pushCloud, receiveRemote, toast]
   );
 
   // حفظ محلي + رفع سحابي عند كل تغيير
@@ -471,16 +608,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ? { ...persistData, students: persistData.students.map((s) => ({ ...s, photo: null })) }
       : persistData;
 
-    // تحديث قادم من Supabase: احفظه في localStorage فقط ولا تعِد رفعه.
-    if (applyingRemoteRev.current !== null) {
-      const remoteRev = applyingRemoteRev.current;
-      applyingRemoteRev.current = null;
-      revRef.current = remoteRev;
-      lastPushedRev.current = Math.max(lastPushedRev.current, remoteRev);
+    // لقطة مطبقة من المزامنة: احفظها، وارفعها فقط إن كانت تحتوي دمجًا محليًا.
+    if (applyingSnapshot.current !== null) {
+      const snapshot = applyingSnapshot.current;
+      applyingSnapshot.current = null;
+      revRef.current = snapshot.rev;
+      dirtyRef.current = snapshot.dirty;
       try {
-        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: remoteRev }));
+        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: snapshot.rev, __dirty: snapshot.dirty }));
       } catch {
         /* تجاهل */
+      }
+      if (snapshot.dirty && isCloudEnabled()) {
+        if (pushTimer.current) window.clearTimeout(pushTimer.current);
+        pushTimer.current = window.setTimeout(() => void pushCloud(), 250);
       }
       return;
     }
@@ -489,25 +630,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // أول تشغيل: نحفظ محليًا فقط ونقرأ رقم النسخة المخزون
       firstSave.current = false;
       revRef.current = readStoredRev();
+      dirtyRef.current = readStoredDirty();
+      syncedBaseRef.current = persistData;
       try {
-        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current }));
+        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current, __dirty: dirtyRef.current }));
       } catch {
         /* تجاهل */
       }
       return;
     }
 
-    // تعديل حقيقي: نرفع رقم النسخة ونحفظ ونجدول رفعًا سحابيًا
-    const newRev = Math.max(Date.now(), revRef.current + 1);
-    revRef.current = newRev;
+    // تعديل حقيقي: نضع علامة dirty؛ رقم السحابة لا يتغير إلا بعد نجاح الحفظ المشروط.
+    dirtyRef.current = true;
     try {
-      localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: newRev }));
+      localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current, __dirty: true }));
     } catch {
       /* تجاهل */
     }
     if (isCloudEnabled()) {
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
-      pushTimer.current = window.setTimeout(() => void pushCloud(newRev), 1500);
+      pushTimer.current = window.setTimeout(() => void pushCloud(), 700);
     }
   }, [students, halaqas, week, weekName, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
 
@@ -518,18 +660,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return subscribeCloud((remote) => {
       if (remote.rev <= revRef.current) return;
       const normalized = stateFromPartial(remote.data as Partial<State>);
-      revRef.current = remote.rev;
-      lastPushedRev.current = remote.rev;
-      cloudDataRef.current = normalized;
-      applyRemote(normalized, remote.rev);
+      receiveRemote(normalized, remote.rev);
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
     });
-  }, [applyRemote, cloudEnabled, pullCloud]);
+  }, [cloudEnabled, pullCloud, receiveRemote]);
 
   /** مزامنة فورية يدوية (سحب ثم رفع) */
   const syncNow = useCallback(() => {
     if (!cloudEnabled) return;
-    void pullCloud(true).then(() => void pushCloud(revRef.current, revRef.current > lastPushedRev.current));
+    void pullCloud(true).then(() => void pushCloud(dirtyRef.current));
   }, [cloudEnabled, pullCloud, pushCloud]);
 
   useEffect(() => {
