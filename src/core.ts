@@ -178,6 +178,8 @@ export type Student = {
   weekXp: number; // نقاط هذا الأسبوع من الكشف
   weekCoins: number; // عملات هذا الأسبوع من الكشف
   coins: number;
+  isTesting?: boolean;
+  createdAt?: number;
   days: WeekDays;
   /** وصف جودة التسميع فقط؛ المكافأة تظل مرتبطة بقيمة days المنجزة. */
   recitationRatings?: RecitationRatings;
@@ -224,7 +226,7 @@ export const bagPendingUnits = (s: Student): number =>
 
 /* ---------- المستويات ---------- */
 export const MAX_LEVEL = 10;
-export const LEVEL_COIN_REWARD = 25;
+export const LEVEL_COIN_REWARD = 5;
 
 export const xpNeed = (level: number): number => 90 + (level - 1) * 10;
 
@@ -463,6 +465,14 @@ export type WeekLogEntry = {
   memorizationVeryGood?: number;
   reviewExcellent?: number;
   reviewVeryGood?: number;
+  isTesting?: boolean;
+  halaqaId?: string | null;
+};
+
+export type WeekStudentRecord = {
+  id: string; name: string; photo: string | null; halaqaId?: string | null; isTesting?: boolean;
+  days: WeekDays; recitationRatings: RecitationRatings; ward: WeeklyWard;
+  hearts: number; heartsLostWeek: number; xp: number; coins: number;
 };
 
 export type WeekLog = {
@@ -474,10 +484,14 @@ export type WeekLog = {
   students?: WeekLogEntry[];
   awards: { title: string; studentName: string; coins?: number; reward?: RewardKey }[];
   trip?: { day: TripDay; attendeeNames: string[] } | null;
+  records?: WeekStudentRecord[];
+  ceremonyPicks?: CeremonyPicks;
+  rewardSettings?: RewardSettings;
+  tripAttendeeIds?: string[];
 };
 
 /* ---------- الواجهات ---------- */
-export type Tab = "register" | "store" | "deliveries" | "board" | "ceremony" | "term" | "stats";
+export type Tab = "register" | "store" | "deliveries" | "board" | "ceremony" | "past" | "term" | "stats";
 export type Mode = "teacher" | "student";
 
 /* ========== دوال مساعدة لسجل الحفظ والتحليلات ========== */

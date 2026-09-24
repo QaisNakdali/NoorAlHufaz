@@ -8,6 +8,7 @@ import CeremonyPanel, { CeremonyShow } from "./components/Ceremony";
 import Deliveries from "./components/Deliveries";
 import ExplainerModal from "./components/Explainer";
 import Leaderboard from "./components/Leaderboard";
+import PastWeeks from "./components/PastWeeks";
 import Register from "./components/Register";
 import StoreTab from "./components/Store";
 import StudentView from "./components/StudentView";
@@ -23,6 +24,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "board", label: "ترتيب الطلاب", icon: "trophy" },
   { id: "stats", label: "الإحصائيات", icon: "chart" },
   { id: "ceremony", label: "الحفل", icon: "sparkle" },
+  { id: "past", label: "الأسابيع الماضية", icon: "calendar" },
   { id: "term", label: "ختام الترم", icon: "flag" },
 ];
 
@@ -227,6 +229,8 @@ function Shell() {
           <StatisticsPage />
         ) : tab === "term" ? (
           <TermFinale />
+        ) : tab === "past" ? (
+          <PastWeeks />
         ) : (
           <CeremonyPanel />
         )}

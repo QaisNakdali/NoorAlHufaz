@@ -453,6 +453,7 @@ type Stage =
   | { kind: "awardReveal"; title: string; awardKey: string; icon: string; coins: number; xp: number; student: Student }
   | { kind: "championsTitle" }
   | { kind: "champions"; students: Student[]; coins: number }
+  | { kind: "tripStudents"; students: Student[]; coins: number }
   | { kind: "newProducts"; items: ShopProduct[] }
   | { kind: "finale" };
 
@@ -485,6 +486,8 @@ export function CeremonyShow() {
       st.push({ kind: "championsTitle" });
       st.push({ kind: "champions", students: champions, coins: rewardSettings.champions.coins });
     }
+    const tripStudents = tripOn ? sorted.filter((student) => tripAttendees.includes(student.id)) : [];
+    if (tripStudents.length > 0) st.push({ kind: "tripStudents", students: tripStudents, coins: rewardSettings.trip.enabled ? rewardSettings.trip.coins : 0 });
     // إعلان منتجات المتجر الجديدة لهذا الأسبوع (اختياري)
     if (showNewProducts) {
       const fresh = products.filter((p) => p.addedWeek === week);
@@ -524,7 +527,7 @@ export function CeremonyShow() {
           grantAward(student.id, "بطل الأسبوع", stage.coins, 0);
         }
       });
-    } else if (stage.kind === "newProducts") sfx.sparkle();
+    } else if (stage.kind === "tripStudents" || stage.kind === "newProducts") sfx.sparkle();
     else sfx.sparkle();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx]);
@@ -639,6 +642,19 @@ export function CeremonyShow() {
           </div>
         )}
 
+        {stage.kind === "tripStudents" && (
+          <div className="w-full text-center">
+            <Icon name="flag" className="mx-auto h-16 w-16 text-mint-400" strokeWidth={1.8} />
+            <h2 className="mt-4 font-display text-4xl font-extrabold text-white">طلاب الرحلة</h2>
+            <p className="mt-2 font-bold text-grape-300">جميع المشاركين في المستوى نفسه دون ترتيب أو مراكز</p>
+            {stage.coins > 0 && <p className="mt-1 font-extrabold text-gold-300">كل طالب مستحق يحصل على +{ar(stage.coins)} عملة</p>}
+            <div className="mx-auto mt-8 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+              {stage.students.map((student) => <div key={student.id} className="rounded-3xl border-2 border-mint-400/40 bg-white/10 p-4"><Avatar photo={student.photo} name={student.name} size={86} frame={student.frame} crown={student.crown} glow={student.glow} /><p className="mt-3 font-display text-lg font-extrabold text-white">{student.name}</p><p className="mt-1 text-xs font-extrabold text-mint-300">🎒 شارك في الرحلة</p></div>)}
+            </div>
+            <button type="button" onClick={next} className="mx-auto mt-8 rounded-2xl bg-mint-500 px-10 py-3.5 font-display text-xl font-extrabold text-white">متابعة</button>
+          </div>
+        )}
+
         {/* ===== إعلان منتجات المتجر الجديدة ===== */}
         {stage.kind === "newProducts" && (
           <div className="w-full">
@@ -674,7 +690,7 @@ export function CeremonyShow() {
         )}
 
         {/* زر المتابعة — لكل الصفحات ما عدا الأبطال (لها زرّها الخاص) والختام */}
-        {stage.kind !== "finale" && stage.kind !== "champions" && (
+        {stage.kind !== "finale" && stage.kind !== "champions" && stage.kind !== "tripStudents" && (
           <button
             type="button"
             onClick={next}

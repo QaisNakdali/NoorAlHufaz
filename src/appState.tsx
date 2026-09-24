@@ -105,6 +105,7 @@ type Ctx = State & {
 
   addStudent: (name: string, photo: string | null, halaqaId?: string | null) => void;
   updateStudentProfile: (id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null }) => void;
+  toggleStudentTesting: (id: string) => void;
   removeStudent: (id: string) => void;
   addHalaqa: (name: string) => void;
   renameHalaqa: (id: string, name: string) => void;
@@ -134,6 +135,7 @@ type Ctx = State & {
   setCeremonyHalaqaPick: (reward: PerHalaqaRewardKey, halaqaId: string, id: string | null) => void;
   setRewardSetting: (key: keyof RewardSettings, value: Partial<RewardSettings[keyof RewardSettings]>) => void;
   removeWeekLog: (week: number) => void;
+  updateWeekLog: (week: number, next: WeekLog) => void;
   /* الرحلة الأسبوعية */
   setTrip: (on: boolean, day?: TripDay | null) => void;
   toggleTripAttendee: (id: string) => void;
@@ -212,6 +214,8 @@ function normStudent(s: Student): Student {
     cardBg: s.cardBg ? ((BG_MIGRATION[s.cardBg] ?? s.cardBg) as BgKind) : null,
     awards: Array.isArray(s.awards) ? s.awards : [],
     halaqaId: typeof s.halaqaId === "string" ? s.halaqaId : null,
+    isTesting: s.isTesting === true,
+    createdAt: typeof s.createdAt === "number" ? s.createdAt : undefined,
     memorizationRecords: Array.isArray(s.memorizationRecords) ? s.memorizationRecords : [],
   };
 }
@@ -556,6 +560,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           weekXp: 0,
           weekCoins: 0,
           coins: 10, // هدية ترحيب
+          isTesting: false,
+          createdAt: Date.now(),
           days: emptyWeekDays(),
           ward: emptyWeeklyWard(),
           inventory: [],
@@ -586,6 +592,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } : s));
     toast("success", "تم حفظ بيانات الطالب دون تغيير سجلاته");
   }, [toast]);
+
+  const toggleStudentTesting = useCallback((id: string) => {
+    const current = students.find((student) => student.id === id);
+    setStudents((items) => items.map((student) => student.id === id ? { ...student, isTesting: !student.isTesting } : student));
+    if (current) toast("success", `${current.name}: ${current.isTesting ? "انتهت فترة الاختبار" : "بدأت فترة الاختبار"}`);
+  }, [students, toast]);
 
   const addHalaqa = useCallback((name: string) => {
     const clean = name.trim();
@@ -669,7 +681,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 ...(part === "r" && ward.review ? { review: { text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines, day: dayLabel, at: Date.now() } } : {}),
               }
             : s.lastHeard;
-          return { ...student, days, recitationRatings, lastHeard, weekXp: weekXpOf(days), weekCoins: weekCoinsOf(days), coins: Math.max(0, student.coins + coinDelta) };
+          return { ...student, days, recitationRatings, lastHeard, weekXp: weekXpOf(days), weekCoins: weekCoinsOf(days), coins: Math.max(0, student.coins + coinDelta + (leveled ? LEVEL_COIN_REWARD : 0)) };
         })
       );
 
@@ -1082,6 +1094,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [toast]
   );
 
+  const updateWeekLog = useCallback((targetWeek: number, next: WeekLog) => {
+    setWeeksLog((logs) => logs.map((log) => log.week === targetWeek ? { ...next, week: targetWeek } : log));
+    toast("success", "تم حفظ تعديلات الأسبوع السابق دون تغيير بيانات الطلاب الحالية");
+  }, [toast]);
+
   /* ===== الرحلة الأسبوعية ===== */
   const setTrip = useCallback((on: boolean, day?: TripDay | null) => {
     setTripOn(on);
@@ -1121,6 +1138,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (rewardSettings.champions.enabled) {
       champs.forEach((st) => awards.push({ title: "بطل الأسبوع", studentName: st.name, coins: rewardSettings.champions.coins, reward: "champions" }));
     }
+    for (const reward of ["improved", "behavior"] as const) {
+      if (!rewardSettings[reward].enabled) continue;
+      const picks = reward === "improved" ? ceremonyPicks.improvedByHalaqa : ceremonyPicks.behaviorByHalaqa;
+      for (const studentId of Object.values(picks ?? {})) {
+        const student = students.find((item) => item.id === studentId);
+        if (student) awards.push({ title: reward === "improved" ? "الأكثر تطورًا" : "أفضل سلوك", studentName: student.name, coins: rewardSettings[reward].coins, reward });
+      }
+    }
+    if (tripOn && rewardSettings.trip.enabled) students.filter((student) => tripAttendees.includes(student.id)).forEach((student) => awards.push({ title: "جائزة الرحلة", studentName: student.name, coins: rewardSettings.trip.coins, reward: "trip" }));
     const allEntries = students.map((s) => {
       const memorization = measureStudentWork(s, "memorization");
       const review = measureStudentWork(s, "review");
@@ -1146,6 +1172,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         memorizationVeryGood: memorizationSnapshot.veryGood,
         reviewExcellent: reviewSnapshot.excellent,
         reviewVeryGood: reviewSnapshot.veryGood,
+        isTesting: s.isTesting === true,
+        halaqaId: s.halaqaId ?? null,
       };
     });
     const log: WeekLog = {
@@ -1158,6 +1186,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .slice(0, 10)
         ,
       awards,
+      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins })),
+      ceremonyPicks: structuredClone(ceremonyPicks),
+      rewardSettings: structuredClone(rewardSettings),
+      tripAttendeeIds: [...tripAttendees],
       trip:
         tripOn && tripDay
           ? {
@@ -1177,7 +1209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTripAttendees([]);
     sfx.sparkle();
     toast("success", "بدأ أسبوع جديد — كشف نظيف للجميع، والقلوب كما هي");
-  }, [rewardSettings, students, toast, tripAttendees, tripDay, tripOn, week, weekName]);
+  }, [ceremonyPicks, rewardSettings, students, toast, tripAttendees, tripDay, tripOn, week, weekName]);
 
   const setWeekName = useCallback((name: string) => setWeekNameState(name), []);
 
@@ -1209,6 +1241,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setWeekName,
     addStudent,
     updateStudentProfile,
+    toggleStudentTesting,
     removeStudent,
     addHalaqa,
     renameHalaqa,
@@ -1235,6 +1268,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCeremonyHalaqaPick,
     setRewardSetting,
     removeWeekLog,
+    updateWeekLog,
     startWeek,
     showCeremony,
     startCeremony,
