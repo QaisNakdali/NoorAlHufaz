@@ -74,6 +74,8 @@ export default function CeremonyPanel() {
     weeksLog,
     ceremonyPicks,
     setCeremonyHalaqaPick,
+    clearCeremonyReward,
+    setChampionExcluded,
     rewardSettings,
     setRewardSetting,
     removeWeekLog,
@@ -84,16 +86,23 @@ export default function CeremonyPanel() {
     toggleTripAttendee,
     showNewProducts,
     setShowNewProducts,
+    products,
+    ceremonyProductIds,
+    setCeremonyProductSelected,
     startCeremony,
     startWeek,
   } = useApp();
   const [armWeek, setArmWeek] = useState(false);
   const [openLog, setOpenLog] = useState<number | null>(null);
   const isRealPick = (v: string | null | undefined): boolean => !!v && v !== "none";
+  const championExcluded = new Set(ceremonyPicks.championExcludedIds ?? []);
+  const eligibleChampions = students.filter((student) => isChampionEligible(student, tripOn, tripAttendees));
+  const activeChampions = eligibleChampions.filter((student) => !championExcluded.has(student.id));
+  const availableProducts = products.filter((product) => product.shownInCeremonyWeek == null && (product.ceremonyPending === true || product.addedWeek === week));
   const pickedCount =
     Object.values(ceremonyPicks.improvedByHalaqa ?? {}).filter(isRealPick).length +
     Object.values(ceremonyPicks.behaviorByHalaqa ?? {}).filter(isRealPick).length +
-    (rewardSettings.champions.enabled ? students.filter((s) => isChampionEligible(s, tripOn, tripAttendees)).length : 0);
+    (rewardSettings.champions.enabled ? activeChampions.length : 0);
 
   useEffect(() => {
     if (!armWeek) return;
@@ -133,7 +142,8 @@ export default function CeremonyPanel() {
             const setting = rewardSettings[key];
             return <label key={key} className={`rounded-2xl border-2 p-3 transition ${setting.enabled ? "border-grape-300 bg-grape-50" : "border-grape-100 bg-slate-50 opacity-70"}`}>
               <span className="flex items-center justify-between gap-2"><span className="font-display text-sm font-extrabold text-ink">{label}</span><input type="checkbox" checked={setting.enabled} onChange={(e) => setRewardSetting(key, { enabled: e.target.checked })} className="h-5 w-5 accent-violet-600" /></span>
-              <span className="mt-2 flex items-center gap-2 text-xs font-bold text-grape-500">{key === "trip" ? "لكل طالب مستحق" : "لكل فائز"}<input type="number" min="0" step="1" disabled={!setting.enabled} value={setting.coins} onChange={(e) => setRewardSetting(key, { coins: Number(e.target.value) })} className="field-control h-9 min-w-0 flex-1 text-center" /></span>
+              <span className="mt-2 flex items-center gap-2 text-xs font-bold text-grape-500">{key === "trip" ? "لكل طالب مستحق" : "لكل فائز"}<input type="number" min="0" step="1" disabled={!setting.enabled || (key === "trip" && !tripOn)} value={setting.coins} onChange={(e) => setRewardSetting(key, { coins: Number(e.target.value) })} title={key === "trip" && !tripOn ? "فعّل الرحلة أولًا لتعديل سعرها" : undefined} className="field-control h-9 min-w-0 flex-1 text-center disabled:cursor-not-allowed disabled:bg-slate-100" /></span>
+              {key === "trip" && !tripOn && <span className="mt-1 block text-[11px] font-bold text-grape-400">فعّل الرحلة لتعديل السعر</span>}
             </label>;
           })}
         </div>
@@ -204,7 +214,8 @@ export default function CeremonyPanel() {
       </div>
 
       {/* ===== إعلان منتجات المتجر الجديدة (اختياري) ===== */}
-      <div className="anim-slide-up mt-4 flex flex-wrap items-center gap-3 rounded-3xl border-2 border-gold-500/40 bg-gradient-to-b from-gold-400/10 to-white p-4">
+      <div className="anim-slide-up mt-4 rounded-3xl border-2 border-gold-500/40 bg-gradient-to-b from-gold-400/10 to-white p-4">
+        <div className="flex flex-wrap items-center gap-3">
         <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gold-500 text-white shadow-[0_3px_0_#b57a0a]">
           <Icon name="store" className="h-6 w-6" strokeWidth={2.1} />
         </span>
@@ -222,6 +233,26 @@ export default function CeremonyPanel() {
         >
           <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-all ${showNewProducts ? "start-9" : "start-1"}`} />
         </button>
+        </div>
+        {showNewProducts && (
+          <div className="mt-4 border-t border-gold-500/20 pt-4">
+            {availableProducts.length > 0 ? (
+              <>
+                <p className="mb-2 text-xs font-extrabold text-grape-700">حدد المنتجات التي ستُعرض في هذا الحفل فقط:</p>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {availableProducts.map((product) => {
+                    const selected = ceremonyProductIds.includes(product.id);
+                    return <label key={product.id} className={`flex cursor-pointer items-center gap-2 rounded-2xl border-2 p-2.5 transition ${selected ? "border-gold-500 bg-gold-400/15" : "border-grape-100 bg-white"}`}>
+                      <input type="checkbox" checked={selected} onChange={(event) => setCeremonyProductSelected(product.id, event.target.checked)} className="h-5 w-5 accent-amber-500" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-extrabold text-ink">{product.name}</span>
+                    </label>;
+                  })}
+                </div>
+                <p className="mt-2 text-xs font-bold text-grape-500">غير المحدد سيبقى متاحًا للحفلات القادمة.</p>
+              </>
+            ) : <p className="text-xs font-bold text-grape-400">لا توجد منتجات جديدة متاحة للعرض حاليًا.</p>}
+          </div>
+        )}
       </div>
 
       {/* ===== أبطال الأسبوع — جميع المستوفين متساوون ===== */}
@@ -232,6 +263,7 @@ export default function CeremonyPanel() {
             <p className="font-display text-lg font-extrabold leading-6 text-ink">أبطال الأسبوع</p>
             <p className="text-xs font-bold text-grape-700/65">كل طالب يستوفي الشروط بطل بالدرجة نفسها ويحصل على +{ar(rewardSettings.champions.coins)} عملة.</p>
           </div>
+          {eligibleChampions.length > 0 && <button type="button" onClick={() => eligibleChampions.forEach((student) => setChampionExcluded(student.id, true))} className="rounded-xl border-2 border-coral-200 px-3 py-2 text-xs font-extrabold text-coral-600 hover:bg-coral-50">إلغاء الجميع</button>}
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5 text-xs font-bold">
           {championCriteria(tripOn).map((c) => (
@@ -239,11 +271,19 @@ export default function CeremonyPanel() {
           ))}
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {students.filter((s) => isChampionEligible(s, tripOn, tripAttendees)).map((s) => (
-            <span key={s.id} className="flex items-center gap-2 rounded-full bg-gold-400/20 px-3 py-1.5 text-xs font-extrabold text-gold-700"><Avatar photo={s.photo} name={s.name} size={26} /> {s.name}</span>
+          {eligibleChampions.map((s) => (
+            <span key={s.id} className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-extrabold ${championExcluded.has(s.id) ? "bg-slate-100 text-grape-400 line-through" : "bg-gold-400/20 text-gold-700"}`}><Avatar photo={s.photo} name={s.name} size={26} /> {s.name}<button type="button" onClick={() => setChampionExcluded(s.id, !championExcluded.has(s.id))} className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] no-underline">{championExcluded.has(s.id) ? "استعادة" : "إلغاء"}</button></span>
           ))}
-          {students.filter((s) => isChampionEligible(s, tripOn, tripAttendees)).length === 0 && <p className="text-xs font-bold text-grape-400">لا يوجد طالب استوفى جميع الشروط حتى الآن.</p>}
+          {eligibleChampions.length === 0 && <p className="text-xs font-bold text-grape-400">لا يوجد طالب استوفى جميع الشروط حتى الآن.</p>}
         </div>
+        {eligibleChampions.length > 0 && halaqas.length > 0 && <div className="mt-3 flex flex-wrap gap-2 border-t border-gold-500/15 pt-3">
+          <span className="text-xs font-extrabold text-grape-500">إلغاء حسب الحلقة:</span>
+          {halaqas.map((halaqa) => {
+            const members = eligibleChampions.filter((student) => student.halaqaId === halaqa.id);
+            if (members.length === 0) return null;
+            return <button key={halaqa.id} type="button" onClick={() => members.forEach((student) => setChampionExcluded(student.id, true))} className="rounded-full border border-coral-200 px-3 py-1 text-xs font-extrabold text-coral-600 hover:bg-coral-50">{halaqa.name}</button>;
+          })}
+        </div>}
       </div>
       {/* ===== الأكثر تطورًا وأفضل سلوك — فائز واحد من كل حلقة ===== */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -263,6 +303,7 @@ export default function CeremonyPanel() {
                   <p className="text-xs font-bold text-grape-700/65">{m.desc}</p>
                   <p className="mt-1 text-xs font-extrabold text-gold-600">عدد العملات لكل فائز: +{ar(setting.coins)}</p>
                 </div>
+                {Object.keys(picks).length > 0 && <button type="button" onClick={() => clearCeremonyReward(reward)} className="rounded-xl border-2 border-coral-200 px-3 py-2 text-xs font-extrabold text-coral-600 hover:bg-coral-50">إلغاء جميع الحلقات</button>}
               </div>
               <div className="mt-3 space-y-2.5">
                 {halaqas.map((halaqa) => {
@@ -301,6 +342,7 @@ export default function CeremonyPanel() {
                         >
                           <Icon name="wand" className="h-5 w-5" strokeWidth={2.2} />
                         </button>
+                        {value && <button type="button" onClick={() => clearCeremonyReward(reward, halaqa.id)} className="h-11 shrink-0 rounded-2xl border-2 border-coral-200 px-3 text-xs font-extrabold text-coral-600 hover:bg-coral-50">إلغاء</button>}
                       </div>
                       {winner && <div className="anim-pop mt-2 flex items-center gap-2 rounded-xl bg-gold-400/15 px-2.5 py-1.5"><Avatar photo={winner.photo} name={winner.name} size={28} /><span className="text-xs font-extrabold text-gold-700">{winner.name} · +{ar(setting.coins)} عملة</span></div>}
                     </div>
@@ -459,7 +501,7 @@ type Stage =
   | { kind: "finale" };
 
 export function CeremonyShow() {
-  const { closeCeremony, sorted, halaqas, ceremonyPicks, weekName, grantAward, startWeek, products, week, showNewProducts, rewardSettings, tripOn, tripAttendees } = useApp();
+  const { closeCeremony, sorted, halaqas, ceremonyPicks, weekName, grantAward, startWeek, products, ceremonyProductIds, showNewProducts, rewardSettings, tripOn, tripAttendees } = useApp();
   const [idx, setIdx] = useState(0);
   const granted = useRef<Set<string>>(new Set());
 
@@ -482,16 +524,18 @@ export function CeremonyShow() {
         st.push({ kind: "awardReveal", title, awardKey: `${reward}-halaqa-${halaqa.id}`, icon: m.icon, coins: setting.coins, xp: 0, student });
       }
     }
-    const champions = rewardSettings.champions.enabled ? sorted.filter((s) => isChampionEligible(s, tripOn, tripAttendees)) : [];
+    const championExcluded = new Set(ceremonyPicks.championExcludedIds ?? []);
+    const champions = rewardSettings.champions.enabled ? sorted.filter((s) => isChampionEligible(s, tripOn, tripAttendees) && !championExcluded.has(s.id)) : [];
     if (champions.length > 0) {
       st.push({ kind: "championsTitle" });
       st.push({ kind: "champions", students: champions, coins: rewardSettings.champions.coins });
     }
     const tripStudents = tripOn ? sorted.filter((student) => tripAttendees.includes(student.id)) : [];
     if (tripStudents.length > 0) st.push({ kind: "tripStudents", students: tripStudents, coins: rewardSettings.trip.enabled ? rewardSettings.trip.coins : 0 });
-    // إعلان منتجات المتجر الجديدة لهذا الأسبوع (اختياري)
+    // إعلان المنتجات المختارة التي لم يسبق عرضها. غير المختارة تظل متاحة للأسبوع القادم.
     if (showNewProducts) {
-      const fresh = products.filter((p) => p.addedWeek === week);
+      const selected = new Set(ceremonyProductIds);
+      const fresh = products.filter((product) => selected.has(product.id) && product.shownInCeremonyWeek == null);
       if (fresh.length > 0) st.push({ kind: "newProducts", items: fresh });
     }
     st.push({ kind: "finale" });

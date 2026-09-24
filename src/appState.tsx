@@ -92,6 +92,7 @@ type State = {
   products: ShopItem[];
   heartPrice: number;
   showNewProducts: boolean; // إعلان منتجات المتجر الجديدة في الحفل
+  ceremonyProductIds: string[]; // المنتجات الجديدة المختارة لهذا الحفل فقط
   /* الرحلة الأسبوعية (اختيارية) */
   tripOn: boolean;
   tripDay: TripDay | null;
@@ -111,6 +112,9 @@ type Ctx = State & {
   setWeekName: (name: string) => void;
   setWeekStartDateIso: (value: string) => void;
   setShowNewProducts: (v: boolean) => void;
+  setCeremonyProductSelected: (id: string, selected: boolean) => void;
+  setChampionExcluded: (id: string, excluded: boolean) => void;
+  clearCeremonyReward: (reward: PerHalaqaRewardKey, halaqaId?: string) => void;
   setHeartPrice: (price: number) => void;
 
   addStudent: (name: string, photo: string | null, halaqaId?: string | null) => void;
@@ -286,6 +290,7 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
       trip: { ...DEFAULT_REWARD_SETTINGS.trip, ...(p.rewardSettings?.trip ?? {}) },
     },
     showNewProducts: p.showNewProducts !== false,
+    ceremonyProductIds: Array.isArray(p.ceremonyProductIds) ? p.ceremonyProductIds.filter((id): id is string => typeof id === "string") : [],
     products:
       Array.isArray(p.products) && p.products.length
         ? (p.products as ShopItem[]).map((it) => {
@@ -493,6 +498,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<ShopItem[]>(init.products);
   const [heartPrice, setHeartPriceState] = useState(init.heartPrice);
   const [showNewProducts, setShowNewProducts] = useState(init.showNewProducts);
+  const [ceremonyProductIds, setCeremonyProductIds] = useState<string[]>(init.ceremonyProductIds);
   const [tripOn, setTripOn] = useState(init.tripOn);
   const [tripDay, setTripDay] = useState<TripDay | null>(init.tripDay);
   const [tripAttendees, setTripAttendees] = useState<string[]>(init.tripAttendees);
@@ -551,6 +557,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProducts(next.products);
     setHeartPriceState(next.heartPrice);
     setShowNewProducts(next.showNewProducts);
+    setCeremonyProductIds(next.ceremonyProductIds);
     setTripOn(next.tripOn);
     setTripDay(next.tripDay);
     setTripAttendees(next.tripAttendees);
@@ -708,6 +715,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       products,
       heartPrice,
       showNewProducts,
+      ceremonyProductIds,
       tripOn,
       tripDay,
       tripAttendees,
@@ -762,7 +770,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
       pushTimer.current = window.setTimeout(() => void pushCloud(), 700);
     }
-  }, [students, halaqas, lessons, nextLessonId, lastCompletedLessonId, week, weekName, weekStartDateIso, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
+  }, [students, halaqas, lessons, nextLessonId, lastCompletedLessonId, week, weekName, weekStartDateIso, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, ceremonyProductIds, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
 
   // سحب أولي مرة واحدة، ثم استقبال التحديثات لحظيًا عبر Supabase Realtime.
   useEffect(() => {
@@ -1413,7 +1421,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const exists = ps.some((x) => x.id === p.id);
         if (exists) return ps.map((x) => (x.id === p.id ? p : x));
         // منتج جديد: سجّل الأسبوع الذي أُضيف فيه (ليظهر في حفل هذا الأسبوع)
-        return [...ps, { ...p, addedWeek: p.addedWeek ?? week }];
+        return [...ps, { ...p, addedWeek: p.addedWeek ?? week, ceremonyPending: true }];
       });
       sfx.pop();
     },
@@ -1474,6 +1482,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const clearCeremonyReward = useCallback((reward: PerHalaqaRewardKey, halaqaId?: string) => {
+    const mapKey = reward === "improved" ? "improvedByHalaqa" : "behaviorByHalaqa";
+    setCeremonyPicks((current) => {
+      const nextMap = { ...(current[mapKey] ?? {}) };
+      if (halaqaId) delete nextMap[halaqaId];
+      else Object.keys(nextMap).forEach((key) => delete nextMap[key]);
+      return { ...current, [reward]: undefined, [mapKey]: nextMap };
+    });
+  }, []);
+
+  const setChampionExcluded = useCallback((id: string, excluded: boolean) => {
+    setCeremonyPicks((current) => {
+      const ids = new Set(current.championExcludedIds ?? []);
+      if (excluded) ids.add(id);
+      else ids.delete(id);
+      return { ...current, championExcludedIds: [...ids] };
+    });
+  }, []);
+
+  const setCeremonyProductSelected = useCallback((id: string, selected: boolean) => {
+    setCeremonyProductIds((current) => selected ? [...new Set([...current, id])] : current.filter((item) => item !== id));
+  }, []);
+
   const setRewardSetting = useCallback((key: keyof RewardSettings, value: Partial<RewardSettings[keyof RewardSettings]>) => {
     setRewardSettings((current) => ({
       ...current,
@@ -1528,7 +1559,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /** بدء أسبوع جديد: يؤرشف نتائج الأسبوع الحالي — القلوب تستمر كما هي */
   const startWeek = useCallback(() => {
     // أرشفة الأسبوع المنتهي
-    const champs = championTop(students, tripOn, tripAttendees);
+    const championExcluded = new Set(ceremonyPicks.championExcludedIds ?? []);
+    const champs = championTop(students, tripOn, tripAttendees).filter((student) => !championExcluded.has(student.id));
     const awards: { title: string; studentName: string; coins?: number; reward?: RewardKey }[] = [];
     if (rewardSettings.champions.enabled) {
       champs.forEach((st) => awards.push({ title: "بطل الأسبوع", studentName: st.name, coins: rewardSettings.champions.coins, reward: "champions" }));
@@ -1596,18 +1628,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : null,
     };
     setWeeksLog((logs) => [log, ...logs.filter((l) => l.week !== week)]);
+    // لا يُوسم المنتج بأنه عُرض إلا بعد إكمال الحفل. غير المحدد يبقى متاحًا للحفلات القادمة.
+    if (showNewProducts && ceremonyProductIds.length > 0) {
+      const selected = new Set(ceremonyProductIds);
+      setProducts((items) => items.map((item) => selected.has(item.id) && item.shownInCeremonyWeek == null ? { ...item, shownInCeremonyWeek: week, ceremonyPending: false } : item));
+    }
     // أسبوع جديد: كشف نظيف — والقلوب تبقى كما هي (تُستعاد بالشراء أو بمنحة المعلم فقط)
     setWeek((w) => w + 1);
     setWeekNameState("");
     setWeekStartDateIsoState(hijriLocalDateKey(addCalendarDays(weekStartDateIso, 7)));
     setStudents((ss) => ss.map((s) => ({ ...s, days: emptyWeekDays(), recitationRatings: emptyRecitationRatings(), weekXp: 0, weekCoins: 0, heartsLostWeek: 0 })));
     setCeremonyPicks({});
+    setCeremonyProductIds([]);
     setTripOn(false);
     setTripDay(null);
     setTripAttendees([]);
     sfx.sparkle();
     toast("success", "بدأ أسبوع جديد — كشف نظيف للجميع، والقلوب كما هي");
-  }, [ceremonyPicks, rewardSettings, students, toast, tripAttendees, tripDay, tripOn, week, weekName, weekStartDateIso]);
+  }, [ceremonyPicks, ceremonyProductIds, rewardSettings, showNewProducts, students, toast, tripAttendees, tripDay, tripOn, week, weekName, weekStartDateIso]);
 
   const setWeekName = useCallback((name: string) => setWeekNameState(name), []);
   const setWeekStartDateIso = useCallback((value: string) => setWeekStartDateIsoState(value), []);
@@ -1634,6 +1672,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHeartPrice,
     showNewProducts,
     setShowNewProducts,
+    ceremonyProductIds,
+    setCeremonyProductSelected,
     tripOn,
     tripDay,
     tripAttendees,
@@ -1685,6 +1725,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     grantAward,
     setCeremonyPick,
     setCeremonyHalaqaPick,
+    clearCeremonyReward,
+    setChampionExcluded,
     setRewardSetting,
     removeWeekLog,
     updateWeekLog,

@@ -231,6 +231,10 @@ export type ShopItem = {
   slot?: CosmeticSlot; // لخاصية البروفايل
   value?: string; // قيمة الخاصية (لون الإطار/التوهّج/الخلفية)
   addedWeek?: number; // الأسبوع الذي أُضيف فيه المنتج
+  /** الأسبوع الذي عُرض فيه المنتج رسميًا في الحفل؛ غيابه يعني أنه ما زال متاحًا للعرض. */
+  shownInCeremonyWeek?: number;
+  /** علامة للمنتجات المضافة بعد تفعيل الانتقاء؛ تسمح بترحيل غير المحدد لأسابيع لاحقة. */
+  ceremonyPending?: boolean;
   stock?: number | null; // الكمية المتوفرة لدى المعلم (null = غير محدودة) — للنوعين
 };
 
@@ -395,6 +399,8 @@ export type CeremonyPicks = {
   /** فائز واحد من كل حلقة؛ المفتاح هو halaqaId والقيمة هي studentId. */
   improvedByHalaqa?: Record<string, string>;
   behaviorByHalaqa?: Record<string, string>;
+  /** استثناءات أبطال الأسبوع لهذا الحفل فقط، دون تغيير بيانات الطالب أو إنجازه. */
+  championExcludedIds?: string[];
   champion1?: string;
   champion2?: string;
   champion3?: string;
