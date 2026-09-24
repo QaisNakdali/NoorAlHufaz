@@ -18,6 +18,7 @@ import {
   type Student,
 } from "../core";
 import { distributionForHalaqa } from "../halaqaRotation";
+import { dateForCurrentWeekDay, formatHijriDate, hijriMonthKey } from "../hijriDate";
 import { compressImage } from "../photos";
 import { sfx } from "../sound";
 import Avatar from "./Avatar";
@@ -126,7 +127,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
             </p>
             <div className="flex items-center gap-2">
               {[5, 10, 25, 50].map((v) => (
-                <button key={v} type="button" onClick={() => addCoins(s.id, v)} className="flex-1 rounded-xl bg-gold-500 py-2 text-sm font-extrabold text-white shadow-[0_3px_0_#b57a0a] transition hover:brightness-110 active:translate-y-0.5 active:shadow-none">
+                <button key={v} type="button" onClick={() => { addCoins(s.id, v); setCoins((current) => current + v); }} className="flex-1 rounded-xl bg-gold-500 py-2 text-sm font-extrabold text-white shadow-[0_3px_0_#b57a0a] transition hover:brightness-110 active:translate-y-0.5 active:shadow-none">
                   +{ar(v)}
                 </button>
               ))}
@@ -187,7 +188,44 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
 }
 
 /* ===== صف طالب في الكشف ===== */
-function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onManage: () => void }) {
+function StudentDetailsModal({ student, onClose }: { student: Student; onClose: () => void }) {
+  const { weeksLog } = useApp();
+  const analysis = useMemo(() => buildRegisterInsight(student, weeksLog), [student, weeksLog]);
+  const month = hijriMonthKey(new Date());
+  const monthLogs = weeksLog.filter((log) => log.savedAtIso && hijriMonthKey(new Date(log.savedAtIso)) === month);
+  const archived = monthLogs.flatMap((log) => {
+    const record = log.records?.find((item) => item.id === student.id);
+    if (!record) return [];
+    return DAYS.flatMap((day) => {
+      const state = record.days[day.key]; const ward = record.ward[day.key];
+      return [
+        ...(state.h && !state.absent ? [{ kind: "حفظ", day: `${day.label} — ${log.savedAtIso ? formatHijriDate(log.savedAtIso) : "أسبوع محفوظ سابقًا"}`, text: ward.memorization, verses: ward.memorizationVerses, lines: ward.memorizationLines }] : []),
+        ...(state.r && !state.absent ? [{ kind: "مراجعة", day: `${day.label} — ${log.savedAtIso ? formatHijriDate(log.savedAtIso) : "أسبوع محفوظ سابقًا"}`, text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines }] : []),
+      ];
+    });
+  });
+  const current = DAYS.flatMap((day, index) => {
+    const actualDate = dateForCurrentWeekDay(index);
+    if (hijriMonthKey(actualDate) !== month) return [];
+    const state = student.days[day.key]; const ward = student.ward[day.key]; const date = formatHijriDate(actualDate);
+    return [
+      ...(state.h && !state.absent ? [{ kind: "حفظ", day: `${day.label} — ${date}`, text: ward.memorization, verses: ward.memorizationVerses, lines: ward.memorizationLines }] : []),
+      ...(state.r && !state.absent ? [{ kind: "مراجعة", day: `${day.label} — ${date}`, text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines }] : []),
+    ];
+  });
+  const sessions = [...archived, ...current];
+  const currentMonthDays = DAYS.filter((_, index) => hijriMonthKey(dateForCurrentWeekDay(index)) === month);
+  const attendance = [...monthLogs.flatMap((log) => log.records?.filter((item) => item.id === student.id) ?? [])].reduce((sum, record) => ({ present: sum.present + DAYS.filter((day) => record.days[day.key].a).length, absent: sum.absent + DAYS.filter((day) => record.days[day.key].absent).length }), { present: currentMonthDays.filter((day) => student.days[day.key].a).length, absent: currentMonthDays.filter((day) => student.days[day.key].absent).length });
+  const rate = attendance.present + attendance.absent ? Math.round(attendance.present / (attendance.present + attendance.absent) * 100) : null;
+  return <Modal open onClose={onClose} wide><div className="p-6"><div className="flex items-center gap-3"><Avatar photo={student.photo} name={student.name} size={62}/><div className="flex-1"><h3 className="font-display text-2xl font-extrabold text-ink">{student.name}</h3><p className="text-sm font-bold text-grape-500">تفاصيل وتحليل الطالب — {formatHijriDate(new Date(), { month: "long", year: "numeric" })}</p></div><button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-grape-100 text-grape-600">×</button></div>
+    <div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl bg-mint-50 p-4"><b>الحضور</b><p className="mt-2 text-xl font-extrabold">{ar(attendance.present)} حضور · {ar(attendance.absent)} غياب</p><p className="text-xs font-bold text-grape-500">{rate === null ? "لا توجد بيانات كافية" : `النسبة ${ar(rate)}٪${attendance.absent >= 2 ? " — يوجد غياب متكرر" : ""}`}</p></div><div className="rounded-2xl bg-grape-50 p-4"><b>الحفظ</b><p className="mt-2 text-sm font-bold text-grape-600">{analysis.memorization.label}</p><p className="mt-1 text-xs text-grape-500">{analysis.memorization.trend === "insufficient-data" ? "لا توجد بيانات كافية لتحديد الاتجاه بدقة." : `الاتجاه: ${analysis.memorization.trend === "improving" ? "يتحسن" : analysis.memorization.trend === "declining" ? "يتراجع" : "ثابت ضمن المستوى المطلوب"}`}</p></div><div className="rounded-2xl bg-gold-50 p-4"><b>المراجعة</b><p className="mt-2 text-sm font-bold text-grape-600">{analysis.review.label}</p><p className="mt-1 text-xs text-grape-500">{analysis.review.trend === "insufficient-data" ? "لا توجد بيانات كافية لتحديد الاتجاه بدقة." : `الاتجاه: ${analysis.review.trend === "improving" ? "تتحسن" : analysis.review.trend === "declining" ? "تتراجع" : "ثابتة ضمن المستوى المطلوب"}`}</p></div></div>
+    <div className="mt-4 rounded-2xl bg-sky-50 p-4 text-sm font-bold leading-7 text-sky-800">💡 {analysis.advice}</div>
+    <h4 className="mt-5 font-display text-lg font-extrabold text-ink">تسميع الطالب خلال الشهر الهجري الحالي</h4>{sessions.length ? <div className="mt-3 space-y-2">{sessions.map((item, index) => <div key={`${item.day}-${item.kind}-${index}`} className="rounded-xl border border-grape-100 bg-white p-3"><div className="flex flex-wrap justify-between gap-2"><b className={item.kind === "حفظ" ? "text-grape-600" : "text-gold-700"}>{item.kind}</b><span className="text-xs font-bold text-grape-400">{item.day}</span></div><p className="mt-1 text-sm font-bold text-ink">{item.text || "لم يُسجّل اسم السورة"}</p><p className="text-xs text-grape-500">{ar(item.verses || 0)} آية · {ar(item.lines || 0)} سطر</p></div>)}</div> : <p className="mt-3 rounded-xl bg-grape-50 p-4 text-sm font-bold text-grape-500">لا توجد جلسات تسميع مسجلة في الشهر الهجري الحالي.</p>}
+    <p className="mt-4 text-xs font-bold text-grape-400">النشاط لا يُعرض إلا إذا كان محفوظًا كبيانات فعلية، ولا يوجد حاليًا حقل نشاط مستقل.</p>
+  </div></Modal>;
+}
+
+function RegisterRow({ s, delay, onManage, onDetails }: { s: Student; delay: number; onManage: () => void; onDetails: () => void }) {
   const { markDay, markAbsent, updateWard, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice } = useApp();
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
@@ -226,7 +264,7 @@ function RegisterRow({ s, delay, onManage }: { s: Student; delay: number; onMana
           <Avatar photo={s.photo} name={s.name} size={58} frame={s.frame} crown={s.crown} glow={s.glow} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="truncate font-display text-lg font-extrabold leading-tight text-ink sm:text-xl">{s.name}</h3>
+              <button type="button" onClick={onDetails} className="truncate text-right font-display text-lg font-extrabold leading-tight text-ink underline-offset-4 hover:text-grape-600 hover:underline sm:text-xl">{s.name}</button>
               {s.isTesting && <span className="shrink-0 rounded-full bg-sky-600 px-2.5 py-1 text-xs font-extrabold text-white">اختبار</span>}
               <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-xs! shadow-none!" />
               <span className="shrink-0 rounded-full bg-grape-100 px-2 py-0.5 text-xs font-extrabold text-grape-500">{halaqas.find((h) => h.id === s.halaqaId)?.name ?? "بلا حلقة"}</span>
@@ -450,9 +488,10 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
 
 /* ===== الكشف ===== */
 export default function Register() {
-  const { students, halaqas, lessons, addHalaqa, removeHalaqa, updateHalaqaTeachers, setHalaqaDistribution, week, weekName } = useApp();
+  const { students, halaqas, lessons, nextLessonId, addHalaqa, removeHalaqa, updateHalaqaTeachers, setHalaqaDistribution, week, weekName } = useApp();
   const [addOpen, setAddOpen] = useState(false);
   const [manageId, setManageId] = useState<string | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [halaqaFilter, setHalaqaFilter] = useState<string>("all");
   const [newHalaqa, setNewHalaqa] = useState("");
@@ -470,12 +509,12 @@ export default function Register() {
     const q = query.trim().toLocaleLowerCase("ar");
     return [...students]
       .filter((s) => (!q || s.name.toLocaleLowerCase("ar").includes(q)) && (halaqaFilter === "all" || (halaqaFilter === "none" ? !s.halaqaId : s.halaqaId === halaqaFilter)))
-      .filter((s) => teacherFilter === "all" || currentDistribution?.teacherForStudent[s.id] === teacherFilter)
+      .filter((s) => !currentDistribution?.enabled || teacherFilter === "all" || currentDistribution.teacherForStudent[s.id] === teacherFilter)
       .sort((a, b) => a.name.localeCompare(b.name, "ar"));
   }, [students, query, halaqaFilter, teacherFilter, currentDistribution]);
   const nextLesson = useMemo(
-    () => [...lessons].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt).find((lesson) => lesson.completedAt === null),
-    [lessons]
+    () => { const ordered = [...lessons].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt); return ordered.find((lesson) => lesson.id === nextLessonId && lesson.completedAt === null) ?? ordered.find((lesson) => lesson.completedAt === null); },
+    [lessons, nextLessonId]
   );
 
   return (
@@ -539,6 +578,7 @@ export default function Register() {
               <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => { setEditingHalaqaId(expanded ? null : halaqa.id); setTeacherDraft((halaqa.teachers ?? []).map((teacher) => teacher.name)); }} className="flex-1 text-right font-display font-extrabold text-ink">{halaqa.name}<span className="me-2 text-xs font-bold text-grape-400">{ar(count)} طالب · {ar(halaqa.teachers?.length ?? 0)} معلم</span></button><DeleteBtn label="حذف" onDelete={() => removeHalaqa(halaqa.id)} /></div>
               {expanded && <div className="mt-3 border-t border-grape-100 pt-3">
                 <p className="text-xs font-extrabold text-grape-600">المعلمون</p>
+                <div className="mt-2 flex flex-wrap gap-2">{(halaqa.teachers ?? []).map((teacher) => <button key={teacher.id} type="button" onClick={() => { setHalaqaFilter(halaqa.id); setTeacherFilter(halaqa.randomDistribution ? teacher.id : "all"); }} className="rounded-xl bg-mint-50 px-3 py-2 text-xs font-extrabold text-mint-700">{teacher.name}{halaqa.randomDistribution ? " — عرض طلابه اليوم" : " — عرض الحلقة"}</button>)}</div>
                 <div className="mt-2 space-y-2">{teacherDraft.map((teacher, index) => <div key={index} className="flex gap-2"><input value={teacher} onChange={(e) => setTeacherDraft((items) => items.map((item, i) => i === index ? e.target.value : item))} placeholder={`اسم المعلم ${index + 1}`} className="field-control flex-1"/><button type="button" onClick={() => setTeacherDraft((items) => items.filter((_, i) => i !== index))} className="rounded-xl bg-coral-50 px-3 font-bold text-coral-600">×</button></div>)}</div>
                 <div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => setTeacherDraft((items) => [...items, ""])} className="rounded-xl border border-grape-200 px-3 py-2 text-xs font-extrabold text-grape-600">+ إضافة معلم آخر</button><button type="button" onClick={() => updateHalaqaTeachers(halaqa.id, teacherDraft)} className="rounded-xl bg-grape-600 px-4 py-2 text-xs font-extrabold text-white">حفظ المعلمين</button></div>
                 <label className="mt-3 flex items-center justify-between rounded-xl bg-grape-50 p-3 text-sm font-extrabold text-grape-700"><span>التوزيع العشوائي المتوازن يوميًا</span><input type="checkbox" checked={halaqa.randomDistribution === true} disabled={(halaqa.teachers?.length ?? 0) < 2} onChange={(e) => setHalaqaDistribution(halaqa.id, e.target.checked)} className="h-5 w-5 accent-violet-600"/></label>
@@ -582,13 +622,14 @@ export default function Register() {
       ) : (
         <div className="space-y-2.5">
           {byName.map((s, i) => (
-            <RegisterRow key={s.id} s={s} delay={i * 50} onManage={() => setManageId(s.id)} />
+            <RegisterRow key={s.id} s={s} delay={i * 50} onManage={() => setManageId(s.id)} onDetails={() => setDetailsId(s.id)} />
           ))}
         </div>
       )}
 
       {addOpen && <AddStudentModal onClose={() => setAddOpen(false)} />}
       {manageId && <ManageStudentModal id={manageId} onClose={() => setManageId(null)} />}
+      {detailsId && students.find((student) => student.id === detailsId) && <StudentDetailsModal student={students.find((student) => student.id === detailsId)!} onClose={() => setDetailsId(null)} />}
     </div>
   );
 }

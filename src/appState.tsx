@@ -55,6 +55,7 @@ import {
 } from "./core";
 import { buildTrackSnapshot, measureStudentWork } from "./analytics";
 import { localDateKey } from "./halaqaRotation";
+import { formatHijriDate } from "./hijriDate";
 import { sfx, setSoundEnabled } from "./sound";
 import {
   cloudLoad,
@@ -80,6 +81,8 @@ type State = {
   students: Student[];
   halaqas: Halaqa[];
   lessons: Lesson[];
+  nextLessonId: string | null;
+  lastCompletedLessonId: string | null;
   week: number;
   weekName: string;
   weeksLog: WeekLog[];
@@ -119,6 +122,10 @@ type Ctx = State & {
   removeHalaqa: (id: string) => void;
   addLesson: (title: string, teacher: string) => void;
   completeLesson: (id: string) => void;
+  undoLastLessonCompletion: () => void;
+  setNextLesson: (id: string) => void;
+  updateLesson: (id: string, title: string, teacher: string) => void;
+  removeLesson: (id: string) => void;
   markDay: (id: string, day: DayKey, part: DayPart, rating?: RecitationRating) => void;
   markAbsent: (id: string, day: DayKey) => void;
   updateWard: (id: string, day: DayKey, ward: DailyWard) => void;
@@ -259,6 +266,8 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
           }))
           .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt)
       : [],
+    nextLessonId: typeof p.nextLessonId === "string" ? p.nextLessonId : null,
+    lastCompletedLessonId: typeof p.lastCompletedLessonId === "string" ? p.lastCompletedLessonId : null,
     week: typeof p.week === "number" ? p.week : 1,
     weekName: typeof p.weekName === "string" ? p.weekName : "",
     weeksLog: Array.isArray(p.weeksLog) ? (p.weeksLog as WeekLog[]) : [],
@@ -330,6 +339,17 @@ function readStoredDirty(): boolean {
   return false;
 }
 
+function readStoredBase(): State | null {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as { __base?: Partial<State> };
+    return stored.__base ? stateFromPartial(stored.__base) : null;
+  } catch {
+    return null;
+  }
+}
+
 function sameValue(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   try {
@@ -353,7 +373,7 @@ function arrayItemKey(value: unknown): string | null {
  * يطبق فقط الفروق التي صنعها هذا الجهاز فوق أحدث نسخة سحابية.
  * بهذه الطريقة لا يؤدي تعديل قلب أو سعر إلى إعادة قائمة طلاب قديمة كاملة.
  */
-function mergeLocalChanges(base: unknown, local: unknown, remote: unknown): unknown {
+export function mergeLocalChanges(base: unknown, local: unknown, remote: unknown, path: string[] = []): unknown {
   if (sameValue(local, base)) return remote;
   if (sameValue(remote, base) || sameValue(local, remote)) return local;
 
@@ -378,7 +398,7 @@ function mergeLocalChanges(base: unknown, local: unknown, remote: unknown): unkn
           if (!hadBase) merged.push(localMap.get(key)); // إضافة محلية
           continue; // حذف بعيد مع عدم تعديل محلي
         }
-        merged.push(mergeLocalChanges(baseMap.get(key), localMap.get(key), remoteMap.get(key)));
+        merged.push(mergeLocalChanges(baseMap.get(key), localMap.get(key), remoteMap.get(key), [...path, key]));
       }
       return merged;
     }
@@ -404,12 +424,18 @@ function mergeLocalChanges(base: unknown, local: unknown, remote: unknown): unkn
     const result: Record<string, unknown> = { ...r };
     for (const key of new Set([...Object.keys(b), ...Object.keys(l), ...Object.keys(r)])) {
       if (key in b && !(key in l)) delete result[key];
-      else if (key in l) result[key] = mergeLocalChanges(b[key], l[key], r[key]);
+      else if (key in l) result[key] = mergeLocalChanges(b[key], l[key], r[key], [...path, key]);
     }
     return result;
   }
 
-  // تعارض على نفس القيمة: تعديل هذا الجهاز هو الأحدث لهذا الحقل فقط.
+  // الأرصدة والقيم التراكمية تُدمج كفرق، فلا تضيع زيادة جهاز آخر بسبب لقطة قديمة.
+  const field = path[path.length - 1];
+  if (["coins", "xp", "hearts", "heartsLostWeek", "qty", "receivedQty"].includes(field)
+    && typeof base === "number" && typeof local === "number" && typeof remote === "number") {
+    return Math.max(0, remote + (local - base));
+  }
+  // تعارض على نفس القيمة غير التراكمية: تعديل هذا الجهاز هو المقصود لهذا الحقل فقط.
   return local;
 }
 
@@ -428,6 +454,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [students, setStudents] = useState<Student[]>(init.students);
   const [halaqas, setHalaqas] = useState<Halaqa[]>(init.halaqas);
   const [lessons, setLessons] = useState<Lesson[]>(init.lessons);
+  const [nextLessonId, setNextLessonId] = useState<string | null>(init.nextLessonId);
+  const [lastCompletedLessonId, setLastCompletedLessonId] = useState<string | null>(init.lastCompletedLessonId);
   const [week, setWeek] = useState(init.week);
   const [weekName, setWeekNameState] = useState(init.weekName);
   const [weeksLog, setWeeksLog] = useState<WeekLog[]>(init.weeksLog);
@@ -482,6 +510,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStudents(next.students);
     setHalaqas(next.halaqas);
     setLessons(next.lessons);
+    setNextLessonId(next.nextLessonId);
+    setLastCompletedLessonId(next.lastCompletedLessonId);
     setWeek(next.week);
     setWeekNameState(next.weekName);
     setWeeksLog(next.weeksLog);
@@ -620,6 +650,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       students,
       halaqas,
       lessons,
+      nextLessonId,
+      lastCompletedLessonId,
       week,
       weekName,
       weeksLog,
@@ -646,7 +678,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       revRef.current = snapshot.rev;
       dirtyRef.current = snapshot.dirty;
       try {
-        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: snapshot.rev, __dirty: snapshot.dirty }));
+        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: snapshot.rev, __dirty: snapshot.dirty, __base: syncedBaseRef.current }));
       } catch {
         /* تجاهل */
       }
@@ -662,9 +694,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       firstSave.current = false;
       revRef.current = readStoredRev();
       dirtyRef.current = readStoredDirty();
-      syncedBaseRef.current = persistData;
+      syncedBaseRef.current = readStoredBase() ?? persistData;
       try {
-        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current, __dirty: dirtyRef.current }));
+        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current, __dirty: dirtyRef.current, __base: syncedBaseRef.current }));
       } catch {
         /* تجاهل */
       }
@@ -674,7 +706,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // تعديل حقيقي: نضع علامة dirty؛ رقم السحابة لا يتغير إلا بعد نجاح الحفظ المشروط.
     dirtyRef.current = true;
     try {
-      localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current, __dirty: true }));
+      localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current, __dirty: true, __base: syncedBaseRef.current }));
     } catch {
       /* تجاهل */
     }
@@ -682,7 +714,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
       pushTimer.current = window.setTimeout(() => void pushCloud(), 700);
     }
-  }, [students, halaqas, lessons, week, weekName, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
+  }, [students, halaqas, lessons, nextLessonId, lastCompletedLessonId, week, weekName, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
 
   // سحب أولي مرة واحدة، ثم استقبال التحديثات لحظيًا عبر Supabase Realtime.
   useEffect(() => {
@@ -883,7 +915,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
       completedTitle = lesson.title;
       return { ...lesson, completedAt: Date.now() };
     }));
-    if (completedTitle) toast("success", `تم تسجيل إعطاء درس: ${completedTitle}`);
+    if (completedTitle) {
+      setLastCompletedLessonId(id);
+      setNextLessonId((current) => current === id ? null : current);
+      toast("success", `تم تسجيل إعطاء درس: ${completedTitle}`);
+    }
+  }, [toast]);
+
+  const undoLastLessonCompletion = useCallback(() => {
+    if (!lastCompletedLessonId) {
+      toast("error", "لا توجد عملية إعطاء حديثة للتراجع عنها");
+      return;
+    }
+    let restored = "";
+    setLessons((items) => items.map((lesson) => {
+      if (lesson.id !== lastCompletedLessonId || lesson.completedAt === null) return lesson;
+      restored = lesson.title;
+      return { ...lesson, completedAt: null };
+    }));
+    if (restored) {
+      setNextLessonId(lastCompletedLessonId);
+      setLastCompletedLessonId(null);
+      toast("success", `تم التراجع، وعاد «${restored}» درسًا قادمًا`);
+    }
+  }, [lastCompletedLessonId, toast]);
+
+  const setNextLesson = useCallback((id: string) => {
+    const lesson = lessons.find((item) => item.id === id && item.completedAt === null);
+    if (!lesson) return;
+    setNextLessonId(id);
+    toast("success", `أصبح «${lesson.title}» الدرس القادم`);
+  }, [lessons, toast]);
+
+  const updateLesson = useCallback((id: string, title: string, teacher: string) => {
+    const cleanTitle = title.trim();
+    const cleanTeacher = teacher.trim();
+    if (!cleanTitle || !cleanTeacher) {
+      toast("error", "اكتب عنوان الدرس واسم المعلم");
+      return;
+    }
+    setLessons((items) => items.map((lesson) => lesson.id === id ? { ...lesson, title: cleanTitle, teacher: cleanTeacher } : lesson));
+    toast("success", "تم تعديل الدرس دون تغيير ترتيبه أو حالته");
+  }, [toast]);
+
+  const removeLesson = useCallback((id: string) => {
+    setLessons((items) => items.filter((lesson) => lesson.id !== id));
+    setNextLessonId((current) => current === id ? null : current);
+    setLastCompletedLessonId((current) => current === id ? null : current);
+    toast("success", "تم حذف الدرس فقط");
   }, [toast]);
 
   const removeStudent = useCallback(
@@ -1447,7 +1526,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const log: WeekLog = {
       week,
       name: weekName,
-      savedAt: new Date().toLocaleDateString("ar", { day: "numeric", month: "long" }),
+      savedAt: formatHijriDate(new Date()),
       savedAtIso: new Date().toISOString(),
       students: allEntries,
       top: [...allEntries]
@@ -1491,6 +1570,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     students,
     halaqas,
     lessons,
+    nextLessonId,
+    lastCompletedLessonId,
     week,
     weekName,
     weeksLog,
@@ -1527,6 +1608,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     removeHalaqa,
     addLesson,
     completeLesson,
+    undoLastLessonCompletion,
+    setNextLesson,
+    updateLesson,
+    removeLesson,
     markDay,
     markAbsent,
     updateWard,

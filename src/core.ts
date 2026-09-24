@@ -1,4 +1,5 @@
 /* الأنواع والبيانات والمنطق الأساسي للمنصة */
+import { currentHijriMonthBounds } from "./hijriDate";
 
 /* ---------- أدوات ---------- */
 export const ar = (n: number | string): string =>
@@ -655,11 +656,8 @@ export function analyzeCurrentWeek(records: MemorizationRecord[]): PeriodAnalysi
 
 /** تحليل الشهر الحالي */
 export function analyzeCurrentMonth(records: MemorizationRecord[]): PeriodAnalysis {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-
-  return analyzeMemorizationPeriod(records, startOfMonth, endOfMonth);
+  const { start, end } = currentHijriMonthBounds();
+  return analyzeMemorizationPeriod(records, start, end);
 }
 
 /** مقارنة بين أسبوعين */

@@ -5,6 +5,7 @@ import { analyzeStudent, measureStudentWork } from "../analytics";
 import { ar, DAYS, type DayKey, type Student, type WeekLog, type WeekLogEntry, type WeekStudentRecord } from "../core";
 import Avatar from "./Avatar";
 import { Icon, SectionHead } from "./ui";
+import { dateForCurrentWeekDay, formatHijriMonth, hijriMonthKey } from "../hijriDate";
 
 type Period = "daily" | "weekly" | "monthly" | "all";
 type StudentMetrics = {
@@ -45,13 +46,15 @@ function fromStudent(student: Student, day?: DayKey): StudentMetrics {
   return result;
 }
 
+function fromStudentHijriMonth(student: Student, month: string): StudentMetrics {
+  return DAYS.reduce((total, item, index) => hijriMonthKey(dateForCurrentWeekDay(index)) === month ? add(total, fromStudent(student, item.key)) : total, emptyMetrics(student));
+}
+
 function fromEntry(entry: WeekLogEntry): StudentMetrics {
   return { id: entry.id, name: entry.name, photo: entry.photo, present: entry.attendanceDays ?? 0, absent: entry.absenceDays ?? 0, memorizationSessions: entry.memorizationDays ?? 0, reviewSessions: entry.reviewDays ?? 0, memorizationVerses: entry.memorizationVerses ?? 0, reviewVerses: entry.reviewVerses ?? 0, memorizationLines: entry.memorizationLines ?? 0, reviewLines: entry.reviewLines ?? 0, memorizationPages: entry.memorizationPages ?? (entry.memorizationLines ?? 0) / 15, reviewPages: entry.reviewPages ?? (entry.reviewLines ?? 0) / 15 };
 }
 
 const logDate = (log: WeekLog): Date | null => { if (!log.savedAtIso) return null; const date = new Date(log.savedAtIso); return Number.isNaN(date.getTime()) ? null : date; };
-const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-const monthLabel = (key: string) => new Date(`${key}-01T12:00:00`).toLocaleDateString("ar", { month: "long", year: "numeric" });
 function logMetrics(log: WeekLog): StudentMetrics[] { return log.records?.length ? log.records.map((record) => fromRecord(record)) : (log.students ?? log.top).map(fromEntry); }
 
 function MetricCard({ icon, label, value, tone = "grape" }: { icon: string; label: string; value: string; tone?: "grape" | "mint" | "coral" | "gold" }) {
@@ -66,8 +69,13 @@ export default function StatisticsPage() {
   const [halaqaId, setHalaqaId] = useState("all");
   const [day, setDay] = useState<DayKey>("sun");
   const [selectedWeek, setSelectedWeek] = useState("current");
-  const availableMonths = useMemo(() => [...new Set([monthKey(new Date()), ...weeksLog.map(logDate).filter((date): date is Date => !!date).map(monthKey)])].sort().reverse(), [weeksLog]);
-  const [selectedMonth, setSelectedMonth] = useState(monthKey(new Date()));
+  const monthOptions = useMemo(() => {
+    const dates = [new Date(), ...weeksLog.map(logDate).filter((date): date is Date => !!date)];
+    const map = new Map<string, Date>();
+    dates.forEach((date) => map.set(hijriMonthKey(date), date));
+    return [...map.entries()].sort((a, b) => b[1].getTime() - a[1].getTime());
+  }, [weeksLog]);
+  const [selectedMonth, setSelectedMonth] = useState(hijriMonthKey(new Date()));
   const currentStudents = useMemo(() => students.filter((student) => halaqaId === "all" || (student.halaqaId ?? "none") === halaqaId), [students, halaqaId]);
 
   const metrics = useMemo(() => {
@@ -78,14 +86,15 @@ export default function StatisticsPage() {
       else { const log = weeksLog.find((item) => item.week === Number(selectedWeek)); rows = log ? logMetrics(log) : []; }
     }
     if (period === "monthly" || period === "all") {
-      const sourceLogs = period === "monthly" ? weeksLog.filter((log) => { const date = logDate(log); return date && monthKey(date) === selectedMonth; }) : weeksLog;
+      const sourceLogs = period === "monthly" ? weeksLog.filter((log) => { const date = logDate(log); return date && hijriMonthKey(date) === selectedMonth; }) : weeksLog;
       const map = new Map<string, StudentMetrics>();
       for (const student of currentStudents) map.set(student.id, emptyMetrics(student));
       for (const row of sourceLogs.flatMap(logMetrics)) {
         const blank = { ...row, present: 0, absent: 0, memorizationSessions: 0, reviewSessions: 0, memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0, memorizationPages: 0, reviewPages: 0 };
         map.set(row.id, add(map.get(row.id) ?? blank, row));
       }
-      if (period === "all" || selectedMonth === monthKey(new Date())) for (const student of currentStudents) map.set(student.id, add(map.get(student.id) ?? emptyMetrics(student), fromStudent(student)));
+      if (period === "all") for (const student of currentStudents) map.set(student.id, add(map.get(student.id) ?? emptyMetrics(student), fromStudent(student)));
+      else if (selectedMonth === hijriMonthKey(new Date())) for (const student of currentStudents) map.set(student.id, add(map.get(student.id) ?? emptyMetrics(student), fromStudentHijriMonth(student, selectedMonth)));
       rows = [...map.values()];
     }
     if (halaqaId !== "all" && period !== "daily" && !(period === "weekly" && selectedWeek === "current")) { const allowed = new Set(currentStudents.map((student) => student.id)); rows = rows.filter((row) => allowed.has(row.id)); }
@@ -105,7 +114,7 @@ export default function StatisticsPage() {
         <label className="text-xs font-extrabold text-grape-600">الطالب<select value={studentId} onChange={(e) => setStudentId(e.target.value)} className="field-control mt-1 w-full"><option value="all">جميع الطلاب</option>{currentStudents.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}</select></label>
         {period === "daily" && <label className="text-xs font-extrabold text-grape-600">اليوم<select value={day} onChange={(e) => setDay(e.target.value as DayKey)} className="field-control mt-1 w-full">{DAYS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>}
         {period === "weekly" && <label className="text-xs font-extrabold text-grape-600">الأسبوع<select value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} className="field-control mt-1 w-full"><option value="current">الأسبوع الحالي ({ar(week)})</option>{weeksLog.map((log) => <option key={log.week} value={log.week}>{log.name || `الأسبوع ${ar(log.week)}`}</option>)}</select></label>}
-        {period === "monthly" && <label className="text-xs font-extrabold text-grape-600">الشهر<select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="field-control mt-1 w-full">{availableMonths.map((key) => <option key={key} value={key}>{monthLabel(key)}</option>)}</select></label>}
+        {period === "monthly" && <label className="text-xs font-extrabold text-grape-600">الشهر الهجري<select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="field-control mt-1 w-full">{monthOptions.map(([key, date]) => <option key={key} value={key}>{formatHijriMonth(date)}</option>)}</select></label>}
       </div>
     </div>
 

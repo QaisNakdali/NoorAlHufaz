@@ -1,6 +1,7 @@
 /* الحفل الأسبوعي — يجهّز المعلم الجوائز والرحلة ثم يضغط زرًا واحدًا للعرض */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../appState";
+import { formatHijriDate } from "../hijriDate";
 import {
   ar,
   AWARDS_META,
@@ -329,7 +330,7 @@ export default function CeremonyPanel() {
                   </span>
                   <button type="button" onClick={() => setOpenLog(openLog === log.week ? null : log.week)} className="min-w-0 flex-1 text-start">
                     <span className="block truncate font-display text-sm font-extrabold text-ink">{log.name || "أسبوع سابق"}</span>
-                    <span className="text-xs font-bold text-grape-700/55">{log.savedAt} · {ar(log.top.length)} طالبًا · {ar(log.awards.length)} جائزة</span>
+                    <span className="text-xs font-bold text-grape-700/55">{log.savedAtIso ? formatHijriDate(log.savedAtIso) : "تاريخ محفوظ سابقًا"} · {ar(log.top.length)} طالبًا · {ar(log.awards.length)} جائزة</span>
                   </button>
                   <button
                     type="button"
