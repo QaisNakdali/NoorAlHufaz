@@ -19,6 +19,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 export const CLOUD_SKIP_PHOTOS = false;
 export const isCloudEnabled = (): boolean => Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export type CloudPayload = { rev: number; data: unknown };
+export type CloudSaveResult = CloudPayload & { applied: boolean };
 
 function errMsg(e: unknown): string {
   if (e instanceof Error) return e.message;
@@ -72,7 +73,7 @@ export async function cloudLoad(): Promise<CloudPayload | null> {
 }
 
 /** يحفظ الحالة ويعيدها بعد نقل الصور إلى Storage إن وجدت. */
-export async function cloudSave(payload: CloudPayload): Promise<CloudPayload> {
+export async function cloudSave(payload: CloudPayload, expectedRev: number): Promise<CloudSaveResult> {
   const prepared = await preparePayload(payload);
   const row = {
     id: STATE_ID,
@@ -81,25 +82,26 @@ export async function cloudSave(payload: CloudPayload): Promise<CloudPayload> {
     updated_at: new Date().toISOString(),
   };
 
-  // تحديث ذري: لا يمكن لطلب قديم وصل متأخرًا أن يستبدل نسخة أحدث.
+  // مقارنة وتبديل ذرية: لا يُسمح بالحفظ إلا إذا بُني التعديل على النسخة الحالية نفسها.
+  // هذا يمنع جهازًا يحمل حالة قديمة من استبدال بيانات أحدث لمجرد أن ساعته أعطت رقمًا أكبر.
   const { data: updated, error: updateError } = await supabase
     .from(STATE_TABLE)
     .update(row)
     .eq("id", STATE_ID)
-    .lt("rev", prepared.rev)
+    .eq("rev", expectedRev)
     .select("rev,data")
     .maybeSingle();
   if (updateError) throw updateError;
-  if (updated) return prepared;
+  if (updated) return { ...prepared, applied: true };
 
   // إذا لم يوجد الصف بعد، نحاول إنشاءه. تعارض الإنشاء يعني أن جهازًا آخر سبقنا.
   const { error: insertError } = await supabase.from(STATE_TABLE).insert(row);
-  if (!insertError) return prepared;
+  if (!insertError) return { ...prepared, applied: true };
   if (insertError.code !== "23505") throw insertError;
 
-  // نسختنا رُفضت لأنها أقدم؛ نعيد النسخة الفائزة كي يطبقها الجهاز محليًا.
+  // حدث تعديل متزامن؛ نعيد النسخة الفائزة كي يدمج المتصل تغييره فوقها ثم يعيد المحاولة.
   const latest = await cloudLoad();
-  return latest ?? prepared;
+  return latest ? { ...latest, applied: false } : { ...prepared, applied: false };
 }
 
 /** يستقبل تعديل أي معلم فور وصوله إلى قاعدة البيانات. */
