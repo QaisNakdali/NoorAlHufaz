@@ -38,6 +38,15 @@ export type CosmeticSlot = "frame" | "crown" | "glow" | "cardbg";
 
 export type AwardRec = { id: string; title: string; week: number; coins?: number };
 export type Halaqa = { id: string; name: string; createdAt: number };
+/** درس محفوظ مستقل عن بيانات الطلاب، ويحافظ order على تسلسل الإضافة. */
+export type Lesson = {
+  id: string;
+  title: string;
+  teacher: string;
+  order: number;
+  createdAt: number;
+  completedAt: number | null;
+};
 export type RewardKey = "champions" | "improved" | "behavior" | "trip";
 export type RewardOption = { enabled: boolean; coins: number };
 export type RewardSettings = Record<RewardKey, RewardOption>;
@@ -492,7 +501,7 @@ export type WeekLog = {
 };
 
 /* ---------- الواجهات ---------- */
-export type Tab = "register" | "store" | "deliveries" | "board" | "ceremony" | "past" | "term" | "stats";
+export type Tab = "register" | "lessons" | "store" | "deliveries" | "board" | "ceremony" | "past" | "term" | "stats";
 export type Mode = "teacher" | "student";
 
 /* ========== دوال مساعدة لسجل الحفظ والتحليلات ========== */

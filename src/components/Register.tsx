@@ -449,7 +449,7 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
 
 /* ===== الكشف ===== */
 export default function Register() {
-  const { students, halaqas, addHalaqa, removeHalaqa, week, weekName } = useApp();
+  const { students, halaqas, lessons, addHalaqa, removeHalaqa, week, weekName } = useApp();
   const [addOpen, setAddOpen] = useState(false);
   const [manageId, setManageId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -463,6 +463,10 @@ export default function Register() {
       .filter((s) => (!q || s.name.toLocaleLowerCase("ar").includes(q)) && (halaqaFilter === "all" || (halaqaFilter === "none" ? !s.halaqaId : s.halaqaId === halaqaFilter)))
       .sort((a, b) => a.name.localeCompare(b.name, "ar"));
   }, [students, query, halaqaFilter]);
+  const nextLesson = useMemo(
+    () => [...lessons].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt).find((lesson) => lesson.completedAt === null),
+    [lessons]
+  );
 
   return (
     <div className="anim-fade">
@@ -477,6 +481,22 @@ export default function Register() {
           </BigBtn>
         }
       />
+
+      <div className="mb-4 flex items-center gap-3 rounded-2xl border border-gold-500/40 bg-gradient-to-l from-gold-400/20 to-white p-4 shadow-[0_16px_40px_-34px_rgba(165,112,17,.65)]">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gold-400/30 text-gold-600">
+          <Icon name="book" className="h-6 w-6" strokeWidth={2.4} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-extrabold text-gold-600">الدرس القادم</p>
+          {nextLesson ? (
+            <p className="mt-0.5 font-display text-base font-extrabold leading-6 text-ink sm:text-lg">
+              {nextLesson.title} <span className="font-sans text-sm font-bold text-grape-600">— المعلم: {nextLesson.teacher}</span>
+            </p>
+          ) : (
+            <p className="mt-0.5 text-sm font-bold text-grape-500">لا يوجد درس قادم حاليًا</p>
+          )}
+        </div>
+      </div>
 
       <div className="mb-4 rounded-2xl border border-grape-200/80 bg-white/90 p-3 shadow-[0_16px_40px_-34px_rgba(76,29,149,.55)] backdrop-blur">
         <label className="relative block">

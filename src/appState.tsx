@@ -35,6 +35,7 @@ import {
   type BgKind,
   type CeremonyPicks,
   type Halaqa,
+  type Lesson,
   type CosmeticSlot,
   type CrownKind,
   type DayKey,
@@ -77,6 +78,7 @@ export type CloudInfo = {
 type State = {
   students: Student[];
   halaqas: Halaqa[];
+  lessons: Lesson[];
   week: number;
   weekName: string;
   weeksLog: WeekLog[];
@@ -112,6 +114,8 @@ type Ctx = State & {
   addHalaqa: (name: string) => void;
   renameHalaqa: (id: string, name: string) => void;
   removeHalaqa: (id: string) => void;
+  addLesson: (title: string, teacher: string) => void;
+  completeLesson: (id: string) => void;
   markDay: (id: string, day: DayKey, part: DayPart, rating?: RecitationRating) => void;
   markAbsent: (id: string, day: DayKey) => void;
   updateWard: (id: string, day: DayKey, ward: DailyWard) => void;
@@ -230,6 +234,17 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
     students,
     halaqas: Array.isArray(p.halaqas)
       ? (p.halaqas as Halaqa[]).filter((h) => h && typeof h.id === "string" && typeof h.name === "string")
+      : [],
+    lessons: Array.isArray(p.lessons)
+      ? (p.lessons as Lesson[])
+          .filter((lesson) => lesson && typeof lesson.id === "string" && typeof lesson.title === "string" && typeof lesson.teacher === "string")
+          .map((lesson, index) => ({
+            ...lesson,
+            order: typeof lesson.order === "number" ? lesson.order : index + 1,
+            createdAt: typeof lesson.createdAt === "number" ? lesson.createdAt : index,
+            completedAt: typeof lesson.completedAt === "number" ? lesson.completedAt : null,
+          }))
+          .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt)
       : [],
     week: typeof p.week === "number" ? p.week : 1,
     weekName: typeof p.weekName === "string" ? p.weekName : "",
@@ -399,6 +414,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [init] = useState(loadPersist);
   const [students, setStudents] = useState<Student[]>(init.students);
   const [halaqas, setHalaqas] = useState<Halaqa[]>(init.halaqas);
+  const [lessons, setLessons] = useState<Lesson[]>(init.lessons);
   const [week, setWeek] = useState(init.week);
   const [weekName, setWeekNameState] = useState(init.weekName);
   const [weeksLog, setWeeksLog] = useState<WeekLog[]>(init.weeksLog);
@@ -452,6 +468,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     applyingSnapshot.current = { rev, dirty };
     setStudents(next.students);
     setHalaqas(next.halaqas);
+    setLessons(next.lessons);
     setWeek(next.week);
     setWeekNameState(next.weekName);
     setWeeksLog(next.weeksLog);
@@ -589,6 +606,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const persistData: State = {
       students,
       halaqas,
+      lessons,
       week,
       weekName,
       weeksLog,
@@ -651,7 +669,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
       pushTimer.current = window.setTimeout(() => void pushCloud(), 700);
     }
-  }, [students, halaqas, week, weekName, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
+  }, [students, halaqas, lessons, week, weekName, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
 
   // سحب أولي مرة واحدة، ثم استقبال التحديثات لحظيًا عبر Supabase Realtime.
   useEffect(() => {
@@ -764,6 +782,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHalaqas((hs) => hs.filter((h) => h.id !== id));
     setStudents((ss) => ss.map((s) => s.halaqaId === id ? { ...s, halaqaId: null } : s));
     toast("success", "حُذفت الحلقة وأصبح طلابها بلا حلقة، دون حذف أي طالب أو سجل");
+  }, [toast]);
+
+  /* ===== الدروس: سجل مستقل متزامن ولا يغيّر أي بيانات للطلاب ===== */
+  const addLesson = useCallback((title: string, teacher: string) => {
+    const cleanTitle = title.trim();
+    const cleanTeacher = teacher.trim();
+    if (!cleanTitle || !cleanTeacher) {
+      toast("error", "اكتب عنوان الدرس واسم المعلم");
+      return;
+    }
+    setLessons((items) => {
+      const nextOrder = items.reduce((max, lesson) => Math.max(max, lesson.order), 0) + 1;
+      return [...items, {
+        id: uid(),
+        title: cleanTitle,
+        teacher: cleanTeacher,
+        order: nextOrder,
+        createdAt: Date.now(),
+        completedAt: null,
+      }];
+    });
+    toast("success", `تمت إضافة درس: ${cleanTitle}`);
+  }, [toast]);
+
+  const completeLesson = useCallback((id: string) => {
+    let completedTitle = "";
+    setLessons((items) => items.map((lesson) => {
+      if (lesson.id !== id || lesson.completedAt !== null) return lesson;
+      completedTitle = lesson.title;
+      return { ...lesson, completedAt: Date.now() };
+    }));
+    if (completedTitle) toast("success", `تم تسجيل إعطاء درس: ${completedTitle}`);
   }, [toast]);
 
   const removeStudent = useCallback(
@@ -1369,6 +1419,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value: Ctx = {
     students,
     halaqas,
+    lessons,
     week,
     weekName,
     weeksLog,
@@ -1401,6 +1452,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addHalaqa,
     renameHalaqa,
     removeHalaqa,
+    addLesson,
+    completeLesson,
     markDay,
     markAbsent,
     updateWard,

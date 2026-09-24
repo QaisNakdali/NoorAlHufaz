@@ -8,6 +8,7 @@ import CeremonyPanel, { CeremonyShow } from "./components/Ceremony";
 import Deliveries from "./components/Deliveries";
 import ExplainerModal from "./components/Explainer";
 import Leaderboard from "./components/Leaderboard";
+import Lessons from "./components/Lessons";
 import PastWeeks from "./components/PastWeeks";
 import Register from "./components/Register";
 import StoreTab from "./components/Store";
@@ -19,6 +20,7 @@ import { Coin, HeartIcon, Icon } from "./components/ui";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "register", label: "الكشف", icon: "calendar" },
+  { id: "lessons", label: "الدروس", icon: "book" },
   { id: "store", label: "المتجر", icon: "store" },
   { id: "deliveries", label: "التسليمات", icon: "gift" },
   { id: "board", label: "ترتيب الطلاب", icon: "trophy" },
@@ -219,6 +221,8 @@ function Shell() {
           <StudentView />
         ) : tab === "register" ? (
           <Register />
+        ) : tab === "lessons" ? (
+          <Lessons />
         ) : tab === "store" ? (
           <StoreTab />
         ) : tab === "deliveries" ? (
