@@ -504,6 +504,15 @@ export default function Register() {
   const activeHalaqa = halaqas.find((halaqa) => halaqa.id === halaqaFilter);
   const activeHalaqaStudents = activeHalaqa ? students.filter((student) => student.halaqaId === activeHalaqa.id) : [];
   const currentDistribution = activeHalaqa ? distributionForHalaqa(activeHalaqa, activeHalaqaStudents) : null;
+  const countedStudents = useMemo(
+    () => students.filter((student) => halaqaFilter === "all" || (halaqaFilter === "none" ? !student.halaqaId : student.halaqaId === halaqaFilter)),
+    [students, halaqaFilter]
+  );
+  const studentCountLabel = halaqaFilter === "all"
+    ? `إجمالي الطلاب: ${ar(countedStudents.length)} طالبًا`
+    : halaqaFilter === "none"
+      ? `عدد الطلاب بلا حلقة: ${ar(countedStudents.length)} طالبًا`
+      : `عدد طلاب حلقة ${activeHalaqa?.name ?? "المحددة"}: ${ar(countedStudents.length)} طالبًا`;
 
   const byName = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("ar");
@@ -564,6 +573,15 @@ export default function Register() {
           <button type="button" onClick={() => setHalaqaFilter("none")} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === "none" ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-500"}`}>بلا حلقة</button>
           <button type="button" onClick={() => setShowHalaqaManager((v) => !v)} className="rounded-xl border-2 border-dashed border-grape-300 px-3 py-1.5 text-xs font-extrabold text-grape-600">+ إضافة حلقة جديدة</button>
         </div>
+        <button
+          type="button"
+          onClick={() => { setQuery(""); setTeacherFilter("all"); }}
+          title="عرض الطلاب المحتسبين"
+          className="mt-3 inline-flex items-center gap-2 rounded-xl bg-mint-50 px-4 py-2 text-sm font-extrabold text-mint-700 transition hover:bg-mint-100 focus:outline-none focus:ring-4 focus:ring-mint-100"
+        >
+          <Icon name="users" className="h-4 w-4" strokeWidth={2.6} />
+          {studentCountLabel}
+        </button>
         {showHalaqaManager && <div className="mt-3 space-y-3 rounded-xl border border-grape-200 bg-grape-50 p-3">
           <div className="rounded-2xl bg-white p-3">
             <p className="mb-2 text-xs font-extrabold text-grape-600">إنشاء حلقة جديدة</p>

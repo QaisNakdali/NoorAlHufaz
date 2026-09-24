@@ -373,7 +373,24 @@ function arrayItemKey(value: unknown): string | null {
  * يطبق فقط الفروق التي صنعها هذا الجهاز فوق أحدث نسخة سحابية.
  * بهذه الطريقة لا يؤدي تعديل قلب أو سعر إلى إعادة قائمة طلاب قديمة كاملة.
  */
-export function mergeLocalChanges(base: unknown, local: unknown, remote: unknown, path: string[] = []): unknown {
+export type MergeConflict = {
+  path: string;
+  kind: "same-field" | "delete-vs-update";
+};
+
+function noteConflict(conflicts: MergeConflict[] | undefined, path: string[], kind: MergeConflict["kind"]): void {
+  if (!conflicts) return;
+  const value = { path: path.join("."), kind };
+  if (!conflicts.some((item) => item.path === value.path && item.kind === value.kind)) conflicts.push(value);
+}
+
+export function mergeLocalChanges(
+  base: unknown,
+  local: unknown,
+  remote: unknown,
+  path: string[] = [],
+  conflicts?: MergeConflict[]
+): unknown {
   if (sameValue(local, base)) return remote;
   if (sameValue(remote, base) || sameValue(local, remote)) return local;
 
@@ -389,16 +406,20 @@ export function mergeLocalChanges(base: unknown, local: unknown, remote: unknown
         const hadBase = baseMap.has(key);
         const hasLocal = localMap.has(key);
         const hasRemote = remoteMap.has(key);
-        if (hadBase && !hasLocal) continue; // حذف محلي مقصود
+        if (hadBase && !hasLocal) {
+          if (hasRemote && !sameValue(remoteMap.get(key), baseMap.get(key))) noteConflict(conflicts, [...path, key], "delete-vs-update");
+          continue; // الحذف المقصود يفوز ولا تعيد نسخة قديمة العنصر لاحقًا
+        }
         if (!hasLocal && hasRemote) {
           merged.push(remoteMap.get(key));
           continue;
         }
         if (hasLocal && !hasRemote) {
           if (!hadBase) merged.push(localMap.get(key)); // إضافة محلية
+          else if (!sameValue(localMap.get(key), baseMap.get(key))) noteConflict(conflicts, [...path, key], "delete-vs-update");
           continue; // حذف بعيد مع عدم تعديل محلي
         }
-        merged.push(mergeLocalChanges(baseMap.get(key), localMap.get(key), remoteMap.get(key), [...path, key]));
+        merged.push(mergeLocalChanges(baseMap.get(key), localMap.get(key), remoteMap.get(key), [...path, key], conflicts));
       }
       return merged;
     }
@@ -423,8 +444,10 @@ export function mergeLocalChanges(base: unknown, local: unknown, remote: unknown
     const r = remote as Record<string, unknown>;
     const result: Record<string, unknown> = { ...r };
     for (const key of new Set([...Object.keys(b), ...Object.keys(l), ...Object.keys(r)])) {
-      if (key in b && !(key in l)) delete result[key];
-      else if (key in l) result[key] = mergeLocalChanges(b[key], l[key], r[key], [...path, key]);
+      if (key in b && !(key in l)) {
+        if (key in r && !sameValue(r[key], b[key])) noteConflict(conflicts, [...path, key], "delete-vs-update");
+        delete result[key];
+      } else if (key in l) result[key] = mergeLocalChanges(b[key], l[key], r[key], [...path, key], conflicts);
     }
     return result;
   }
@@ -435,8 +458,10 @@ export function mergeLocalChanges(base: unknown, local: unknown, remote: unknown
     && typeof base === "number" && typeof local === "number" && typeof remote === "number") {
     return Math.max(0, remote + (local - base));
   }
-  // تعارض على نفس القيمة غير التراكمية: تعديل هذا الجهاز هو المقصود لهذا الحقل فقط.
-  return local;
+  // تعارض على نفس الحقل غير التراكمي لا يمكن دمجه بأمان: نحافظ على النسخة السحابية
+  // ونبلغ المستخدم بدل أن تكتب النسخة القديمة فوق تعديل معلم آخر بصمت.
+  noteConflict(conflicts, path, "same-field");
+  return remote;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -497,6 +522,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const firstSave = useRef(true);
   const pushInFlight = useRef(false);
   const pushAgain = useRef(false);
+  const reportedConflictRef = useRef<string>("");
   // يحدد إن كانت اللقطة الجاري تطبيقها نظيفة أم تحتوي دمجًا محليًا يحتاج رفعًا جديدًا.
   const applyingSnapshot = useRef<{ rev: number; dirty: boolean } | null>(null);
 
@@ -544,6 +570,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let expectedRev = revRef.current;
       let savedState: State | null = null;
       let savedRev = expectedRev;
+      const conflicts: MergeConflict[] = [];
 
       // عند التعارض ندمج فروق هذا الجهاز فوق النسخة الفائزة ثم نعيد المحاولة ذريًا.
       for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -554,7 +581,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           savedRev = result.rev;
           break;
         }
-        candidate = stateFromPartial(mergeLocalChanges(base, candidate, normalized) as Partial<State>);
+        candidate = stateFromPartial(mergeLocalChanges(base, candidate, normalized, [], conflicts) as Partial<State>);
         base = normalized;
         expectedRev = result.rev;
       }
@@ -563,13 +590,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // إن حدث تعديل جديد أثناء الرفع، نحتفظ به كفرق فوق النسخة التي تم تثبيتها.
       const currentLocal = cloudDataRef.current ?? initialLocal;
-      const finalLocal = stateFromPartial(mergeLocalChanges(initialLocal, currentLocal, savedState) as Partial<State>);
+      const finalLocal = stateFromPartial(mergeLocalChanges(initialLocal, currentLocal, savedState, [], conflicts) as Partial<State>);
       const stillDirty = !sameValue(finalLocal, savedState);
       revRef.current = savedRev;
       syncedBaseRef.current = savedState;
       dirtyRef.current = stillDirty;
       cloudDataRef.current = finalLocal;
       applySnapshot(finalLocal, savedRev, stillDirty);
+      if (conflicts.length > 0) {
+        const signature = conflicts.map((item) => `${item.kind}:${item.path}`).sort().join("|");
+        if (reportedConflictRef.current !== signature) {
+          reportedConflictRef.current = signature;
+          toast("error", "وُجد تعديل متزامن على نفس البيانات؛ تم الاحتفاظ بالنسخة السحابية الأحدث دون حذف سجلات أي معلم.");
+        }
+      }
       if (stillDirty) pushAgain.current = true;
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
     } catch (e) {
@@ -582,7 +616,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pushTimer.current = window.setTimeout(() => void pushCloud(), 250);
       }
     }
-  }, [applySnapshot]);
+  }, [applySnapshot, toast]);
 
   /** تطبيق حزمة قادمة من السحابة على الحالة */
   const prepareRemote = useCallback((remote: State): State => {
@@ -605,8 +639,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const remote = prepareRemote(incoming);
     const local = cloudDataRef.current ?? remote;
     const base = syncedBaseRef.current ?? local;
+    const conflicts: MergeConflict[] = [];
     const merged = dirtyRef.current
-      ? stateFromPartial(mergeLocalChanges(base, local, remote) as Partial<State>)
+      ? stateFromPartial(mergeLocalChanges(base, local, remote, [], conflicts) as Partial<State>)
       : remote;
     const dirty = !sameValue(merged, remote);
     revRef.current = remoteRev;
@@ -614,7 +649,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dirtyRef.current = dirty;
     cloudDataRef.current = merged;
     applySnapshot(merged, remoteRev, dirty);
-  }, [applySnapshot, prepareRemote]);
+    if (conflicts.length > 0) {
+      const signature = conflicts.map((item) => `${item.kind}:${item.path}`).sort().join("|");
+      if (reportedConflictRef.current !== signature) {
+        reportedConflictRef.current = signature;
+        toast("error", "وصل تعديل أحدث على نفس البيانات؛ تم منع الكتابة القديمة والاحتفاظ بالنسخة السحابية.");
+      }
+    }
+  }, [applySnapshot, prepareRemote, toast]);
 
   /** سحب أحدث نسخة من السحابة وتطبيقها إن كانت أحدث من المحلية */
   const pullCloud = useCallback(
