@@ -505,6 +505,8 @@ export type WeekLog = {
   savedAt: string;
   /** تاريخ قابل للحساب للإحصائيات الجديدة؛ السجلات القديمة تبقى كما هي. */
   savedAtIso?: string;
+  /** بداية أسبوع الكشف (الأحد) كمفتاح تقني؛ العرض للمستخدم هجري دائمًا. */
+  weekStartDateIso?: string;
   top: WeekLogEntry[];
   /** لقطة آمنة لكل الطلاب من هذا الأسبوع؛ top يبقى للتوافق مع الأرشيف القديم. */
   students?: WeekLogEntry[];

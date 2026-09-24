@@ -18,7 +18,7 @@ import {
   type Student,
 } from "../core";
 import { distributionForHalaqa } from "../halaqaRotation";
-import { dateForCurrentWeekDay, formatHijriDate, hijriMonthKey } from "../hijriDate";
+import { addCalendarDays, dateForCurrentWeekDay, dateFromLocalKey, formatHijriDate, formatTeachingWeek, hijriInputValue, hijriMonthKey, localDateKey, parseHijriInput, teachingWeekStart } from "../hijriDate";
 import { compressImage } from "../photos";
 import { sfx } from "../sound";
 import Avatar from "./Avatar";
@@ -226,7 +226,7 @@ function StudentDetailsModal({ student, onClose }: { student: Student; onClose: 
 }
 
 function RegisterRow({ s, delay, onManage, onDetails }: { s: Student; delay: number; onManage: () => void; onDetails: () => void }) {
-  const { markDay, markAbsent, updateWard, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice } = useApp();
+  const { markDay, markAbsent, updateWard, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso } = useApp();
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
   const { level, into, need } = levelInfo(s.xp);
@@ -325,7 +325,7 @@ function RegisterRow({ s, delay, onManage, onDetails }: { s: Student; delay: num
             return (
               <section key={d.key} className="rounded-2xl border border-grape-100 bg-white p-4 shadow-[0_8px_24px_-22px_rgba(55,32,120,.4)]">
                 <div className="mb-2.5 flex items-center justify-between">
-                  <h5 className="font-display text-sm font-extrabold text-grape-700">{d.label}</h5>
+                  <div><h5 className="font-display text-sm font-extrabold text-grape-700">{d.label}</h5><p className="mt-0.5 text-[11px] font-bold text-grape-400">{formatHijriDate(addCalendarDays(weekStartDateIso, DAYS.findIndex((item) => item.key === d.key)), { day: "numeric", month: "long" })}</p></div>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-extrabold ${absent ? "bg-coral-100 text-coral-600" : cnt === 3 ? "bg-mint-100 text-mint-600" : "bg-grape-100 text-grape-500"}`}>{absent ? "غائب — لا تقييم" : `${ar(cnt)} / ٣`}</span>
                 </div>
                 <div className="space-y-3">
@@ -488,7 +488,7 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
 
 /* ===== الكشف ===== */
 export default function Register() {
-  const { students, halaqas, lessons, nextLessonId, addHalaqa, removeHalaqa, updateHalaqaTeachers, setHalaqaDistribution, week, weekName } = useApp();
+  const { students, halaqas, lessons, nextLessonId, addHalaqa, removeHalaqa, updateHalaqaTeachers, setHalaqaDistribution, week, weekName, weekStartDateIso, setWeekStartDateIso, toast } = useApp();
   const [addOpen, setAddOpen] = useState(false);
   const [manageId, setManageId] = useState<string | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
@@ -500,6 +500,16 @@ export default function Register() {
   const [editingHalaqaId, setEditingHalaqaId] = useState<string | null>(null);
   const [teacherDraft, setTeacherDraft] = useState<string[]>([]);
   const [teacherFilter, setTeacherFilter] = useState<string>("all");
+  const [weekDateDraft, setWeekDateDraft] = useState(hijriInputValue(weekStartDateIso));
+  useEffect(() => setWeekDateDraft(hijriInputValue(weekStartDateIso)), [weekStartDateIso]);
+
+  const saveHijriWeek = () => {
+    const parsed = parseHijriInput(weekDateDraft, dateFromLocalKey(weekStartDateIso) ?? new Date());
+    if (!parsed) return toast("error", "أدخل تاريخ الأحد الهجري بصيغة سنة-شهر-يوم");
+    if (dateFromLocalKey(parsed)?.getDay() !== 0) return toast("error", "اختر تاريخ يوم الأحد كبداية للأسبوع");
+    setWeekStartDateIso(parsed);
+    toast("success", "تم حفظ تاريخ أسبوع الكشف");
+  };
 
   const activeHalaqa = halaqas.find((halaqa) => halaqa.id === halaqaFilter);
   const activeHalaqaStudents = activeHalaqa ? students.filter((student) => student.halaqaId === activeHalaqa.id) : [];
@@ -539,6 +549,20 @@ export default function Register() {
           </BigBtn>
         }
       />
+
+      <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[230px] flex-1">
+            <p className="text-xs font-extrabold text-sky-700">أسبوع الكشف الهجري · الأحد إلى الأربعاء</p>
+            <p className="mt-1 font-display text-base font-extrabold text-ink">{formatTeachingWeek(weekStartDateIso)}</p>
+          </div>
+          <label className="text-xs font-bold text-grape-600">تاريخ الأحد هجريًا
+            <input dir="ltr" inputMode="numeric" className="field-control mt-1 w-40 text-center" value={weekDateDraft} onChange={(event) => setWeekDateDraft(event.target.value)} placeholder="1448-04-13" />
+          </label>
+          <button type="button" onClick={saveHijriWeek} className="h-11 rounded-xl bg-sky-600 px-4 text-sm font-extrabold text-white">حفظ التاريخ</button>
+          <button type="button" onClick={() => setWeekStartDateIso(localDateKey(teachingWeekStart()))} className="h-11 rounded-xl bg-white px-4 text-sm font-extrabold text-sky-700">الأسبوع الحالي</button>
+        </div>
+      </div>
 
       <div className="mb-4 flex items-center gap-3 rounded-2xl border border-gold-500/40 bg-gradient-to-l from-gold-400/20 to-white p-4 shadow-[0_16px_40px_-34px_rgba(165,112,17,.65)]">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gold-400/30 text-gold-600">

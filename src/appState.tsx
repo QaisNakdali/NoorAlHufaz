@@ -55,7 +55,7 @@ import {
 } from "./core";
 import { buildTrackSnapshot, measureStudentWork } from "./analytics";
 import { localDateKey } from "./halaqaRotation";
-import { formatHijriDate } from "./hijriDate";
+import { addCalendarDays, formatHijriDate, localDateKey as hijriLocalDateKey, teachingWeekStart } from "./hijriDate";
 import { sfx, setSoundEnabled } from "./sound";
 import {
   cloudLoad,
@@ -85,6 +85,7 @@ type State = {
   lastCompletedLessonId: string | null;
   week: number;
   weekName: string;
+  weekStartDateIso: string;
   weeksLog: WeekLog[];
   sound: boolean;
   ceremonyPicks: CeremonyPicks;
@@ -108,6 +109,7 @@ type Ctx = State & {
   toggleSound: () => void;
   sorted: Student[];
   setWeekName: (name: string) => void;
+  setWeekStartDateIso: (value: string) => void;
   setShowNewProducts: (v: boolean) => void;
   setHeartPrice: (price: number) => void;
 
@@ -270,6 +272,7 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
     lastCompletedLessonId: typeof p.lastCompletedLessonId === "string" ? p.lastCompletedLessonId : null,
     week: typeof p.week === "number" ? p.week : 1,
     weekName: typeof p.weekName === "string" ? p.weekName : "",
+    weekStartDateIso: typeof p.weekStartDateIso === "string" ? p.weekStartDateIso : hijriLocalDateKey(teachingWeekStart()),
     weeksLog: Array.isArray(p.weeksLog) ? (p.weeksLog as WeekLog[]) : [],
     sound: p.sound !== false,
     ceremonyPicks: p.ceremonyPicks ?? {},
@@ -483,6 +486,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lastCompletedLessonId, setLastCompletedLessonId] = useState<string | null>(init.lastCompletedLessonId);
   const [week, setWeek] = useState(init.week);
   const [weekName, setWeekNameState] = useState(init.weekName);
+  const [weekStartDateIso, setWeekStartDateIsoState] = useState(init.weekStartDateIso);
   const [weeksLog, setWeeksLog] = useState<WeekLog[]>(init.weeksLog);
   const [sound, setSound] = useState(init.sound);
   const [ceremonyPicks, setCeremonyPicks] = useState<CeremonyPicks>(init.ceremonyPicks);
@@ -540,6 +544,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setLastCompletedLessonId(next.lastCompletedLessonId);
     setWeek(next.week);
     setWeekNameState(next.weekName);
+    setWeekStartDateIsoState(next.weekStartDateIso);
     setWeeksLog(next.weeksLog);
     setSound(next.sound);
     setCeremonyPicks(next.ceremonyPicks);
@@ -696,6 +701,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastCompletedLessonId,
       week,
       weekName,
+      weekStartDateIso,
       weeksLog,
       sound,
       ceremonyPicks,
@@ -756,7 +762,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
       pushTimer.current = window.setTimeout(() => void pushCloud(), 700);
     }
-  }, [students, halaqas, lessons, nextLessonId, lastCompletedLessonId, week, weekName, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
+  }, [students, halaqas, lessons, nextLessonId, lastCompletedLessonId, week, weekName, weekStartDateIso, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
 
   // سحب أولي مرة واحدة، ثم استقبال التحديثات لحظيًا عبر Supabase Realtime.
   useEffect(() => {
@@ -1570,6 +1576,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       name: weekName,
       savedAt: formatHijriDate(new Date()),
       savedAtIso: new Date().toISOString(),
+      weekStartDateIso,
       students: allEntries,
       top: [...allEntries]
         .sort((a, b) => b.weekXp - a.weekXp || b.xp - a.xp)
@@ -1592,6 +1599,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // أسبوع جديد: كشف نظيف — والقلوب تبقى كما هي (تُستعاد بالشراء أو بمنحة المعلم فقط)
     setWeek((w) => w + 1);
     setWeekNameState("");
+    setWeekStartDateIsoState(hijriLocalDateKey(addCalendarDays(weekStartDateIso, 7)));
     setStudents((ss) => ss.map((s) => ({ ...s, days: emptyWeekDays(), recitationRatings: emptyRecitationRatings(), weekXp: 0, weekCoins: 0, heartsLostWeek: 0 })));
     setCeremonyPicks({});
     setTripOn(false);
@@ -1599,9 +1607,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTripAttendees([]);
     sfx.sparkle();
     toast("success", "بدأ أسبوع جديد — كشف نظيف للجميع، والقلوب كما هي");
-  }, [ceremonyPicks, rewardSettings, students, toast, tripAttendees, tripDay, tripOn, week, weekName]);
+  }, [ceremonyPicks, rewardSettings, students, toast, tripAttendees, tripDay, tripOn, week, weekName, weekStartDateIso]);
 
   const setWeekName = useCallback((name: string) => setWeekNameState(name), []);
+  const setWeekStartDateIso = useCallback((value: string) => setWeekStartDateIsoState(value), []);
   const setHeartPrice = useCallback((price: number) => {
     const normalized = Math.max(0, Math.round(Number.isFinite(price) ? price : DEFAULT_HEART_PRICE));
     setHeartPriceState(normalized);
@@ -1616,6 +1625,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lastCompletedLessonId,
     week,
     weekName,
+    weekStartDateIso,
     weeksLog,
     sound,
     ceremonyPicks,
@@ -1639,6 +1649,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toggleSound: () => setSound((v) => !v),
     sorted,
     setWeekName,
+    setWeekStartDateIso,
     addStudent,
     updateStudentProfile,
     toggleStudentTesting,
