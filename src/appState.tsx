@@ -24,7 +24,7 @@ import {
   emptyWeeklyWard,
   equipOn,
   findItem,
-  HEART_PRICE,
+  DEFAULT_HEART_PRICE,
   levelInfo,
   LEVEL_COIN_REWARD,
   MAX_HEARTS,
@@ -83,6 +83,7 @@ type State = {
   sound: boolean;
   ceremonyPicks: CeremonyPicks;
   products: ShopItem[];
+  heartPrice: number;
   showNewProducts: boolean; // إعلان منتجات المتجر الجديدة في الحفل
   /* الرحلة الأسبوعية (اختيارية) */
   tripOn: boolean;
@@ -102,6 +103,7 @@ type Ctx = State & {
   sorted: Student[];
   setWeekName: (name: string) => void;
   setShowNewProducts: (v: boolean) => void;
+  setHeartPrice: (price: number) => void;
 
   addStudent: (name: string, photo: string | null, halaqaId?: string | null) => void;
   updateStudentProfile: (id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null }) => void;
@@ -260,6 +262,9 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
             return { ...withBg, kind: "external", repeatable: true };
           })
         : DEFAULT_SHOP_ITEMS,
+    heartPrice: typeof p.heartPrice === "number" && Number.isFinite(p.heartPrice)
+      ? Math.max(0, Math.round(p.heartPrice))
+      : DEFAULT_HEART_PRICE,
   };
 }
 
@@ -307,6 +312,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sound, setSound] = useState(init.sound);
   const [ceremonyPicks, setCeremonyPicks] = useState<CeremonyPicks>(init.ceremonyPicks);
   const [products, setProducts] = useState<ShopItem[]>(init.products);
+  const [heartPrice, setHeartPriceState] = useState(init.heartPrice);
   const [showNewProducts, setShowNewProducts] = useState(init.showNewProducts);
   const [tripOn, setTripOn] = useState(init.tripOn);
   const [tripDay, setTripDay] = useState<TripDay | null>(init.tripDay);
@@ -366,6 +372,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSound(normalized.sound);
           setCeremonyPicks(normalized.ceremonyPicks);
           setProducts(normalized.products);
+          setHeartPriceState(normalized.heartPrice);
           setShowNewProducts(normalized.showNewProducts);
           setTripOn(normalized.tripOn);
           setTripDay(normalized.tripDay);
@@ -406,6 +413,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSound(remote.sound);
     setCeremonyPicks(remote.ceremonyPicks);
     setProducts(remote.products);
+    setHeartPriceState(remote.heartPrice);
     setShowNewProducts(remote.showNewProducts);
     setTripOn(remote.tripOn);
     setTripDay(remote.tripDay);
@@ -450,6 +458,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sound,
       ceremonyPicks,
       products,
+      heartPrice,
       showNewProducts,
       tripOn,
       tripDay,
@@ -500,7 +509,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
       pushTimer.current = window.setTimeout(() => void pushCloud(newRev), 1500);
     }
-  }, [students, halaqas, week, weekName, weeksLog, sound, ceremonyPicks, products, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
+  }, [students, halaqas, week, weekName, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
 
   // سحب أولي مرة واحدة، ثم استقبال التحديثات لحظيًا عبر Supabase Realtime.
   useEffect(() => {
@@ -811,20 +820,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sfx.error();
         return;
       }
-      if (st.coins < HEART_PRICE) {
-        toast("error", `عملاتك لا تكفي — تحتاج ${ar(HEART_PRICE)}`);
+      if (st.coins < heartPrice) {
+        toast("error", `عملاتك لا تكفي — تحتاج ${ar(heartPrice)}`);
         sfx.error();
         return;
       }
       setStudents((ss) =>
-        ss.map((s) => (s.id === id ? { ...s, coins: s.coins - HEART_PRICE, hearts: Math.min(MAX_HEARTS, s.hearts + 1) } : s))
+        ss.map((s) => (s.id === id ? { ...s, coins: s.coins - heartPrice, hearts: Math.min(MAX_HEARTS, s.hearts + 1) } : s))
       );
       sfx.coin();
       const t = window.setTimeout(() => sfx.sparkle(), 180);
       timers.current.push(t);
       toast("heart", `اشترى ${st.name} قلبًا جديدًا وعاد لنقاط المستوى`);
     },
-    [students, toast]
+    [heartPrice, students, toast]
   );
 
   const buyItem = useCallback(
@@ -1212,6 +1221,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [ceremonyPicks, rewardSettings, students, toast, tripAttendees, tripDay, tripOn, week, weekName]);
 
   const setWeekName = useCallback((name: string) => setWeekNameState(name), []);
+  const setHeartPrice = useCallback((price: number) => {
+    const normalized = Math.max(0, Math.round(Number.isFinite(price) ? price : DEFAULT_HEART_PRICE));
+    setHeartPriceState(normalized);
+    toast("success", `تم حفظ سعر القلب: ${ar(normalized)} عملة`);
+  }, [toast]);
 
   const value: Ctx = {
     students,
@@ -1222,6 +1236,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sound,
     ceremonyPicks,
     products,
+    heartPrice,
+    setHeartPrice,
     showNewProducts,
     setShowNewProducts,
     tripOn,
