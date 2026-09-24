@@ -1,7 +1,7 @@
 /* المتجر — مرتب حسب المستويات، بكميات محدودة، منح مجاني، وصور تلقائية لخصائص البروفايل */
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../appState";
-import { ar, bagQty, HEART_PRICE, isEquipped, levelInfo, MAX_HEARTS, uid, type CosmeticSlot, type ShopProduct, type Student } from "../core";
+import { ar, bagQty, isEquipped, levelInfo, MAX_HEARTS, uid, type CosmeticSlot, type ShopProduct, type Student } from "../core";
 import { compressImage } from "../photos";
 import { sfx } from "../sound";
 import Avatar from "./Avatar";
@@ -155,9 +155,9 @@ export function BuyCard({ s, p, delay = 0, canGrant = false }: { s: Student; p: 
 
 /* ===== بطاقة شراء القلب ===== */
 function HeartProductCard({ s }: { s: Student }) {
-  const { buyHeart } = useApp();
+  const { buyHeart, heartPrice } = useApp();
   const full = s.hearts >= MAX_HEARTS;
-  const poor = s.coins < HEART_PRICE;
+  const poor = s.coins < heartPrice;
   return (
     <div className={`card-shine flex flex-wrap items-center gap-4 rounded-2xl border-2 p-4 ${s.hearts === 0 ? "anim-glow border-coral-400 bg-coral-500/8" : "border-grape-200 bg-white"}`}>
       <span className={`grid h-14 w-14 place-items-center rounded-2xl ${s.hearts === 0 ? "bg-coral-500 text-white" : "bg-coral-400/15 text-coral-500"}`}>
@@ -179,7 +179,7 @@ function HeartProductCard({ s }: { s: Student }) {
         className="flex items-center gap-1.5 rounded-xl bg-coral-500 px-5 py-2.5 font-display text-sm font-extrabold text-white shadow-[0_4px_0_#b23a55] transition-all hover:brightness-110 active:translate-y-0.5 active:shadow-none disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
       >
         <Coin className="h-4 w-4" />
-        {ar(HEART_PRICE)}
+        {ar(heartPrice)}
       </button>
     </div>
   );
@@ -468,12 +468,16 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
 
 /* ===== تبويب المتجر (المعلم) ===== */
 export default function StoreTab() {
-  const { sorted, products, removeProduct } = useApp();
+  const { sorted, products, removeProduct, heartPrice, setHeartPrice } = useApp();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ShopProduct | null>(null);
   const [buyerId, setBuyerId] = useState<string | null>(null);
   const [awardsOpen, setAwardsOpen] = useState(false);
+  const [heartPriceDraft, setHeartPriceDraft] = useState(heartPrice);
   const buyer = sorted.find((s) => s.id === buyerId) ?? null;
+
+  // أبقِ حقل الإعداد مواكبًا لأي تغيير يصل من المزامنة السحابية.
+  useEffect(() => setHeartPriceDraft(heartPrice), [heartPrice]);
 
   return (
     <div className="anim-fade">
@@ -495,6 +499,23 @@ export default function StoreTab() {
           </BigBtn></div>
         }
       />
+
+      <div className="mb-6 rounded-[24px] border-2 border-coral-200 bg-white p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[190px] flex-1">
+            <p className="font-display text-base font-extrabold text-ink">إعدادات المتجر</p>
+            <label className="mt-3 block text-xs font-bold text-grape-600">
+              سعر القلب الواحد
+              <div className="mt-1 flex items-center gap-2">
+                <input className="field-control w-32" type="number" min="0" step="1" value={heartPriceDraft} onChange={(e) => setHeartPriceDraft(Math.max(0, Number(e.target.value) || 0))} />
+                <span className="font-extrabold text-grape-500">عملة</span>
+              </div>
+            </label>
+          </div>
+          <button type="button" onClick={() => setHeartPrice(heartPriceDraft)} className="rounded-2xl bg-coral-500 px-5 py-3 font-display text-sm font-extrabold text-white shadow-[0_4px_0_#b23a55] transition active:translate-y-0.5 active:shadow-none">حفظ السعر</button>
+        </div>
+        <p className="mt-3 rounded-xl bg-coral-50 px-3 py-2 text-sm font-extrabold text-coral-600">السعر الحالي: {ar(heartPrice)} عملة</p>
+      </div>
 
       {/* إدارة المنتجات */}
       <div className="mb-6 rounded-[24px] border-2 border-grape-200 bg-white p-4">
