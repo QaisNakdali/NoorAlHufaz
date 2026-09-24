@@ -54,6 +54,7 @@ import {
   type WeekLog,
 } from "./core";
 import { buildTrackSnapshot, measureStudentWork } from "./analytics";
+import { localDateKey } from "./halaqaRotation";
 import { sfx, setSoundEnabled } from "./sound";
 import {
   cloudLoad,
@@ -111,8 +112,10 @@ type Ctx = State & {
   updateStudentProfile: (id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null }) => void;
   toggleStudentTesting: (id: string) => void;
   removeStudent: (id: string) => void;
-  addHalaqa: (name: string) => void;
+  addHalaqa: (name: string, teacherNames?: string[]) => void;
   renameHalaqa: (id: string, name: string) => void;
+  updateHalaqaTeachers: (id: string, teacherNames: string[]) => void;
+  setHalaqaDistribution: (id: string, enabled: boolean) => void;
   removeHalaqa: (id: string) => void;
   addLesson: (title: string, teacher: string) => void;
   completeLesson: (id: string) => void;
@@ -233,7 +236,17 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
   return {
     students,
     halaqas: Array.isArray(p.halaqas)
-      ? (p.halaqas as Halaqa[]).filter((h) => h && typeof h.id === "string" && typeof h.name === "string")
+      ? (p.halaqas as Halaqa[])
+          .filter((h) => h && typeof h.id === "string" && typeof h.name === "string")
+          .map((h) => ({
+            ...h,
+            teachers: Array.isArray(h.teachers)
+              ? h.teachers.filter((teacher) => teacher && typeof teacher.id === "string" && typeof teacher.name === "string")
+              : [],
+            randomDistribution: h.randomDistribution === true,
+            rotationAnchorDate: typeof h.rotationAnchorDate === "string" ? h.rotationAnchorDate : localDateKey(),
+            rotationSeed: typeof h.rotationSeed === "number" ? h.rotationSeed : 1,
+          }))
       : [],
     lessons: Array.isArray(p.lessons)
       ? (p.lessons as Lesson[])
@@ -765,11 +778,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (current) toast("success", `${current.name}: ${current.isTesting ? "انتهت فترة الاختبار" : "بدأت فترة الاختبار"}`);
   }, [students, toast]);
 
-  const addHalaqa = useCallback((name: string) => {
+  const addHalaqa = useCallback((name: string, teacherNames: string[] = []) => {
     const clean = name.trim();
     if (!clean) return;
-    setHalaqas((hs) => hs.some((h) => h.name === clean) ? hs : [...hs, { id: uid(), name: clean, createdAt: Date.now() }]);
-    toast("success", `تمت إضافة ${clean}`);
+    const names = [...new Set(teacherNames.map((teacher) => teacher.trim()).filter(Boolean))];
+    if (names.length === 0) {
+      toast("error", "أضف اسم المعلم الأول للحلقة");
+      return;
+    }
+    setHalaqas((hs) => {
+      if (hs.some((h) => h.name === clean)) {
+        toast("error", "يوجد حلقة بهذا الاسم بالفعل");
+        return hs;
+      }
+      const used = new Set(hs.flatMap((h) => (h.teachers ?? []).map((teacher) => teacher.name.trim().toLocaleLowerCase("ar"))));
+      const duplicate = names.find((teacher) => used.has(teacher.toLocaleLowerCase("ar")));
+      if (duplicate) {
+        toast("error", `المعلم ${duplicate} مرتبط بحلقة أخرى`);
+        return hs;
+      }
+      const now = Date.now();
+      const next = [...hs, {
+        id: uid(), name: clean, createdAt: now,
+        teachers: names.map((teacher, index) => ({ id: uid(), name: teacher, createdAt: now + index })),
+        randomDistribution: false,
+        rotationAnchorDate: localDateKey(),
+        rotationSeed: now,
+      }];
+      toast("success", `تمت إضافة ${clean}`);
+      return next;
+    });
   }, [toast]);
 
   const renameHalaqa = useCallback((id: string, name: string) => {
@@ -777,6 +815,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!clean) return;
     setHalaqas((hs) => hs.map((h) => h.id === id ? { ...h, name: clean } : h));
   }, []);
+
+  const updateHalaqaTeachers = useCallback((id: string, teacherNames: string[]) => {
+    const names = [...new Set(teacherNames.map((teacher) => teacher.trim()).filter(Boolean))];
+    setHalaqas((hs) => {
+      const usedElsewhere = new Set(hs.filter((h) => h.id !== id).flatMap((h) => (h.teachers ?? []).map((teacher) => teacher.name.trim().toLocaleLowerCase("ar"))));
+      const duplicate = names.find((teacher) => usedElsewhere.has(teacher.toLocaleLowerCase("ar")));
+      if (duplicate) {
+        toast("error", `المعلم ${duplicate} مرتبط بحلقة أخرى`);
+        return hs;
+      }
+      const next = hs.map((halaqa) => {
+        if (halaqa.id !== id) return halaqa;
+        const old = halaqa.teachers ?? [];
+        const now = Date.now();
+        const teachers = names.map((teacher, index) => old.find((item) => item.name.trim().toLocaleLowerCase("ar") === teacher.toLocaleLowerCase("ar")) ?? { id: uid(), name: teacher, createdAt: now + index });
+        return { ...halaqa, teachers, rotationAnchorDate: localDateKey(), rotationSeed: now };
+      });
+      toast("success", "تم حفظ معلمي الحلقة وإعادة بدء دورة التوزيع بأمان");
+      return next;
+    });
+  }, [toast]);
+
+  const setHalaqaDistribution = useCallback((id: string, enabled: boolean) => {
+    const now = Date.now();
+    setHalaqas((hs) => hs.map((halaqa) => halaqa.id === id ? {
+      ...halaqa,
+      randomDistribution: enabled && (halaqa.teachers?.length ?? 0) > 1,
+      rotationAnchorDate: localDateKey(),
+      rotationSeed: now,
+    } : halaqa));
+    toast("success", enabled ? "تم تشغيل التوزيع اليومي المتوازن" : "تم إيقاف التوزيع اليومي");
+  }, [toast]);
 
   const removeHalaqa = useCallback((id: string) => {
     setHalaqas((hs) => hs.filter((h) => h.id !== id));
@@ -1378,6 +1448,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       week,
       name: weekName,
       savedAt: new Date().toLocaleDateString("ar", { day: "numeric", month: "long" }),
+      savedAtIso: new Date().toISOString(),
       students: allEntries,
       top: [...allEntries]
         .sort((a, b) => b.weekXp - a.weekXp || b.xp - a.xp)
@@ -1451,6 +1522,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     removeStudent,
     addHalaqa,
     renameHalaqa,
+    updateHalaqaTeachers,
+    setHalaqaDistribution,
     removeHalaqa,
     addLesson,
     completeLesson,

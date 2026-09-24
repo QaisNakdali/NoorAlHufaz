@@ -17,6 +17,7 @@ import {
   type RecitationRating,
   type Student,
 } from "../core";
+import { distributionForHalaqa } from "../halaqaRotation";
 import { compressImage } from "../photos";
 import { sfx } from "../sound";
 import Avatar from "./Avatar";
@@ -449,20 +450,29 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
 
 /* ===== الكشف ===== */
 export default function Register() {
-  const { students, halaqas, lessons, addHalaqa, removeHalaqa, week, weekName } = useApp();
+  const { students, halaqas, lessons, addHalaqa, removeHalaqa, updateHalaqaTeachers, setHalaqaDistribution, week, weekName } = useApp();
   const [addOpen, setAddOpen] = useState(false);
   const [manageId, setManageId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [halaqaFilter, setHalaqaFilter] = useState<string>("all");
   const [newHalaqa, setNewHalaqa] = useState("");
+  const [newTeachers, setNewTeachers] = useState<string[]>([""]);
   const [showHalaqaManager, setShowHalaqaManager] = useState(false);
+  const [editingHalaqaId, setEditingHalaqaId] = useState<string | null>(null);
+  const [teacherDraft, setTeacherDraft] = useState<string[]>([]);
+  const [teacherFilter, setTeacherFilter] = useState<string>("all");
+
+  const activeHalaqa = halaqas.find((halaqa) => halaqa.id === halaqaFilter);
+  const activeHalaqaStudents = activeHalaqa ? students.filter((student) => student.halaqaId === activeHalaqa.id) : [];
+  const currentDistribution = activeHalaqa ? distributionForHalaqa(activeHalaqa, activeHalaqaStudents) : null;
 
   const byName = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("ar");
     return [...students]
       .filter((s) => (!q || s.name.toLocaleLowerCase("ar").includes(q)) && (halaqaFilter === "all" || (halaqaFilter === "none" ? !s.halaqaId : s.halaqaId === halaqaFilter)))
+      .filter((s) => teacherFilter === "all" || currentDistribution?.teacherForStudent[s.id] === teacherFilter)
       .sort((a, b) => a.name.localeCompare(b.name, "ar"));
-  }, [students, query, halaqaFilter]);
+  }, [students, query, halaqaFilter, teacherFilter, currentDistribution]);
   const nextLesson = useMemo(
     () => [...lessons].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt).find((lesson) => lesson.completedAt === null),
     [lessons]
@@ -511,12 +521,39 @@ export default function Register() {
         </label>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={() => setHalaqaFilter("all")} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === "all" ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-600"}`}>جميع الحلقات</button>
-          {halaqas.map((h) => <button key={h.id} type="button" onClick={() => setHalaqaFilter(h.id)} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === h.id ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-600"}`}>{h.name}</button>)}
+          {halaqas.map((h) => <button key={h.id} type="button" onClick={() => { setHalaqaFilter(h.id); setTeacherFilter("all"); }} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === h.id ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-600"}`}>{h.name}</button>)}
           <button type="button" onClick={() => setHalaqaFilter("none")} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === "none" ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-500"}`}>بلا حلقة</button>
           <button type="button" onClick={() => setShowHalaqaManager((v) => !v)} className="rounded-xl border-2 border-dashed border-grape-300 px-3 py-1.5 text-xs font-extrabold text-grape-600">+ إضافة حلقة جديدة</button>
         </div>
-        {showHalaqaManager && <div className="mt-3 rounded-xl border border-grape-200 bg-grape-50 p-3"><div className="flex gap-2"><input value={newHalaqa} onChange={(e) => setNewHalaqa(e.target.value)} placeholder="مثال: حلقة أ" className="field-control flex-1"/><button type="button" onClick={() => { addHalaqa(newHalaqa); setNewHalaqa(""); }} className="rounded-xl bg-grape-600 px-4 text-sm font-extrabold text-white">إضافة</button></div>{halaqas.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{halaqas.map((h) => <span key={h.id} className="flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-bold text-grape-600">{h.name}<button type="button" onClick={() => removeHalaqa(h.id)} title="حذف الحلقة دون حذف الطلاب" className="text-coral-500">×</button></span>)}</div>}</div>}
+        {showHalaqaManager && <div className="mt-3 space-y-3 rounded-xl border border-grape-200 bg-grape-50 p-3">
+          <div className="rounded-2xl bg-white p-3">
+            <p className="mb-2 text-xs font-extrabold text-grape-600">إنشاء حلقة جديدة</p>
+            <input value={newHalaqa} onChange={(e) => setNewHalaqa(e.target.value)} placeholder="اسم الحلقة — مثال: حلقة عمر" className="field-control w-full"/>
+            <div className="mt-2 space-y-2">{newTeachers.map((teacher, index) => <div key={index} className="flex gap-2"><input value={teacher} onChange={(e) => setNewTeachers((items) => items.map((item, i) => i === index ? e.target.value : item))} placeholder={`اسم المعلم ${index + 1}`} className="field-control flex-1"/>{newTeachers.length > 1 && <button type="button" onClick={() => setNewTeachers((items) => items.filter((_, i) => i !== index))} className="rounded-xl bg-coral-50 px-3 font-bold text-coral-600">×</button>}</div>)}</div>
+            <div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => setNewTeachers((items) => [...items, ""])} className="rounded-xl border border-grape-200 px-3 py-2 text-xs font-extrabold text-grape-600">+ إضافة معلم آخر</button><button type="button" onClick={() => { addHalaqa(newHalaqa, newTeachers); setNewHalaqa(""); setNewTeachers([""]); }} className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-extrabold text-white">حفظ الحلقة</button></div>
+          </div>
+          {halaqas.map((halaqa) => {
+            const expanded = editingHalaqaId === halaqa.id;
+            const count = students.filter((student) => student.halaqaId === halaqa.id).length;
+            return <div key={halaqa.id} className="rounded-2xl border border-grape-100 bg-white p-3">
+              <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => { setEditingHalaqaId(expanded ? null : halaqa.id); setTeacherDraft((halaqa.teachers ?? []).map((teacher) => teacher.name)); }} className="flex-1 text-right font-display font-extrabold text-ink">{halaqa.name}<span className="me-2 text-xs font-bold text-grape-400">{ar(count)} طالب · {ar(halaqa.teachers?.length ?? 0)} معلم</span></button><DeleteBtn label="حذف" onDelete={() => removeHalaqa(halaqa.id)} /></div>
+              {expanded && <div className="mt-3 border-t border-grape-100 pt-3">
+                <p className="text-xs font-extrabold text-grape-600">المعلمون</p>
+                <div className="mt-2 space-y-2">{teacherDraft.map((teacher, index) => <div key={index} className="flex gap-2"><input value={teacher} onChange={(e) => setTeacherDraft((items) => items.map((item, i) => i === index ? e.target.value : item))} placeholder={`اسم المعلم ${index + 1}`} className="field-control flex-1"/><button type="button" onClick={() => setTeacherDraft((items) => items.filter((_, i) => i !== index))} className="rounded-xl bg-coral-50 px-3 font-bold text-coral-600">×</button></div>)}</div>
+                <div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => setTeacherDraft((items) => [...items, ""])} className="rounded-xl border border-grape-200 px-3 py-2 text-xs font-extrabold text-grape-600">+ إضافة معلم آخر</button><button type="button" onClick={() => updateHalaqaTeachers(halaqa.id, teacherDraft)} className="rounded-xl bg-grape-600 px-4 py-2 text-xs font-extrabold text-white">حفظ المعلمين</button></div>
+                <label className="mt-3 flex items-center justify-between rounded-xl bg-grape-50 p-3 text-sm font-extrabold text-grape-700"><span>التوزيع العشوائي المتوازن يوميًا</span><input type="checkbox" checked={halaqa.randomDistribution === true} disabled={(halaqa.teachers?.length ?? 0) < 2} onChange={(e) => setHalaqaDistribution(halaqa.id, e.target.checked)} className="h-5 w-5 accent-violet-600"/></label>
+                <p className="mt-2 text-xs font-bold text-grape-400">الطلاب: {students.filter((student) => student.halaqaId === halaqa.id).map((student) => student.name).join("، ") || "لا يوجد طلاب في هذه الحلقة حاليًا."}</p>
+              </div>}
+            </div>;
+          })}
+        </div>}
       </div>
+
+      {activeHalaqa && <div className="mb-4 rounded-2xl border border-grape-200 bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-display text-lg font-extrabold text-ink">{activeHalaqa.name}</h3><p className="mt-1 text-xs font-bold text-grape-500">المعلمون: {(activeHalaqa.teachers ?? []).map((teacher) => teacher.name).join("، ") || "لا يوجد معلمون"}</p></div>{currentDistribution?.enabled && <span className="rounded-full bg-mint-100 px-3 py-1 text-xs font-extrabold text-mint-700">اليوم {ar(currentDistribution.dayInCycle + 1)} من دورة {ar(currentDistribution.cycleLength)} أيام</span>}</div>
+        {currentDistribution?.enabled && <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => setTeacherFilter("all")} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${teacherFilter === "all" ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-600"}`}>جميع طلاب الحلقة</button>{(activeHalaqa.teachers ?? []).map((teacher) => <button key={teacher.id} type="button" onClick={() => setTeacherFilter(teacher.id)} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${teacherFilter === teacher.id ? "bg-mint-600 text-white" : "bg-mint-50 text-mint-700"}`}>{teacher.name} · {ar(currentDistribution.byTeacher[teacher.id]?.length ?? 0)}</button>)}</div>}
+        {activeHalaqaStudents.length === 0 && <p className="mt-3 rounded-xl bg-grape-50 p-3 text-center text-sm font-bold text-grape-500">لا يوجد طلاب في هذه الحلقة حاليًا.</p>}
+      </div>}
 
       {/* قاعدة النقاط */}
       <div className="mb-4 grid gap-2 rounded-2xl border border-grape-200/80 bg-white/90 p-3 shadow-[0_16px_40px_-36px_rgba(76,29,149,.55)] sm:grid-cols-3">

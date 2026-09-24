@@ -37,7 +37,20 @@ export type ItemKind = "cosmetic" | "external";
 export type CosmeticSlot = "frame" | "crown" | "glow" | "cardbg";
 
 export type AwardRec = { id: string; title: string; week: number; coins?: number };
-export type Halaqa = { id: string; name: string; createdAt: number };
+export type HalaqaTeacher = { id: string; name: string; createdAt: number };
+/**
+ * إعدادات الحلقة متزامنة ضمن app_state. الحقول الجديدة اختيارية لتبقى كل
+ * الحلقات القديمة صالحة، ويقوم التطبيع بإكمالها دون تغيير الطلاب.
+ */
+export type Halaqa = {
+  id: string;
+  name: string;
+  createdAt: number;
+  teachers?: HalaqaTeacher[];
+  randomDistribution?: boolean;
+  rotationAnchorDate?: string;
+  rotationSeed?: number;
+};
 /** درس محفوظ مستقل عن بيانات الطلاب، ويحافظ order على تسلسل الإضافة. */
 export type Lesson = {
   id: string;
@@ -489,6 +502,8 @@ export type WeekLog = {
   week: number;
   name: string;
   savedAt: string;
+  /** تاريخ قابل للحساب للإحصائيات الجديدة؛ السجلات القديمة تبقى كما هي. */
+  savedAtIso?: string;
   top: WeekLogEntry[];
   /** لقطة آمنة لكل الطلاب من هذا الأسبوع؛ top يبقى للتوافق مع الأرشيف القديم. */
   students?: WeekLogEntry[];
