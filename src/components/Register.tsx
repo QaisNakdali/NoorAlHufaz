@@ -65,7 +65,7 @@ function DeleteBtn({ onDelete, label = "" }: { onDelete: () => void; label?: str
 
 /* ===== نافذة إعدادات الطالب (عملات / خبرة / قلوب) ===== */
 function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { students, halaqas, updateStudentProfile, addCoins, addXp, removeHeart, restoreHeart, removeStudent, toast, heartPrice } = useApp();
+  const { students, halaqas, updateStudentProfile, addCoins, addXp, deductXp, removeHeart, restoreHeart, removeStudent, toast, heartPrice } = useApp();
   const s = students.find((x) => x.id === id);
   const [name, setName] = useState(s?.name ?? "");
   const [photo, setPhoto] = useState<string | null>(s?.photo ?? null);
@@ -74,7 +74,18 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
   const [studentLevel, setStudentLevel] = useState(s ? levelInfo(s.xp).level : 1);
   const [halaqaId, setHalaqaId] = useState<string | null>(s?.halaqaId ?? null);
   const [busy, setBusy] = useState(false);
+  const [deductInput, setDeductInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const confirmDeduct = (amount: number) => {
+    const clean = Math.min(s.xp, Math.max(1, Math.floor(amount)));
+    if (clean <= 0) return;
+    const newXp = Math.max(0, s.xp - clean);
+    if (window.confirm(`هل أنت متأكد من إنقاص ${clean} نقاط من الطالب ${s.name}؟ ستصبح نقاطه ${newXp} بدلًا من ${s.xp}.`)) {
+      deductXp(s.id, clean);
+      setDeductInput("");
+    }
+  };
   if (!s) return null;
   const { level } = levelInfo(s.xp);
   const saveProfile = () => {
@@ -145,6 +156,48 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
                   +{ar(v)}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border-2 border-coral-200 bg-coral-50/25 p-3.5 sm:col-span-2">
+            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-2 font-display text-sm font-extrabold text-coral-700">
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-coral-400/20 text-coral-600"><Icon name="minus" className="h-4 w-4" strokeWidth={3} /></span>
+                إنقاص نقاط الطالب يدويًا
+              </p>
+              <span className="text-xs font-bold text-grape-500">النقاط الحالية: {ar(s.xp)} نقطة</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {[10, 25, 50].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  disabled={s.xp <= 0}
+                  onClick={() => confirmDeduct(v)}
+                  className="rounded-xl border border-coral-300 bg-white px-3 py-2 text-xs font-extrabold text-coral-600 shadow-sm transition hover:bg-coral-50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  -{ar(v)}
+                </button>
+              ))}
+              <div className="flex flex-1 items-center gap-2 min-w-[170px]">
+                <input
+                  type="number"
+                  min="1"
+                  max={s.xp}
+                  placeholder="عدد النقاط المراد إنقاصها..."
+                  value={deductInput}
+                  onChange={(e) => setDeductInput(e.target.value)}
+                  className="field-control h-9 flex-1 text-center font-bold"
+                />
+                <button
+                  type="button"
+                  onClick={() => confirmDeduct(Number(deductInput))}
+                  disabled={!deductInput || Number(deductInput) <= 0 || s.xp <= 0}
+                  className="rounded-xl bg-coral-500 px-4 py-2 text-xs font-extrabold text-white shadow-[0_2px_0_#b23a55] transition hover:brightness-110 active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  إنقاص
+                </button>
+              </div>
             </div>
           </div>
 
@@ -433,7 +486,7 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
     <Modal open onClose={onClose}>
       <div className="p-6">
         <h3 className="font-display text-2xl font-extrabold text-ink">انضمام طالب جديد</h3>
-        <p className="mt-1 text-sm text-grape-700/70">يُضاف تلقائيًا إلى كشف الحلقة برصيد ١٠ عملات ترحيبية</p>
+        <p className="mt-1 text-sm text-grape-700/70">يُضاف إلى كشف الحلقة ويبدأ برصيد ٠ عملة ومستوى ١</p>
 
         <div className="mt-5 flex items-center gap-5">
           <button type="button" onClick={() => fileRef.current?.click()} className="group relative shrink-0" title="رفع صورة الطالب">
