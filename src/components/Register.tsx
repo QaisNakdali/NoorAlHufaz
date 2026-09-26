@@ -593,7 +593,10 @@ export default function Register() {
         </label>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={() => setHalaqaFilter("all")} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === "all" ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-600"}`}>جميع الحلقات</button>
-          {halaqas.map((h) => <button key={h.id} type="button" onClick={() => { setHalaqaFilter(h.id); setTeacherFilter("all"); }} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === h.id ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-600"}`}>{h.name}</button>)}
+          {halaqas.map((h) => <span key={h.id} className="inline-flex overflow-hidden rounded-xl border border-grape-100">
+            <button type="button" onClick={() => { setHalaqaFilter(h.id); setTeacherFilter("all"); }} className={`px-3 py-2 text-xs font-extrabold ${halaqaFilter === h.id ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-600"}`}>{h.name}</button>
+            <button type="button" title={`إعدادات ${h.name}`} onClick={() => { const open = editingHalaqaId !== h.id; setEditingHalaqaId(open ? h.id : null); setTeacherDraft(open ? (h.teachers ?? []).map((teacher) => teacher.name) : []); }} className={`px-2 py-2 text-xs font-extrabold ${editingHalaqaId === h.id ? "bg-gold-400 text-ink" : "bg-white text-grape-500"}`}>⚙️ إعدادات</button>
+          </span>)}
           <button type="button" onClick={() => setHalaqaFilter("none")} className={`rounded-xl px-3 py-2 text-xs font-extrabold ${halaqaFilter === "none" ? "bg-grape-600 text-white" : "bg-grape-50 text-grape-500"}`}>بلا حلقة</button>
           <button type="button" onClick={() => setShowHalaqaManager((v) => !v)} className="rounded-xl border-2 border-dashed border-grape-300 px-3 py-1.5 text-xs font-extrabold text-grape-600">+ إضافة حلقة جديدة</button>
         </div>
@@ -606,29 +609,31 @@ export default function Register() {
           <Icon name="users" className="h-4 w-4" strokeWidth={2.6} />
           {studentCountLabel}
         </button>
-        {showHalaqaManager && <div className="mt-3 space-y-3 rounded-xl border border-grape-200 bg-grape-50 p-3">
+        {showHalaqaManager && <div className="mt-3 rounded-xl border border-grape-200 bg-grape-50 p-3">
           <div className="rounded-2xl bg-white p-3">
             <p className="mb-2 text-xs font-extrabold text-grape-600">إنشاء حلقة جديدة</p>
             <input value={newHalaqa} onChange={(e) => setNewHalaqa(e.target.value)} placeholder="اسم الحلقة — مثال: حلقة عمر" className="field-control w-full"/>
             <div className="mt-2 space-y-2">{newTeachers.map((teacher, index) => <div key={index} className="flex gap-2"><input value={teacher} onChange={(e) => setNewTeachers((items) => items.map((item, i) => i === index ? e.target.value : item))} placeholder={`اسم المعلم ${index + 1}`} className="field-control flex-1"/>{newTeachers.length > 1 && <button type="button" onClick={() => setNewTeachers((items) => items.filter((_, i) => i !== index))} className="rounded-xl bg-coral-50 px-3 font-bold text-coral-600">×</button>}</div>)}</div>
             <div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => setNewTeachers((items) => [...items, ""])} className="rounded-xl border border-grape-200 px-3 py-2 text-xs font-extrabold text-grape-600">+ إضافة معلم آخر</button><button type="button" onClick={() => { addHalaqa(newHalaqa, newTeachers); setNewHalaqa(""); setNewTeachers([""]); }} className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-extrabold text-white">حفظ الحلقة</button></div>
           </div>
-          {halaqas.map((halaqa) => {
-            const expanded = editingHalaqaId === halaqa.id;
-            const count = students.filter((student) => student.halaqaId === halaqa.id).length;
-            return <div key={halaqa.id} className="rounded-2xl border border-grape-100 bg-white p-3">
-              <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => { setEditingHalaqaId(expanded ? null : halaqa.id); setTeacherDraft((halaqa.teachers ?? []).map((teacher) => teacher.name)); }} className="flex-1 text-right font-display font-extrabold text-ink">{halaqa.name}<span className="me-2 text-xs font-bold text-grape-400">{ar(count)} طالب · {ar(halaqa.teachers?.length ?? 0)} معلم</span></button><DeleteBtn label="حذف" onDelete={() => removeHalaqa(halaqa.id)} /></div>
-              {expanded && <div className="mt-3 border-t border-grape-100 pt-3">
-                <p className="text-xs font-extrabold text-grape-600">المعلمون</p>
-                <div className="mt-2 flex flex-wrap gap-2">{(halaqa.teachers ?? []).map((teacher) => <button key={teacher.id} type="button" onClick={() => { setHalaqaFilter(halaqa.id); setTeacherFilter(halaqa.randomDistribution ? teacher.id : "all"); }} className="rounded-xl bg-mint-50 px-3 py-2 text-xs font-extrabold text-mint-700">{teacher.name}{halaqa.randomDistribution ? " — عرض طلابه اليوم" : " — عرض الحلقة"}</button>)}</div>
-                <div className="mt-2 space-y-2">{teacherDraft.map((teacher, index) => <div key={index} className="flex gap-2"><input value={teacher} onChange={(e) => setTeacherDraft((items) => items.map((item, i) => i === index ? e.target.value : item))} placeholder={`اسم المعلم ${index + 1}`} className="field-control flex-1"/><button type="button" onClick={() => setTeacherDraft((items) => items.filter((_, i) => i !== index))} className="rounded-xl bg-coral-50 px-3 font-bold text-coral-600">×</button></div>)}</div>
-                <div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => setTeacherDraft((items) => [...items, ""])} className="rounded-xl border border-grape-200 px-3 py-2 text-xs font-extrabold text-grape-600">+ إضافة معلم آخر</button><button type="button" onClick={() => updateHalaqaTeachers(halaqa.id, teacherDraft)} className="rounded-xl bg-grape-600 px-4 py-2 text-xs font-extrabold text-white">حفظ المعلمين</button></div>
-                <label className="mt-3 flex items-center justify-between rounded-xl bg-grape-50 p-3 text-sm font-extrabold text-grape-700"><span>التوزيع العشوائي المتوازن يوميًا</span><input type="checkbox" checked={halaqa.randomDistribution === true} disabled={(halaqa.teachers?.length ?? 0) < 2} onChange={(e) => setHalaqaDistribution(halaqa.id, e.target.checked)} className="h-5 w-5 accent-violet-600"/></label>
-                <p className="mt-2 text-xs font-bold text-grape-400">الطلاب: {students.filter((student) => student.halaqaId === halaqa.id).map((student) => student.name).join("، ") || "لا يوجد طلاب في هذه الحلقة حاليًا."}</p>
-              </div>}
-            </div>;
-          })}
         </div>}
+        {editingHalaqaId && (() => {
+          const halaqa = halaqas.find((item) => item.id === editingHalaqaId);
+          if (!halaqa) return null;
+          const count = students.filter((student) => student.halaqaId === halaqa.id).length;
+          return <div className="mt-3 rounded-2xl border-2 border-gold-400/40 bg-white p-4">
+            <div className="flex flex-wrap items-center gap-2"><div className="flex-1"><p className="font-display font-extrabold text-ink">⚙️ إعدادات {halaqa.name}</p><p className="text-xs font-bold text-grape-400">{ar(count)} طالب · {ar(halaqa.teachers?.length ?? 0)} معلم</p></div><button type="button" onClick={() => setEditingHalaqaId(null)} className="rounded-xl bg-grape-100 px-3 py-2 text-xs font-bold text-grape-600">إغلاق</button><DeleteBtn label="حذف" onDelete={() => removeHalaqa(halaqa.id)} /></div>
+            <div className="mt-3 border-t border-grape-100 pt-3">
+              <p className="text-xs font-extrabold text-grape-600">المعلمون</p>
+              <div className="mt-2 flex flex-wrap gap-2">{(halaqa.teachers ?? []).map((teacher) => <button key={teacher.id} type="button" onClick={() => { setHalaqaFilter(halaqa.id); setTeacherFilter(halaqa.randomDistribution ? teacher.id : "all"); }} className="rounded-xl bg-mint-50 px-3 py-2 text-xs font-extrabold text-mint-700">{teacher.name}{halaqa.randomDistribution ? " — عرض طلابه اليوم" : " — عرض الحلقة"}</button>)}</div>
+              <div className="mt-2 space-y-2">{teacherDraft.map((teacher, index) => <div key={index} className="flex gap-2"><input value={teacher} onChange={(e) => setTeacherDraft((items) => items.map((item, i) => i === index ? e.target.value : item))} placeholder={`اسم المعلم ${index + 1}`} className="field-control flex-1"/><button type="button" onClick={() => setTeacherDraft((items) => items.filter((_, i) => i !== index))} className="rounded-xl bg-coral-50 px-3 font-bold text-coral-600">×</button></div>)}</div>
+              <div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => setTeacherDraft((items) => [...items, ""])} className="rounded-xl border border-grape-200 px-3 py-2 text-xs font-extrabold text-grape-600">+ إضافة معلم آخر</button><button type="button" onClick={() => updateHalaqaTeachers(halaqa.id, teacherDraft)} className="rounded-xl bg-grape-600 px-4 py-2 text-xs font-extrabold text-white">حفظ المعلمين</button></div>
+              <label className="mt-3 flex items-center justify-between rounded-xl bg-grape-50 p-3 text-sm font-extrabold text-grape-700"><span>التوزيع العشوائي المتوازن · الأحد إلى الأربعاء</span><input type="checkbox" checked={halaqa.randomDistribution === true} disabled={(halaqa.teachers?.length ?? 0) < 2} onChange={(e) => setHalaqaDistribution(halaqa.id, e.target.checked)} className="h-5 w-5 accent-violet-600"/></label>
+              <p className="mt-1 text-[11px] font-bold text-grape-400">يبقى توزيع الأربعاء ثابتًا الخميس والجمعة والسبت، ثم يستأنف يوم الأحد.</p>
+              <p className="mt-2 text-xs font-bold text-grape-400">الطلاب: {students.filter((student) => student.halaqaId === halaqa.id).map((student) => student.name).join("، ") || "لا يوجد طلاب في هذه الحلقة حاليًا."}</p>
+            </div>
+          </div>;
+        })()}
       </div>
 
       {activeHalaqa && <div className="mb-4 rounded-2xl border border-grape-200 bg-white p-4">

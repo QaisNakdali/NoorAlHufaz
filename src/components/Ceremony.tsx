@@ -94,9 +94,11 @@ export default function CeremonyPanel() {
   } = useApp();
   const [armWeek, setArmWeek] = useState(false);
   const [openLog, setOpenLog] = useState<number | null>(null);
+  const [championSettingsOpen, setChampionSettingsOpen] = useState(false);
   const isRealPick = (v: string | null | undefined): boolean => !!v && v !== "none";
   const championExcluded = new Set(ceremonyPicks.championExcludedIds ?? []);
-  const eligibleChampions = students.filter((student) => isChampionEligible(student, tripOn, tripAttendees));
+  const championRatingMode = rewardSettings.champions.ratingMode === "excellent" ? "excellent" : "mixed";
+  const eligibleChampions = students.filter((student) => isChampionEligible(student, tripOn, tripAttendees, championRatingMode));
   const activeChampions = eligibleChampions.filter((student) => !championExcluded.has(student.id));
   const availableProducts = products.filter((product) => product.shownInCeremonyWeek == null && (product.ceremonyPending === true || product.addedWeek === week));
   const pickedCount =
@@ -141,8 +143,9 @@ export default function CeremonyPanel() {
           ] as const).map(([key, label]) => {
             const setting = rewardSettings[key];
             return <label key={key} className={`rounded-2xl border-2 p-3 transition ${setting.enabled ? "border-grape-300 bg-grape-50" : "border-grape-100 bg-slate-50 opacity-70"}`}>
-              <span className="flex items-center justify-between gap-2"><span className="font-display text-sm font-extrabold text-ink">{label}</span><input type="checkbox" checked={setting.enabled} onChange={(e) => setRewardSetting(key, { enabled: e.target.checked })} className="h-5 w-5 accent-violet-600" /></span>
+              <span className="flex items-center justify-between gap-2"><span className="font-display text-sm font-extrabold text-ink">{label}</span><span className="flex items-center gap-2">{key === "champions" && <button type="button" onClick={(event) => { event.preventDefault(); setChampionSettingsOpen((open) => !open); }} className="rounded-lg bg-white px-2 py-1 text-[11px] font-extrabold text-grape-600">⚙️ إعدادات</button>}<input type="checkbox" checked={setting.enabled} onChange={(e) => setRewardSetting(key, { enabled: e.target.checked })} className="h-5 w-5 accent-violet-600" /></span></span>
               <span className="mt-2 flex items-center gap-2 text-xs font-bold text-grape-500">{key === "trip" ? "لكل طالب مستحق" : "لكل فائز"}<input type="number" min="0" step="1" disabled={!setting.enabled || (key === "trip" && !tripOn)} value={setting.coins} onChange={(e) => setRewardSetting(key, { coins: Number(e.target.value) })} title={key === "trip" && !tripOn ? "فعّل الرحلة أولًا لتعديل سعرها" : undefined} className="field-control h-9 min-w-0 flex-1 text-center disabled:cursor-not-allowed disabled:bg-slate-100" /></span>
+              {key === "champions" && championSettingsOpen && <span className="mt-2 block text-xs font-bold text-grape-500">طريقة احتساب المستوى<select value={setting.ratingMode === "excellent" ? "excellent" : "mixed"} onChange={(e) => setRewardSetting("champions", { ratingMode: e.target.value === "excellent" ? "excellent" : "mixed" })} className="field-control mt-1 h-9 w-full"><option value="excellent">ممتاز</option><option value="mixed">مختلط (ممتاز + جيد جدًا)</option></select><span className="mt-1 block text-[11px] text-grape-400">لا يوجد خيار جيد جدًا فقط.</span></span>}
               {key === "trip" && !tripOn && <span className="mt-1 block text-[11px] font-bold text-grape-400">فعّل الرحلة لتعديل السعر</span>}
             </label>;
           })}
@@ -266,7 +269,7 @@ export default function CeremonyPanel() {
           {eligibleChampions.length > 0 && <button type="button" onClick={() => eligibleChampions.forEach((student) => setChampionExcluded(student.id, true))} className="rounded-xl border-2 border-coral-200 px-3 py-2 text-xs font-extrabold text-coral-600 hover:bg-coral-50">إلغاء الجميع</button>}
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5 text-xs font-bold">
-          {championCriteria(tripOn).map((c) => (
+          {championCriteria(tripOn, championRatingMode).map((c) => (
             <span key={c.label} className={`flex items-center gap-1 rounded-full px-2.5 py-1 ${c.active ? "bg-mint-400/20 text-mint-600" : "bg-grape-100 text-grape-400"}`}><Icon name={c.icon} className="h-3.5 w-3.5" strokeWidth={2.6} /> {c.label}</span>
           ))}
         </div>
@@ -525,7 +528,8 @@ export function CeremonyShow() {
       }
     }
     const championExcluded = new Set(ceremonyPicks.championExcludedIds ?? []);
-    const champions = rewardSettings.champions.enabled ? sorted.filter((s) => isChampionEligible(s, tripOn, tripAttendees) && !championExcluded.has(s.id)) : [];
+    const championRatingMode = rewardSettings.champions.ratingMode === "excellent" ? "excellent" : "mixed";
+    const champions = rewardSettings.champions.enabled ? sorted.filter((s) => isChampionEligible(s, tripOn, tripAttendees, championRatingMode) && !championExcluded.has(s.id)) : [];
     if (champions.length > 0) {
       st.push({ kind: "championsTitle" });
       st.push({ kind: "champions", students: champions, coins: rewardSettings.champions.coins });

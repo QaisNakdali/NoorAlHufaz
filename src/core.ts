@@ -62,7 +62,8 @@ export type Lesson = {
   completedAt: number | null;
 };
 export type RewardKey = "champions" | "improved" | "behavior" | "trip";
-export type RewardOption = { enabled: boolean; coins: number };
+export type ChampionRatingMode = "excellent" | "mixed";
+export type RewardOption = { enabled: boolean; coins: number; ratingMode?: ChampionRatingMode };
 export type RewardSettings = Record<RewardKey, RewardOption>;
 export type RewardGrant = {
   id: string;
@@ -76,7 +77,8 @@ export type RewardGrant = {
 };
 
 export const DEFAULT_REWARD_SETTINGS: RewardSettings = {
-  champions: { enabled: true, coins: 0 },
+  // mixed يحافظ على السلوك السابق للبيانات القديمة، ويقبل ممتاز/جيد جدًا معًا.
+  champions: { enabled: true, coins: 0, ratingMode: "mixed" },
   improved: { enabled: true, coins: 0 },
   behavior: { enabled: true, coins: 0 },
   trip: { enabled: false, coins: 0 },
@@ -430,24 +432,31 @@ export const recitations = (s: Student): number =>
   DAYS.reduce((n, d) => n + (s.days[d.key].h ? 1 : 0) + (s.days[d.key].r ? 1 : 0), 0);
 
 /** استحقاق البطولة: أسبوع مكتمل (حضور كل الأيام + تسميع حفظ ومراجعة كل الأيام + الرحلة إن فُعّلت) */
-export const isChampionEligible = (s: Student, tripOn: boolean, tripAttendees: string[]): boolean =>
-  attendedDays(s) === DAYS.length &&
-  recitations(s) === DAYS.length * 2 &&
-  s.hearts === MAX_HEARTS &&
-  s.heartsLostWeek === 0 &&
-  (!tripOn || tripAttendees.includes(s.id));
+export const isChampionEligible = (
+  s: Student,
+  tripOn: boolean,
+  tripAttendees: string[],
+  ratingMode: ChampionRatingMode = "mixed"
+): boolean => {
+  const completedWeek = attendedDays(s) === DAYS.length && recitations(s) === DAYS.length * 2;
+  const ratingEligible = ratingMode === "mixed" || DAYS.every((day) =>
+    s.recitationRatings?.[day.key]?.h === "excellent" && s.recitationRatings?.[day.key]?.r === "excellent"
+  );
+  return completedWeek && ratingEligible && s.heartsLostWeek === 0 && (!tripOn || tripAttendees.includes(s.id));
+};
 
 /** شروط البطولة (للعرض) */
-export const championCriteria = (tripOn: boolean): { icon: string; label: string; active: boolean }[] => [
+export const championCriteria = (tripOn: boolean, ratingMode: ChampionRatingMode = "mixed"): { icon: string; label: string; active: boolean }[] => [
   { icon: "calendar", label: "حضر كل الأيام بلا غياب", active: true },
   { icon: "book", label: "سمّع الحفظ والمراجعة كل الأيام", active: true },
-  { icon: "heart", label: "حافظ على جميع القلوب", active: true },
+  { icon: "star", label: ratingMode === "excellent" ? "كل الدرجات ممتاز" : "الدرجات ممتاز أو جيد جدًا", active: true },
+  { icon: "heart", label: "لم يخسر أي قلب خلال الأسبوع", active: true },
   { icon: "flag", label: tripOn ? "حضر الرحلة" : "الرحلة إن وُجدت", active: tripOn },
 ];
 
 /** جميع المؤهلين أبطال بالدرجة نفسها؛ لا ترتيب ولا مفاضلة بينهم. */
-export function championTop(students: Student[], tripOn: boolean, tripAttendees: string[]): Student[] {
-  return students.filter((s) => isChampionEligible(s, tripOn, tripAttendees));
+export function championTop(students: Student[], tripOn: boolean, tripAttendees: string[], ratingMode: ChampionRatingMode = "mixed"): Student[] {
+  return students.filter((s) => isChampionEligible(s, tripOn, tripAttendees, ratingMode));
 }
 
 /* ---------- الرحلة الأسبوعية ---------- */

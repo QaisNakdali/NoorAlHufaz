@@ -47,7 +47,15 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
 
 export default function PastWeeks() {
   const { weeksLog, updateWeekLog } = useApp();
-  const logs = useMemo(() => [...weeksLog].sort((a, b) => b.week - a.week), [weeksLog]);
+  const logs = useMemo(() => [...weeksLog].sort((a, b) => {
+    const time = (log: WeekLog): number => {
+      const primary = log.weekStartDateIso ? new Date(`${log.weekStartDateIso}T12:00:00`).getTime() : Number.NaN;
+      if (Number.isFinite(primary)) return primary;
+      const fallback = new Date(log.savedAtIso ?? log.savedAt).getTime();
+      return Number.isFinite(fallback) ? fallback : log.week;
+    };
+    return time(b) - time(a) || b.week - a.week;
+  }), [weeksLog]);
   const [week, setWeek] = useState<number | null>(logs[0]?.week ?? null);
   const current = logs.find((item) => item.week === week) ?? null;
   const [draft, setDraft] = useState<WeekLog | null>(null);

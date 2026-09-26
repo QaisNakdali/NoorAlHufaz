@@ -284,7 +284,11 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
     tripDay: (p.tripDay as TripDay | null) ?? null,
     tripAttendees: Array.isArray(p.tripAttendees) ? (p.tripAttendees as string[]) : [],
     rewardSettings: {
-      champions: { ...DEFAULT_REWARD_SETTINGS.champions, ...(p.rewardSettings?.champions ?? {}) },
+      champions: {
+        ...DEFAULT_REWARD_SETTINGS.champions,
+        ...(p.rewardSettings?.champions ?? {}),
+        ratingMode: p.rewardSettings?.champions?.ratingMode === "excellent" ? "excellent" : "mixed",
+      },
       improved: { ...DEFAULT_REWARD_SETTINGS.improved, ...(p.rewardSettings?.improved ?? {}) },
       behavior: { ...DEFAULT_REWARD_SETTINGS.behavior, ...(p.rewardSettings?.behavior ?? {}) },
       trip: { ...DEFAULT_REWARD_SETTINGS.trip, ...(p.rewardSettings?.trip ?? {}) },
@@ -1560,7 +1564,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const startWeek = useCallback(() => {
     // أرشفة الأسبوع المنتهي
     const championExcluded = new Set(ceremonyPicks.championExcludedIds ?? []);
-    const champs = championTop(students, tripOn, tripAttendees).filter((student) => !championExcluded.has(student.id));
+    const champs = championTop(students, tripOn, tripAttendees, rewardSettings.champions.ratingMode).filter((student) => !championExcluded.has(student.id));
     const awards: { title: string; studentName: string; coins?: number; reward?: RewardKey }[] = [];
     if (rewardSettings.champions.enabled) {
       champs.forEach((st) => awards.push({ title: "بطل الأسبوع", studentName: st.name, coins: rewardSettings.champions.coins, reward: "champions" }));
