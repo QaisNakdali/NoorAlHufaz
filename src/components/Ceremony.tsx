@@ -100,7 +100,7 @@ export default function CeremonyPanel() {
   const championRatingMode = rewardSettings.champions.ratingMode === "excellent" ? "excellent" : "mixed";
   const eligibleChampions = students.filter((student) => isChampionEligible(student, tripOn, tripAttendees, championRatingMode));
   const activeChampions = eligibleChampions.filter((student) => !championExcluded.has(student.id));
-  const availableProducts = products.filter((product) => product.shownInCeremonyWeek == null && (product.ceremonyPending === true || product.addedWeek === week));
+  const availableProducts = products.filter((product) => product.showInCeremony !== false);
   const pickedCount =
     Object.values(ceremonyPicks.improvedByHalaqa ?? {}).filter(isRealPick).length +
     Object.values(ceremonyPicks.behaviorByHalaqa ?? {}).filter(isRealPick).length +
@@ -539,8 +539,10 @@ export function CeremonyShow() {
     // إعلان المنتجات المختارة التي لم يسبق عرضها. غير المختارة تظل متاحة للأسبوع القادم.
     if (showNewProducts) {
       const selected = new Set(ceremonyProductIds);
-      const fresh = products.filter((product) => selected.has(product.id) && product.shownInCeremonyWeek == null);
-      if (fresh.length > 0) st.push({ kind: "newProducts", items: fresh });
+      const ceremonyItems = ceremonyProductIds.length > 0
+        ? products.filter((product) => product.showInCeremony !== false && selected.has(product.id))
+        : products.filter((product) => product.showInCeremony !== false);
+      if (ceremonyItems.length > 0) st.push({ kind: "newProducts", items: ceremonyItems });
     }
     st.push({ kind: "finale" });
     return st;

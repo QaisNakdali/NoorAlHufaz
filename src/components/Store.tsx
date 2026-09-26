@@ -291,6 +291,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
   const [minLevel, setMinLevel] = useState(initial?.minLevel ?? 1);
   const [image, setImage] = useState<string | null>(initial?.image ?? null);
   const [kind, setKind] = useState<"cosmetic" | "external">(initial?.kind ?? "external");
+  const [showInCeremony, setShowInCeremony] = useState(initial?.showInCeremony !== false);
   const [cosmeticOpt, setCosmeticOpt] = useState(
     initial?.kind === "cosmetic" && initial.slot && initial.value ? `${initial.slot}|${initial.value}` : "frame|silver"
   );
@@ -333,6 +334,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
       value: kind === "cosmetic" ? value : undefined,
       repeatable: kind === "external" ? true : undefined,
       stock: stockStr.trim() === "" ? (initial?.stock ?? null) : Math.max(0, Number(stockStr) || 0),
+      showInCeremony: showInCeremony !== false,
     };
     saveProduct(item);
     toast("success", initial ? "تم تحديث المنتج" : "أُضيف المنتج للمتجر");
@@ -452,6 +454,23 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
           </button>
         )}
 
+        <div className="mt-4">
+          <label className="flex cursor-pointer items-center gap-3 rounded-2xl border-2 border-grape-200 bg-grape-50/60 p-3 text-sm font-extrabold text-ink transition hover:border-grape-300">
+            <input
+              type="checkbox"
+              checked={showInCeremony}
+              onChange={(e) => setShowInCeremony(e.target.checked)}
+              className="h-5 w-5 rounded accent-violet-600 cursor-pointer"
+            />
+            <div className="flex-1">
+              <span className="block font-display font-extrabold text-sm">عرض في الحفل الأسبوعي</span>
+              <span className="block text-xs font-bold text-grape-500">
+                {showInCeremony ? "☑ سيظهر هذا المنتج في خيارات الحفل الأسبوعي" : "☐ غير معروض في الحفل (سيبقى متاحًا في المتجر فقط)"}
+              </span>
+            </div>
+          </label>
+        </div>
+
         <div className="mt-5 flex gap-2.5">
           <BigBtn className="flex-1" onClick={save} color="bg-mint-600 hover:brightness-110 shadow-[0_5px_0_#0a7a50]">
             <Icon name="check" className="h-5 w-5" strokeWidth={3} />
@@ -542,6 +561,16 @@ export default function StoreTab() {
                   <span className={p.kind === "cosmetic" ? "text-grape-500" : "text-mint-600"}>
                     {p.kind === "cosmetic" ? "خاصية" : "خارجية"}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => saveProduct({ ...p, showInCeremony: p.showInCeremony === false ? true : false })}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold transition ${
+                      p.showInCeremony !== false ? "bg-mint-100 text-mint-700 hover:bg-mint-200" : "bg-slate-200 text-slate-500 hover:bg-slate-300"
+                    }`}
+                    title="اضغط للتبديل السريع بين العرض وعدم العرض في الحفل"
+                  >
+                    {p.showInCeremony !== false ? "☑ في الحفل" : "☐ غير معروض"}
+                  </button>
                   {typeof p.stock === "number" && (
                     <span className={p.stock <= 0 ? "text-coral-500" : "text-gold-600"}>
                       {p.stock <= 0 ? "نفدت" : `متبقي ${ar(p.stock)}`}

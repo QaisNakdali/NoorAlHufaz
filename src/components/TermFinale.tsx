@@ -21,9 +21,20 @@ function denseRank(students: Student[]): RankedStudent[] {
   });
 }
 
+const normalizeArabic = (text: string): string => {
+  return text
+    .replace(/[ًٌٍَُِّْـ]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .trim()
+    .toLowerCase();
+};
+
 export default function TermFinale() {
   const { students, weeksLog, week } = useApp();
   const [showFinale, setShowFinale] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const ranking = useMemo(
     () => denseRank(
@@ -33,6 +44,12 @@ export default function TermFinale() {
       )),
     [students]
   );
+
+  const displayedRanking = useMemo(() => {
+    const q = normalizeArabic(searchQuery);
+    if (!q) return ranking;
+    return ranking.filter(({ student }) => normalizeArabic(student.name).includes(q));
+  }, [ranking, searchQuery]);
 
   const totalPoints = students.reduce((n, s) => n + s.xp, 0);
   const topLevel = ranking.length ? levelInfo(ranking[0].student.xp).level : 0;
@@ -65,8 +82,38 @@ export default function TermFinale() {
         ))}
       </div>
 
+      {/* مربع البحث عن طالب في ختام الترم */}
+      <div className="mt-5 rounded-2xl border-2 border-grape-200 bg-white p-4">
+        <label className="block text-xs font-extrabold text-grape-700">
+          بحث عن طالب في ختام الترم
+          <div className="relative mt-1">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="اكتب اسم الطالب أو جزءًا منه للوصول السريع..."
+              className="field-control w-full pe-9"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute inset-y-0 end-2.5 flex items-center text-xs font-extrabold text-grape-400 hover:text-coral-500"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </label>
+        {searchQuery && (
+          <p className="mt-2 text-xs font-bold text-grape-500">
+            نتائج مطابقة لـ «{searchQuery}»: {ar(displayedRanking.length)} طالب
+          </p>
+        )}
+      </div>
+
       {/* زر العرض الكامل */}
-      <div className="mt-6 flex flex-col items-center gap-3 rounded-[28px] border-2 border-gold-500/40 bg-gradient-to-l from-gold-400/20 via-white to-white p-8 text-center">
+      <div className="mt-5 flex flex-col items-center gap-3 rounded-[28px] border-2 border-gold-500/40 bg-gradient-to-l from-gold-400/20 via-white to-white p-8 text-center">
         <Icon name="flag" className="anim-wiggle h-14 w-14 text-gold-500" strokeWidth={1.8} />
         <p className="font-display text-2xl font-extrabold text-ink">الترتيب النهائي للترم</p>
         <p className="max-w-lg text-sm font-bold leading-6 text-grape-700/70">
@@ -85,6 +132,41 @@ export default function TermFinale() {
         {week > 1 && <p className="text-xs font-bold text-grape-700/55">نتائج الأسابيع السابقة محفوظة في أرشيف الحفل الأسبوعي</p>}
       </div>
 
+      {/* قائمة سريعة للطلاب المطابقين للبحث في نفس الصفحة */}
+      {searchQuery && (
+        <div className="mt-5 space-y-2">
+          <h4 className="font-display text-lg font-extrabold text-ink">نتائج البحث في الترتيب</h4>
+          {displayedRanking.length === 0 ? (
+            <p className="rounded-2xl border-2 border-dashed border-grape-200 bg-white p-6 text-center font-bold text-grape-500">
+              لا يوجد طالب بهذا الاسم
+            </p>
+          ) : (
+            displayedRanking.map(({ student: s, rank }) => {
+              const { level } = levelInfo(s.xp);
+              return (
+                <div key={s.id} className="flex items-center gap-3 rounded-2xl border-2 border-grape-200 bg-white p-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gold-400/30 font-display text-base font-extrabold text-gold-700">
+                    {ar(rank)}
+                  </span>
+                  <div className={heartFade(s.hearts)}>
+                    <Avatar photo={s.photo} name={s.name} size={48} frame={s.frame} crown={s.crown} glow={s.glow} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-display text-base font-extrabold text-ink">{s.name}</p>
+                    <p className="text-xs font-bold text-grape-500">
+                      مستوى {ar(level)} · {rankOf(level)} · {ar(s.xp)} نقطة
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-grape-100 px-3 py-1 font-display text-xs font-extrabold text-grape-700">
+                    المركز {ar(rank)}
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       {/* العرض الكامل */}
       {showFinale && <FinaleOverlay ranking={ranking} onClose={() => setShowFinale(false)} />}
     </div>
@@ -99,6 +181,13 @@ function FinaleOverlay({
   ranking: RankedStudent[];
   onClose: () => void;
 }) {
+  const [overlaySearch, setOverlaySearch] = useState("");
+  const displayed = useMemo(() => {
+    const q = normalizeArabic(overlaySearch);
+    if (!q) return ranking;
+    return ranking.filter(({ student }) => normalizeArabic(student.name).includes(q));
+  }, [ranking, overlaySearch]);
+
   return (
     <div className="fixed inset-0 z-[80] overflow-y-auto bg-gradient-to-b from-grape-950 via-grape-900 to-grape-950">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -117,36 +206,60 @@ function FinaleOverlay({
           <p className="mt-2 text-base font-bold text-grape-300">من الأكثر إلى الأقل — حسب المستويات ثم النقاط</p>
         </div>
 
-        {/* منصة الأوائل */}
-        <div className="mt-10 flex items-end justify-center gap-4">
-          {ranking.slice(0, 3).map(({ student: s, rank }, index) => {
-            const place = index + 1;
-            const { level } = levelInfo(s.xp);
-            const heights = { 1: "h-36", 2: "h-26", 3: "h-20" } as const;
-            const bgs = {
-              1: "border-gold-500 bg-gradient-to-b from-gold-300 to-gold-500 shadow-[0_0_40px_rgba(247,183,51,0.45)]",
-              2: "border-slate-300 bg-gradient-to-b from-slate-100 to-slate-300",
-              3: "border-amber-500 bg-gradient-to-b from-amber-200 to-amber-400",
-            } as const;
-            return (
-              <div key={s.id} className="anim-slide-up flex w-28 flex-col items-center sm:w-32" style={{ animationDelay: `${place === 1 ? 700 : place === 2 ? 200 : 1200}ms` }}>
-                {place === 1 && <Icon name="crown" className="anim-bounce-soft mb-1 h-8 w-8 text-gold-400" strokeWidth={2} />}
-                <div className={heartFade(s.hearts)}>
-                  <Avatar photo={s.photo} name={s.name} size={place === 1 ? 92 : 76} frame={s.frame} crown={s.crown} glow={s.glow} />
-                </div>
-                <p className="mt-2 max-w-full truncate font-display text-base font-extrabold text-white">{s.name}</p>
-                <p className="text-xs font-bold text-grape-300">مستوى {ar(level)} · {rankOf(level)}</p>
-                <div className={`mt-2 w-full rounded-t-2xl border-2 border-b-0 ${heights[place as 1 | 2 | 3]} ${bgs[place as 1 | 2 | 3]} grid place-items-start justify-center pt-2`}>
-                  <span className="font-display text-xl font-extrabold text-grape-900">{ar(rank)}</span>
-                </div>
-              </div>
-            );
-          })}
+        {/* بحث سريع داخل شاشة التتويج */}
+        <div className="mx-auto mt-6 max-w-md">
+          <div className="relative">
+            <input
+              type="text"
+              value={overlaySearch}
+              onChange={(e) => setOverlaySearch(e.target.value)}
+              placeholder="ابحث عن طالب في القائمة..."
+              className="w-full rounded-2xl border-2 border-white/20 bg-white/10 px-4 py-2.5 text-center font-display text-sm font-bold text-white placeholder-grape-300 backdrop-blur outline-none focus:border-gold-400"
+            />
+            {overlaySearch && (
+              <button
+                type="button"
+                onClick={() => setOverlaySearch("")}
+                className="absolute inset-y-0 end-3 flex items-center text-xs font-bold text-grape-300 hover:text-white"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* منصة الأوائل (تظهر عند عدم وجود بحث) */}
+        {!overlaySearch && (
+          <div className="mt-10 flex items-end justify-center gap-4">
+            {ranking.slice(0, 3).map(({ student: s, rank }, index) => {
+              const place = index + 1;
+              const { level } = levelInfo(s.xp);
+              const heights = { 1: "h-36", 2: "h-26", 3: "h-20" } as const;
+              const bgs = {
+                1: "border-gold-500 bg-gradient-to-b from-gold-300 to-gold-500 shadow-[0_0_40px_rgba(247,183,51,0.45)]",
+                2: "border-slate-300 bg-gradient-to-b from-slate-100 to-slate-300",
+                3: "border-amber-500 bg-gradient-to-b from-amber-200 to-amber-400",
+              } as const;
+              return (
+                <div key={s.id} className="anim-slide-up flex w-28 flex-col items-center sm:w-32" style={{ animationDelay: `${place === 1 ? 700 : place === 2 ? 200 : 1200}ms` }}>
+                  {place === 1 && <Icon name="crown" className="anim-bounce-soft mb-1 h-8 w-8 text-gold-400" strokeWidth={2} />}
+                  <div className={heartFade(s.hearts)}>
+                    <Avatar photo={s.photo} name={s.name} size={place === 1 ? 92 : 76} frame={s.frame} crown={s.crown} glow={s.glow} />
+                  </div>
+                  <p className="mt-2 max-w-full truncate font-display text-base font-extrabold text-white">{s.name}</p>
+                  <p className="text-xs font-bold text-grape-300">مستوى {ar(level)} · {rankOf(level)}</p>
+                  <div className={`mt-2 w-full rounded-t-2xl border-2 border-b-0 ${heights[place as 1 | 2 | 3]} ${bgs[place as 1 | 2 | 3]} grid place-items-start justify-center pt-2`}>
+                    <span className="font-display text-xl font-extrabold text-grape-900">{ar(rank)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* القائمة الكاملة */}
         <div className="mt-10">
-          <RankList ranking={ranking} />
+          <RankList ranking={displayed} />
         </div>
 
         <div className="mt-10 text-center">
@@ -164,6 +277,13 @@ function FinaleOverlay({
 }
 
 function RankList({ ranking }: { ranking: RankedStudent[] }) {
+  if (ranking.length === 0) {
+    return (
+      <div className="rounded-2xl border-2 border-dashed border-white/20 bg-white/5 p-8 text-center font-bold text-grape-300">
+        لا يوجد طلاب مطابقون
+      </div>
+    );
+  }
   return (
     <div className="space-y-2">
       {ranking.map(({ student: s, rank }, i) => {
@@ -173,7 +293,7 @@ function RankList({ ranking }: { ranking: RankedStudent[] }) {
           <div
             key={s.id}
             className="anim-slide-up flex items-center gap-3 rounded-2xl border-2 border-white/10 bg-white/5 px-3 py-2.5 backdrop-blur-sm"
-            style={{ animationDelay: `${i * 50}ms` }}
+            style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
           >
             <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full font-display text-base font-extrabold ${rank <= 3 ? medals[rank - 1] : "bg-white/10 text-grape-300"}`}>
               {ar(rank)}
