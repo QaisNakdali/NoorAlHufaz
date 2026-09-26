@@ -237,6 +237,8 @@ export type ShopItem = {
   shownInCeremonyWeek?: number;
   /** علامة للمنتجات المضافة بعد تفعيل الانتقاء؛ تسمح بترحيل غير المحدد لأسابيع لاحقة. */
   ceremonyPending?: boolean;
+  /** خيار التحكم في ظهور المنتج في الحفل الأسبوعي */
+  showInCeremony?: boolean;
   stock?: number | null; // الكمية المتوفرة لدى المعلم (null = غير محدودة) — للنوعين
 };
 
@@ -438,11 +440,38 @@ export const isChampionEligible = (
   tripAttendees: string[],
   ratingMode: ChampionRatingMode = "mixed"
 ): boolean => {
-  const completedWeek = attendedDays(s) === DAYS.length && recitations(s) === DAYS.length * 2;
-  const ratingEligible = ratingMode === "mixed" || DAYS.every((day) =>
-    s.recitationRatings?.[day.key]?.h === "excellent" && s.recitationRatings?.[day.key]?.r === "excellent"
-  );
-  return completedWeek && ratingEligible && s.heartsLostWeek === 0 && (!tripOn || tripAttendees.includes(s.id));
+  // 1. حضور جميع الأيام الأربعة (الأحد، الاثنين، الثلاثاء، الأربعاء) دون غياب
+  const completedAttendance = DAYS.every((day) => s.days[day.key]?.a && !s.days[day.key]?.absent);
+
+  // 2. إتمام تسميع الحفظ والمراجعة لجميع الأيام الأربعة (8 خانات تسميع كاملة)
+  const completedRecitation = DAYS.every((day) => s.days[day.key]?.h && s.days[day.key]?.r);
+
+  // 3. درجات التسميع:
+  // إذا سُمّع التسميع ولم تُسجل درجة صريحة فالافتراضي هو "ممتاز"
+  const getRating = (dayKey: DayKey, part: RecitationPart): RecitationRating => {
+    return s.recitationRatings?.[dayKey]?.[part] ?? "excellent";
+  };
+
+  const ratingEligible = DAYS.every((day) => {
+    const hRating = getRating(day.key, "h");
+    const rRating = getRating(day.key, "r");
+    if (ratingMode === "excellent") {
+      return hRating === "excellent" && rRating === "excellent";
+    }
+    // وضع "مختلط": كل من ممتاز وجيد جدًا مسموح به لكل يوم
+    return (
+      (hRating === "excellent" || hRating === "very-good") &&
+      (rRating === "excellent" || rRating === "very-good")
+    );
+  });
+
+  // 4. الحفاظ على جميع القلوب (لم يخسر أي قلب خلال الأسبوع)
+  const keptAllHearts = (s.heartsLostWeek ?? 0) === 0;
+
+  // 5. الرحلة إن وُجدت
+  const tripEligible = !tripOn || tripAttendees.includes(s.id);
+
+  return completedAttendance && completedRecitation && ratingEligible && keptAllHearts && tripEligible;
 };
 
 /** شروط البطولة (للعرض) */

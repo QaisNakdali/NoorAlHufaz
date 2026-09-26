@@ -191,11 +191,15 @@ function normStudent(s: Student): Student {
     recitationRatings: (() => {
       const ratings = emptyRecitationRatings();
       const source = s.recitationRatings;
-      if (!source) return ratings;
       for (const d of DAYS) {
         for (const part of ["h", "r"] as const) {
-          const rating = source[d.key]?.[part];
-          if (rating === "excellent" || rating === "very-good") ratings[d.key][part] = rating;
+          const rating = source?.[d.key]?.[part];
+          if (rating === "excellent" || rating === "very-good") {
+            ratings[d.key][part] = rating;
+          } else if (out[d.key]?.[part]) {
+            // ترحيل آمن: إذا كان التسميع مسجلًا ولم تُحدد الدرجة في السجلات القديمة، فالافتراضي هو ممتاز
+            ratings[d.key][part] = "excellent";
+          }
         }
       }
       return ratings;
@@ -303,12 +307,16 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
               it.slot === "cardbg" && it.value && BG_MIGRATION[it.value]
                 ? { ...it, value: BG_MIGRATION[it.value] }
                 : it;
-            if (withBg.kind) return withBg.kind === "external" ? { ...withBg, repeatable: true } : withBg;
+            const withCeremony = {
+              ...withBg,
+              showInCeremony: withBg.showInCeremony !== false,
+            };
+            if (withCeremony.kind) return withCeremony.kind === "external" ? { ...withCeremony, repeatable: true } : withCeremony;
             // نموذج قديم: حوّل حقل cosmetic إلى kind/slot/value
-            const legacy = withBg as ShopItem & { cosmetic?: string | null };
-            if (legacy.cosmetic === "crown") return { ...withBg, kind: "cosmetic", slot: "crown", value: "gold" };
-            if (legacy.cosmetic) return { ...withBg, kind: "cosmetic", slot: "frame", value: legacy.cosmetic };
-            return { ...withBg, kind: "external", repeatable: true };
+            const legacy = withCeremony as ShopItem & { cosmetic?: string | null };
+            if (legacy.cosmetic === "crown") return { ...withCeremony, kind: "cosmetic", slot: "crown", value: "gold" };
+            if (legacy.cosmetic) return { ...withCeremony, kind: "cosmetic", slot: "frame", value: legacy.cosmetic };
+            return { ...withCeremony, kind: "external", repeatable: true };
           })
         : DEFAULT_SHOP_ITEMS,
     heartPrice: typeof p.heartPrice === "number" && Number.isFinite(p.heartPrice)
