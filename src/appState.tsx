@@ -137,6 +137,7 @@ type Ctx = State & {
   updateWard: (id: string, day: DayKey, ward: DailyWard) => void;
 
   addXp: (id: string, amount: number) => void;
+  deductXp: (id: string, amount: number) => void;
   addCoins: (id: string, amount: number) => void;
   removeHeart: (id: string) => void;
   restoreHeart: (id: string) => void;
@@ -243,6 +244,7 @@ function normStudent(s: Student): Student {
     isTesting: s.isTesting === true,
     createdAt: typeof s.createdAt === "number" ? s.createdAt : undefined,
     memorizationRecords: Array.isArray(s.memorizationRecords) ? s.memorizationRecords : [],
+    highestRewardedLevel: typeof s.highestRewardedLevel === "number" ? s.highestRewardedLevel : levelInfo(typeof s.xp === "number" ? Math.max(0, s.xp) : 0).level,
   };
 }
 
@@ -838,7 +840,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           xp: 0,
           weekXp: 0,
           weekCoins: 0,
-          coins: 10, // هدية ترحيب
+          coins: 0, // يبدأ بـ 0 عملات دون أي عملات مجانية
+          highestRewardedLevel: 1,
           isTesting: false,
           createdAt: Date.now(),
           days: emptyWeekDays(),
@@ -1046,33 +1049,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /* ===== الكشف: حضور / حفظ / مراجعة ===== */
   const markDay = useCallback(
     (id: string, day: DayKey, part: DayPart, rating?: RecitationRating) => {
-      const st = students.find((s) => s.id === id);
-      if (!st) return;
-      if (st.days[day].absent) {
-        toast("error", `${st.name}: ألغِ حالة الغياب أولًا قبل تسجيل الحضور أو التسميع`);
-        return;
-      }
-      if ((part === "h" || part === "r") && st.days[day][part] && rating) {
-        setStudents((ss) => ss.map((s) => s.id === id ? {
-          ...s,
-          recitationRatings: {
-            ...(s.recitationRatings ?? emptyRecitationRatings()),
-            [day]: { ...(s.recitationRatings?.[day] ?? {}), [part]: rating },
-          },
-        } : s));
-        return;
-      }
-      const def = DAY_PARTS.find((p) => p.key === part)!;
-      const turningOn = !st.days[day][part];
-      // العملات تُجمع دائمًا — أما نقاط المستوى فتتوقف عند نفاد القلوب
-      const noHearts = st.hearts <= 0;
-      const xpDelta = turningOn && !noHearts ? def.xp : turningOn ? 0 : -Math.min(def.xp, st.xp);
-      const coinDelta = turningOn ? def.coins : -def.coins;
-
+      let msgKind: "xp" | "coin" | null = null;
+      let msgText = "";
       let leveledName = "";
       let leveledTo = 0;
-      setStudents((ss) =>
-        ss.map((s) => {
+      let shouldPlayPop = false;
+
+      setStudents((ss) => {
+        const target = ss.find((s) => s.id === id);
+        if (!target) return ss;
+        if (target.days[day]?.absent) {
+          toast("error", `${target.name}: ألغِ حالة الغياب أولًا قبل تسجيل الحضور أو التسميع`);
+          return ss;
+        }
+
+        const currentlyOn = !!target.days[day]?.[part];
+        const def = DAY_PARTS.find((p) => p.key === part)!;
+
+        // إذا كان التسميع مسجلًا بالفعل والمعلم فقط يغير أو يثبت درجة التقييم:
+        if ((part === "h" || part === "r") && currentlyOn && rating) {
+          const currentRating = target.recitationRatings?.[day]?.[part];
+          if (currentRating === rating) return ss;
+          return ss.map((s) => s.id === id ? {
+            ...s,
+            recitationRatings: {
+              ...(s.recitationRatings ?? emptyRecitationRatings()),
+              [day]: { ...(s.recitationRatings?.[day] ?? {}), [part]: rating },
+            },
+          } : s);
+        }
+
+        // تحديد ما إذا كان الإجراء تشغيلًا أم إيقافًا:
+        const turningOn = rating ? true : !currentlyOn;
+        if (turningOn === currentlyOn && (part === "h" || part === "r") && rating) {
+          return ss;
+        }
+
+        const noHearts = target.hearts <= 0;
+        const xpDelta = turningOn && !noHearts ? def.xp : turningOn ? 0 : -Math.min(def.xp, target.xp);
+        const coinDelta = turningOn ? def.coins : -def.coins;
+
+        const nextList = ss.map((s) => {
           if (s.id !== id) return s;
           const days: WeekDays = { ...s.days, [day]: { ...s.days[day], [part]: turningOn } };
           const recitationRatings = part === "h" || part === "r" ? {
@@ -1082,11 +1099,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
               [part]: turningOn ? (rating ?? s.recitationRatings?.[day]?.[part] ?? "excellent") : undefined,
             },
           } : s.recitationRatings;
-          const { student, leveled } = applyXp(s, xpDelta);
-          if (leveled) {
-            leveledName = student.name;
-            leveledTo = leveled;
+
+          const newXp = Math.max(0, s.xp + xpDelta);
+          const newLvl = levelInfo(newXp).level;
+          const highestRewarded = s.highestRewardedLevel ?? levelInfo(s.xp).level;
+          let levelCoins = 0;
+          let nextHighest = highestRewarded;
+
+          // مكافأة ارتقاء المستوى: تُمنح مرة واحدة فقط لكل مستوى (+5 عملات لكل مستوى)
+          if (turningOn && newLvl > highestRewarded) {
+            const levelsUp = newLvl - highestRewarded;
+            levelCoins = levelsUp * LEVEL_COIN_REWARD;
+            nextHighest = newLvl;
+            leveledName = s.name;
+            leveledTo = newLvl;
           }
+
           const dayLabel = DAYS.find((d) => d.key === day)?.label ?? "";
           const ward = s.ward[day];
           const lastHeard = turningOn && (part === "h" || part === "r")
@@ -1096,26 +1124,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 ...(part === "r" && ward.review ? { review: { text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines, day: dayLabel, at: Date.now() } } : {}),
               }
             : s.lastHeard;
-          return { ...student, days, recitationRatings, lastHeard, weekXp: weekXpOf(days), weekCoins: weekCoinsOf(days), coins: Math.max(0, student.coins + coinDelta + (leveled ? LEVEL_COIN_REWARD : 0)) };
-        })
-      );
 
-      if (turningOn) {
-        sfx.pop();
-        if (noHearts) toast("coin", `${st.name}: +${def.coins} عملات (مستواه متوقف حتى يشتري قلبًا)`);
-        else toast("xp", `${st.name}: +${def.xp} نقاط ${def.label === "حضور" ? "حضور" : "تسميع " + def.label}`);
-        if (turningOn && leveledName) {
-          const t = window.setTimeout(() => {
-            sfx.levelUp();
-            toast("level", `ارتقى ${leveledName} إلى المستوى ${leveledTo} — مكافأة ${ar(LEVEL_COIN_REWARD)} عملة`);
-          }, 350);
-          timers.current.push(t);
+          return {
+            ...s,
+            days,
+            recitationRatings,
+            lastHeard,
+            xp: newXp,
+            highestRewardedLevel: nextHighest,
+            weekXp: weekXpOf(days),
+            weekCoins: weekCoinsOf(days),
+            coins: Math.max(0, s.coins + coinDelta + levelCoins),
+          };
+        });
+
+        if (turningOn) {
+          shouldPlayPop = true;
+          if (noHearts) {
+            msgKind = "coin";
+            msgText = `${target.name}: +${def.coins} عملات (مستواه متوقف حتى يشتري قلبًا)`;
+          } else {
+            msgKind = "xp";
+            msgText = `${target.name}: +${def.xp} نقاط ${def.label === "حضور" ? "حضور" : "تسميع " + def.label}`;
+          }
         }
-      } else {
-        sfx.click();
+
+        return nextList;
+      });
+
+      if (shouldPlayPop) sfx.pop(); else sfx.click();
+      if (msgKind && msgText) toast(msgKind, msgText);
+      if (leveledName && leveledTo) {
+        const t = window.setTimeout(() => {
+          sfx.levelUp();
+          toast("level", `ارتقى ${leveledName} إلى المستوى ${leveledTo} — مكافأة ${ar(LEVEL_COIN_REWARD)} عملات`);
+        }, 350);
+        timers.current.push(t);
       }
     },
-    [students, toast]
+    [toast]
   );
 
   /** الغياب حالة وصفية مستقلة ولا يضيف أو يخصم نقاطًا أو عملات. */
@@ -1149,33 +1196,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /* ===== الخبرة والعملات اليدوية ===== */
   const addXp = useCallback(
     (id: string, amount: number) => {
+      const cleanAmount = Math.max(0, Math.floor(amount));
+      if (cleanAmount <= 0) return;
       let leveledName = "";
       let leveledTo = 0;
       setStudents((ss) =>
         ss.map((s) => {
           if (s.id !== id) return s;
-          const { student, leveled } = applyXp(s, amount);
-          if (leveled) {
-            leveledName = student.name;
-            leveledTo = leveled;
-            return { ...student, coins: student.coins + LEVEL_COIN_REWARD };
+          const newXp = s.xp + cleanAmount;
+          const newLvl = levelInfo(newXp).level;
+          const highestRewarded = s.highestRewardedLevel ?? levelInfo(s.xp).level;
+          let levelCoins = 0;
+          let nextHighest = highestRewarded;
+
+          if (newLvl > highestRewarded) {
+            const levelsUp = newLvl - highestRewarded;
+            levelCoins = levelsUp * LEVEL_COIN_REWARD;
+            nextHighest = newLvl;
+            leveledName = s.name;
+            leveledTo = newLvl;
           }
-          return student;
+
+          return {
+            ...s,
+            xp: newXp,
+            highestRewardedLevel: nextHighest,
+            coins: s.coins + levelCoins,
+          };
         })
       );
-      if (amount > 0) {
-        sfx.pop();
-        toast("xp", `+${ar(amount)} نقطة خبرة`);
-      }
-      if (leveledName) {
+      sfx.pop();
+      toast("xp", `+${ar(cleanAmount)} نقطة خبرة`);
+      if (leveledName && leveledTo) {
         const t = window.setTimeout(() => {
           sfx.levelUp();
-          toast("level", `ارتقى ${leveledName} إلى المستوى ${leveledTo} — مكافأة ${ar(LEVEL_COIN_REWARD)} عملة`);
+          toast("level", `ارتقى ${leveledName} إلى المستوى ${leveledTo} — مكافأة ${ar(LEVEL_COIN_REWARD)} عملات`);
         }, 350);
         timers.current.push(t);
       }
     },
     [toast]
+  );
+
+  /** إنقاص نقاط الطالب يدويًا — دائم وثابت ويحفظ فورًا */
+  const deductXp = useCallback(
+    (id: string, amount: number) => {
+      const cleanAmount = Math.max(0, Math.floor(amount));
+      if (cleanAmount <= 0) return;
+      const target = students.find((s) => s.id === id);
+      if (!target) return;
+      setStudents((ss) =>
+        ss.map((s) => {
+          if (s.id !== id) return s;
+          return {
+            ...s,
+            xp: Math.max(0, s.xp - cleanAmount),
+          };
+        })
+      );
+      sfx.pop();
+      toast("xp", `تم إنقاص ${ar(cleanAmount)} نقاط من ${target.name}`);
+    },
+    [students, toast]
   );
 
   const addCoins = useCallback(
@@ -1721,6 +1803,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     markAbsent,
     updateWard,
     addXp,
+    deductXp,
     addCoins,
     removeHeart,
     restoreHeart,

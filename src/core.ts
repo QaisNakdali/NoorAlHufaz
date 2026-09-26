@@ -217,6 +217,8 @@ export type Student = {
   glow?: GlowKind | null;
   cardBg?: BgKind | null;
   awards: AwardRec[];
+  /** أعلى مستوى استلم الطالب مكافأته بالفعل لمنع تكرار مكافأة المستوى */
+  highestRewardedLevel?: number;
   memorizationRecords?: MemorizationRecord[]; // سجل الحفظ التفصيلي (جديد)
 };
 
