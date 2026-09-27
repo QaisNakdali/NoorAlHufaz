@@ -1,26 +1,49 @@
-/* إحصائيات الطلاب فقط — قراءة مباشرة من الكشف الحالي وأرشيف الأسابيع مع دعم الفلترة حسب الحلقة والبحث عن طالب */
+/* إحصائيات الطلاب فقط — قراءة مباشرة من الكشف الحالي وأرشيف الأسابيع مع فصل إحصائيات الحفظ عن المراجعة والترتيب التنازلي التلقائي حسب الصفحات */
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
-import { analyzeStudent, measureStudentWork } from "../analytics";
-import { ar, DAYS, type DayKey, type Student, type WeekLog, type WeekLogEntry, type WeekStudentRecord } from "../core";
+import { analyzeStudent, measureStudentWork, pagesForWardDay } from "../analytics";
+import { ar, DAYS, type DayKey, type Student, type WeekLog, type WeekLogEntry, type WeekStudentRecord, estimatedLinesFromVerses } from "../core";
 import Avatar from "./Avatar";
 import { Icon, SectionHead } from "./ui";
 import { addCalendarDays, dateFromLocalKey, formatHijriDate, formatHijriMonth, hijriMonthKey } from "../hijriDate";
 import { roundUpToQuarter } from "../statisticsNumber";
 
 type Period = "daily" | "weekly" | "monthly" | "all";
+type StatsView = "both" | "memorization" | "review";
+
 type StudentMetrics = {
-  id: string; name: string; photo: string | null; halaqaId?: string | null;
-  present: number; absent: number; memorizationSessions: number; reviewSessions: number;
-  memorizationVerses: number; reviewVerses: number; memorizationLines: number; reviewLines: number;
-  memorizationPages: number; reviewPages: number;
+  id: string;
+  name: string;
+  photo: string | null;
+  halaqaId?: string | null;
+  present: number;
+  absent: number;
+  memorizationSessions: number;
+  reviewSessions: number;
+  memorizationVerses: number;
+  reviewVerses: number;
+  memorizationLines: number;
+  reviewLines: number;
+  memorizationPages: number;
+  reviewPages: number;
+  rank?: number;
 };
 
 const emptyMetrics = (student: Pick<Student, "id" | "name" | "photo" | "halaqaId">): StudentMetrics => ({
-  id: student.id, name: student.name, photo: student.photo, halaqaId: student.halaqaId,
-  present: 0, absent: 0, memorizationSessions: 0, reviewSessions: 0,
-  memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0,
-  memorizationPages: 0, reviewPages: 0,
+  id: student.id,
+  name: student.name,
+  photo: student.photo,
+  halaqaId: student.halaqaId,
+  present: 0,
+  absent: 0,
+  memorizationSessions: 0,
+  reviewSessions: 0,
+  memorizationVerses: 0,
+  reviewVerses: 0,
+  memorizationLines: 0,
+  reviewLines: 0,
+  memorizationPages: 0,
+  reviewPages: 0,
 });
 
 const n = (value: number) => ar(roundUpToQuarter(value));
@@ -60,12 +83,14 @@ function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
     if (state.h && !state.absent) {
       result.memorizationSessions += 1;
       result.memorizationVerses += ward.memorizationVerses || 0;
-      result.memorizationLines += ward.memorizationLines || 0;
+      const lines = ward.memorizationLines || (ward.memorizationVerses ? estimatedLinesFromVerses(ward.memorizationVerses) : 0);
+      result.memorizationLines += lines;
     }
     if (state.r && !state.absent) {
       result.reviewSessions += 1;
       result.reviewVerses += ward.reviewVerses || 0;
-      result.reviewLines += ward.reviewLines || 0;
+      const lines = ward.reviewLines || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0);
+      result.reviewLines += lines;
     }
   }
   result.memorizationPages = result.memorizationLines / 15;
@@ -87,6 +112,7 @@ function fromStudent(student: Student, day?: DayKey): StudentMetrics {
     xp: student.xp,
     coins: student.coins,
   }, day);
+
   if (!day) {
     const memorization = measureStudentWork(student, "memorization");
     const review = measureStudentWork(student, "review");
@@ -94,6 +120,24 @@ function fromStudent(student: Student, day?: DayKey): StudentMetrics {
     result.reviewPages = review.pages;
     result.memorizationLines = memorization.lines;
     result.reviewLines = review.lines;
+    result.memorizationSessions = memorization.sessions;
+    result.reviewSessions = review.sessions;
+    result.memorizationVerses = memorization.verses;
+    result.reviewVerses = review.verses;
+  } else {
+    const state = student.days[day];
+    if (state.h && !state.absent) {
+      const memMeasure = pagesForWardDay(student, day, "memorization");
+      result.memorizationPages = memMeasure.pages;
+    } else {
+      result.memorizationPages = 0;
+    }
+    if (state.r && !state.absent) {
+      const revMeasure = pagesForWardDay(student, day, "review");
+      result.reviewPages = revMeasure.pages;
+    } else {
+      result.reviewPages = 0;
+    }
   }
   return result;
 }
@@ -125,31 +169,54 @@ function logDate(log: WeekLog): Date | null {
 
 function fromEntry(entry: WeekLogEntry): StudentMetrics {
   return {
-    id: entry.id, name: entry.name, photo: null,
-    present: 0, absent: 0,
-    memorizationSessions: entry.memorizationSessions ?? 0,
-    reviewSessions: entry.reviewSessions ?? 0,
+    id: entry.id,
+    name: entry.name,
+    photo: entry.photo ?? null,
+    present: entry.attendanceDays ?? 0,
+    absent: entry.absenceDays ?? 0,
+    memorizationSessions: entry.memorizationSessions ?? entry.memorizationDays ?? 0,
+    reviewSessions: entry.reviewSessions ?? entry.reviewDays ?? 0,
     memorizationVerses: entry.memorizationVerses ?? 0,
     reviewVerses: entry.reviewVerses ?? 0,
     memorizationLines: entry.memorizationLines ?? 0,
     reviewLines: entry.reviewLines ?? 0,
-    memorizationPages: entry.memorizationPages ?? 0,
-    reviewPages: entry.reviewPages ?? 0,
+    memorizationPages: entry.memorizationPages ?? ((entry.memorizationLines ?? 0) / 15),
+    reviewPages: entry.reviewPages ?? ((entry.reviewLines ?? 0) / 15),
   };
 }
 
-function logMetrics(log: WeekLog): StudentMetrics[] {
-  return log.records?.length
+function logMetrics(log: WeekLog, allStudents?: Student[]): StudentMetrics[] {
+  const list = log.records?.length
     ? log.records.map((record) => fromRecord(record))
     : (log.students ?? log.top).map(fromEntry);
+
+  if (allStudents?.length) {
+    const photoMap = new Map(allStudents.map((s) => [s.id, s.photo]));
+    for (const item of list) {
+      if (!item.photo && photoMap.has(item.id)) {
+        item.photo = photoMap.get(item.id) ?? null;
+      }
+    }
+  }
+  return list;
 }
 
-function MetricCard({ icon, label, value, tone = "grape" }: { icon: string; label: string; value: string; tone?: "grape" | "mint" | "coral" | "gold" }) {
+function MetricCard({
+  icon,
+  label,
+  value,
+  tone = "grape",
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  tone?: "grape" | "mint" | "coral" | "gold";
+}) {
   const colors = {
     grape: "border-grape-200 text-grape-600",
     mint: "border-mint-200 text-mint-700",
     coral: "border-coral-200 text-coral-600",
-    gold: "border-gold-200 text-gold-700"
+    gold: "border-gold-200 text-gold-700",
   };
   return (
     <div className={`rounded-2xl border-2 bg-white p-4 ${colors[tone]}`}>
@@ -170,16 +237,26 @@ export default function StatisticsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [day, setDay] = useState<DayKey>("sun");
   const [selectedWeek, setSelectedWeek] = useState("current");
+  const [statsView, setStatsView] = useState<StatsView>("both");
+
+  // استبعاد أي تكرار محتمل في أرقام الأسابيع لحماية الحسابات من التكرار
+  const uniqueLogs = useMemo(() => {
+    const map = new Map<number, WeekLog>();
+    for (const log of weeksLog) {
+      map.set(log.week, log);
+    }
+    return [...map.values()];
+  }, [weeksLog]);
 
   const monthOptions = useMemo(() => {
     const dates = [
       dateFromLocalKey(weekStartDateIso) ?? new Date(),
-      ...weeksLog.map(logDate).filter((date): date is Date => !!date)
+      ...uniqueLogs.map(logDate).filter((date): date is Date => !!date),
     ];
     const map = new Map<string, Date>();
     dates.forEach((date) => map.set(hijriMonthKey(date), date));
     return [...map.entries()].sort((a, b) => b[1].getTime() - a[1].getTime());
-  }, [weeksLog, weekStartDateIso]);
+  }, [uniqueLogs, weekStartDateIso]);
 
   const [selectedMonth, setSelectedMonth] = useState(() => hijriMonthKey(dateFromLocalKey(weekStartDateIso) ?? new Date()));
 
@@ -197,7 +274,7 @@ export default function StatisticsPage() {
     return currentStudents.filter((s) => normalizeArabic(s.name).includes(q));
   }, [currentStudents, searchQuery]);
 
-  // حساب المقاييس والإحصائيات استنادًا إلى الحلقة والفترة والطلاب
+  // حساب المقاييس والإحصائيات استنادًا إلى الحلقة والفترة والطلاب الفعليين
   const rawMetrics = useMemo(() => {
     let rows: StudentMetrics[] = [];
     if (period === "daily") {
@@ -207,24 +284,30 @@ export default function StatisticsPage() {
       if (selectedWeek === "current") {
         rows = currentStudents.map((student) => fromStudent(student));
       } else {
-        const log = weeksLog.find((item) => item.week === Number(selectedWeek));
-        rows = log ? logMetrics(log) : [];
+        const log = uniqueLogs.find((item) => item.week === Number(selectedWeek));
+        rows = log ? logMetrics(log, students) : [];
       }
     }
     if (period === "monthly" || period === "all") {
-      const sourceLogs = period === "monthly"
-        ? weeksLog.filter((log) => {
-            const date = logDate(log);
-            return date && hijriMonthKey(date) === selectedMonth;
-          })
-        : weeksLog;
+      // استبعاد الأسبوع الحالي من الأرشيف حتى لا يُحسب مرتين مع الكشف النشط
+      const sourceLogs = (
+        period === "monthly"
+          ? uniqueLogs.filter((log) => {
+              const date = logDate(log);
+              return date && hijriMonthKey(date) === selectedMonth;
+            })
+          : uniqueLogs
+      ).filter((log) => log.week !== week);
+
       const map = new Map<string, StudentMetrics>();
       for (const student of currentStudents) map.set(student.id, emptyMetrics(student));
-      for (const row of sourceLogs.flatMap(logMetrics)) {
+
+      for (const row of sourceLogs.flatMap((log) => logMetrics(log, students))) {
         if (map.has(row.id)) {
           map.set(row.id, add(map.get(row.id)!, row));
         }
       }
+
       if (period === "all") {
         for (const student of currentStudents) {
           map.set(student.id, add(map.get(student.id) ?? emptyMetrics(student), fromStudent(student)));
@@ -244,9 +327,79 @@ export default function StatisticsPage() {
     }
 
     return rows;
-  }, [period, currentStudents, day, selectedWeek, selectedMonth, weeksLog, halaqaId, weekStartDateIso]);
+  }, [period, currentStudents, day, selectedWeek, selectedMonth, uniqueLogs, week, students, halaqaId, weekStartDateIso]);
 
-  // تصفية النتائج بحسب الطالب المحدد أو نص البحث
+  // 1. ترتيب إحصائيات الحفظ تنازليًا من الأكثر إلى الأقل حسب إجمالي صفحات الحفظ
+  const memorizationRanked = useMemo(() => {
+    const sorted = [...rawMetrics].sort((a, b) => {
+      // الترتيب الأساسي: صفحات الحفظ تنازليًا
+      const diffPages = b.memorizationPages - a.memorizationPages;
+      if (Math.abs(diffPages) > 0.0001) return diffPages;
+
+      // فواصل التعادل عند تساوي الصفحات: الآيات ثم الجلسات
+      const diffVerses = b.memorizationVerses - a.memorizationVerses;
+      if (diffVerses !== 0) return diffVerses;
+
+      const diffSessions = b.memorizationSessions - a.memorizationSessions;
+      if (diffSessions !== 0) return diffSessions;
+
+      // فاصل تعادل حتمي وثابت تمامًا: الاسم العربي ثم المعرف لمنع أي تغيير عشوائي
+      const nameDiff = a.name.localeCompare(b.name, "ar");
+      if (nameDiff !== 0) return nameDiff;
+      return a.id.localeCompare(b.id);
+    });
+
+    return sorted.map((item, idx) => ({ ...item, rank: idx + 1 }));
+  }, [rawMetrics]);
+
+  // 2. ترتيب إحصائيات المراجعة تنازليًا من الأكثر إلى الأقل حسب إجمالي صفحات المراجعة
+  const reviewRanked = useMemo(() => {
+    const sorted = [...rawMetrics].sort((a, b) => {
+      // الترتيب الأساسي: صفحات المراجعة تنازليًا
+      const diffPages = b.reviewPages - a.reviewPages;
+      if (Math.abs(diffPages) > 0.0001) return diffPages;
+
+      // فواصل التعادل عند تساوي الصفحات: الآيات ثم الجلسات
+      const diffVerses = b.reviewVerses - a.reviewVerses;
+      if (diffVerses !== 0) return diffVerses;
+
+      const diffSessions = b.reviewSessions - a.reviewSessions;
+      if (diffSessions !== 0) return diffSessions;
+
+      // فاصل تعادل حتمي وثابت تمامًا: الاسم العربي ثم المعرف لمنع أي تغيير عشوائي
+      const nameDiff = a.name.localeCompare(b.name, "ar");
+      if (nameDiff !== 0) return nameDiff;
+      return a.id.localeCompare(b.id);
+    });
+
+    return sorted.map((item, idx) => ({ ...item, rank: idx + 1 }));
+  }, [rawMetrics]);
+
+  // تصفية نتائج الحفظ حسب الطالب المحدد أو نص البحث مع الاحتفاظ بالترتيب الأصلي
+  const sortedMemorization = useMemo(() => {
+    let list = memorizationRanked;
+    if (studentId !== "all") {
+      list = list.filter((r) => r.id === studentId);
+    } else if (searchQuery.trim()) {
+      const q = normalizeArabic(searchQuery);
+      list = list.filter((r) => normalizeArabic(r.name).includes(q));
+    }
+    return list;
+  }, [memorizationRanked, studentId, searchQuery]);
+
+  // تصفية نتائج المراجعة حسب الطالب المحدد أو نص البحث مع الاحتفاظ بالترتيب الأصلي
+  const sortedReview = useMemo(() => {
+    let list = reviewRanked;
+    if (studentId !== "all") {
+      list = list.filter((r) => r.id === studentId);
+    } else if (searchQuery.trim()) {
+      const q = normalizeArabic(searchQuery);
+      list = list.filter((r) => normalizeArabic(r.name).includes(q));
+    }
+    return list;
+  }, [reviewRanked, studentId, searchQuery]);
+
+  // تصفية الإجماليات والمقاييس العامة
   const metrics = useMemo(() => {
     let list = rawMetrics;
     if (studentId !== "all") {
@@ -260,10 +413,19 @@ export default function StatisticsPage() {
 
   const total = useMemo(() => {
     return metrics.reduce((sum, item) => add(sum, item), {
-      id: "total", name: "الإجمالي", photo: null,
-      present: 0, absent: 0, memorizationSessions: 0, reviewSessions: 0,
-      memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0,
-      memorizationPages: 0, reviewPages: 0
+      id: "total",
+      name: "الإجمالي",
+      photo: null,
+      present: 0,
+      absent: 0,
+      memorizationSessions: 0,
+      reviewSessions: 0,
+      memorizationVerses: 0,
+      reviewVerses: 0,
+      memorizationLines: 0,
+      reviewLines: 0,
+      memorizationPages: 0,
+      reviewPages: 0,
     });
   }, [metrics]);
 
@@ -273,7 +435,7 @@ export default function StatisticsPage() {
     return null;
   }, [studentId, searchQuery, metrics, students]);
 
-  const selectedAnalysis = selectedStudent ? analyzeStudent(selectedStudent, weeksLog) : null;
+  const selectedAnalysis = selectedStudent ? analyzeStudent(selectedStudent, uniqueLogs) : null;
 
   const currentHalaqaName = useMemo(() => {
     if (halaqaId === "all") return "جميع الحلقات";
@@ -288,7 +450,7 @@ export default function StatisticsPage() {
     <div className="space-y-5 anim-fade">
       <SectionHead
         title="إحصائيات الطلاب والحلقات"
-        desc="إحصائيات دقيقة وفورية مبنية على السجلات الفعلية للطلاب فقط — مع إمكانية الفلترة حسب الحلقة والبحث بالاسم"
+        desc="إحصائيات دقيقة وفورية مبنية على السجلات الفعلية للطلاب فقط — مع فصل إحصائيات الحفظ عن المراجعة والترتيب التلقائي حسب الصفحات"
         icon="chart"
       />
 
@@ -374,7 +536,9 @@ export default function StatisticsPage() {
               className="field-control mt-1 w-full"
             >
               <option value="all">
-                {searchQuery ? `الطلاب المطابقون للبحث (${ar(searchedStudents.length)})` : `جميع طلاب ${currentHalaqaName} (${ar(currentStudents.length)})`}
+                {searchQuery
+                  ? `الطلاب المطابقون للبحث (${ar(searchedStudents.length)})`
+                  : `جميع طلاب ${currentHalaqaName} (${ar(currentStudents.length)})`}
               </option>
               {searchedStudents.map((student) => (
                 <option key={student.id} value={student.id}>
@@ -412,7 +576,7 @@ export default function StatisticsPage() {
                 className="field-control mt-1 w-full"
               >
                 <option value="current">الأسبوع الحالي ({ar(week)})</option>
-                {weeksLog.map((log) => (
+                {uniqueLogs.map((log) => (
                   <option key={log.week} value={log.week}>
                     {log.name || `الأسبوع ${ar(log.week)}`}
                   </option>
@@ -453,7 +617,9 @@ export default function StatisticsPage() {
               {period === "daily"
                 ? `بيانات يوم ${DAYS.find((item) => item.key === day)?.label}`
                 : period === "weekly"
-                ? (selectedWeek === "current" ? `بيانات الأسبوع الحالي (${ar(week)})` : `بيانات الأسبوع المختار (${ar(selectedWeek)})`)
+                ? selectedWeek === "current"
+                  ? `بيانات الأسبوع الحالي (${ar(week)})`
+                  : `بيانات الأسبوع المختار (${ar(selectedWeek)})`
                 : period === "monthly"
                 ? "بيانات الشهر الهجري المحدد"
                 : "من أول سجل متاح حتى الآن"}
@@ -479,56 +645,6 @@ export default function StatisticsPage() {
         </div>
       </section>
 
-      {/* جدول تفاصيل الطلاب */}
-      {studentId === "all" && (
-        <section className="overflow-x-auto rounded-3xl border border-grape-200 bg-white p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h4 className="font-display text-base font-extrabold text-ink">
-              تفاصيل الطلاب ({ar(metrics.length)} طالب)
-            </h4>
-            {searchQuery && (
-              <span className="rounded-full bg-gold-400/20 px-3 py-1 text-xs font-bold text-gold-700">
-                تصفية حسب: «{searchQuery}»
-              </span>
-            )}
-          </div>
-          <table className="w-full min-w-[760px] text-sm">
-            <thead>
-              <tr className="border-b border-grape-100 text-right text-xs font-extrabold text-grape-500">
-                <th className="p-2">الطالب</th>
-                <th className="p-2">حضور</th>
-                <th className="p-2">غياب</th>
-                <th className="p-2">جلسات الحفظ</th>
-                <th className="p-2">جلسات المراجعة</th>
-                <th className="p-2">صفحات الحفظ</th>
-                <th className="p-2">صفحات المراجعة</th>
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.map((item) => (
-                <tr key={item.id} className="border-b border-grape-50 hover:bg-grape-50/40 transition">
-                  <td className="p-2 font-extrabold text-ink flex items-center gap-2">
-                    <Avatar photo={item.photo} name={item.name} size={28} />
-                    {item.name}
-                  </td>
-                  <td className="p-2 font-bold text-mint-600">{ar(item.present)}</td>
-                  <td className="p-2 font-bold text-coral-600">{ar(item.absent)}</td>
-                  <td className="p-2 font-bold">{ar(item.memorizationSessions)}</td>
-                  <td className="p-2 font-bold">{ar(item.reviewSessions)}</td>
-                  <td className="p-2 font-bold text-gold-600">{n(item.memorizationPages)}</td>
-                  <td className="p-2 font-bold text-gold-600">{n(item.reviewPages)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {metrics.length === 0 && (
-            <p className="p-6 text-center text-sm font-bold text-grape-400">
-              {searchQuery ? `لا يوجد طالب يطابق «${searchQuery}»` : "لا توجد بيانات فعلية لهذه الفترة في هذه الحلقة."}
-            </p>
-          )}
-        </section>
-      )}
-
       {/* ملخص الطالب الفردي */}
       {selectedAnalysis && (
         <section className="rounded-3xl border border-grape-200 bg-white p-5">
@@ -538,6 +654,228 @@ export default function StatisticsPage() {
           <p className="mt-2 text-sm font-bold leading-7 text-grape-600">
             الحضور هذا الأسبوع: {ar(selectedAnalysis.attendanceDays)} · الغياب: {ar(selectedAnalysis.absenceDays)} · مجموع صفحات الحفظ تاريخيًا: {n(selectedAnalysis.cumulativeMemorizationPages)} · مجموع صفحات المراجعة تاريخيًا: {n(selectedAnalysis.cumulativeReviewPages)}
           </p>
+        </section>
+      )}
+
+      {/* شريط التبديل بين عرض الحفظ والمراجعة */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+        <div className="flex items-center gap-1.5 rounded-2xl bg-grape-100/70 p-1">
+          <button
+            type="button"
+            onClick={() => setStatsView("both")}
+            className={`rounded-xl px-4 py-2 text-xs font-extrabold transition ${
+              statsView === "both"
+                ? "bg-grape-600 text-white shadow-sm"
+                : "text-grape-700 hover:bg-white/60"
+            }`}
+          >
+            عرض القسمين معًا
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatsView("memorization")}
+            className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-extrabold transition ${
+              statsView === "memorization"
+                ? "bg-gold-500 text-ink shadow-sm"
+                : "text-grape-700 hover:bg-white/60"
+            }`}
+          >
+            <Icon name="book" className="h-4 w-4" />
+            قسم إحصائيات الحفظ فقط
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatsView("review")}
+            className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-extrabold transition ${
+              statsView === "review"
+                ? "bg-grape-600 text-white shadow-sm"
+                : "text-grape-700 hover:bg-white/60"
+            }`}
+          >
+            <Icon name="refresh" className="h-4 w-4" />
+            قسم إحصائيات المراجعة فقط
+          </button>
+        </div>
+        <div className="text-xs font-bold text-grape-500">
+          {statsView === "both"
+            ? "يتم عرض إحصائيات الحفظ أولًا ثم إحصائيات المراجعة، مع الترتيب التنازلي التلقائي لكل قسم"
+            : statsView === "memorization"
+            ? "الطلاب مرتبون تلقائيًا من الأكثر صفحات حفظ إلى الأقل"
+            : "الطلاب مرتبون تلقائيًا من الأكثر صفحات مراجعة إلى الأقل"}
+        </div>
+      </div>
+
+      {/* 1. قسم إحصائيات الحفظ (منفصل ومرتب من الأكثر إلى الأقل حسب صفحات الحفظ) */}
+      {(statsView === "both" || statsView === "memorization") && (
+        <section className="overflow-x-auto rounded-3xl border border-grape-200 bg-white p-4 sm:p-5 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-2xl bg-gold-400/20 text-gold-600">
+                <Icon name="book" className="h-5 w-5" strokeWidth={2.2} />
+              </span>
+              <div>
+                <h4 className="font-display text-lg font-extrabold text-ink flex items-center gap-2">
+                  <span>إحصائيات الحفظ</span>
+                  <span className="rounded-full bg-gold-100 px-2.5 py-0.5 text-xs font-black text-gold-800">
+                    مرتبة من الأكثر إلى الأقل
+                  </span>
+                </h4>
+                <p className="text-xs font-bold text-grape-500 mt-0.5">
+                  الطالب صاحب أكبر عدد صفحات حفظ يظهر أولًا ({ar(sortedMemorization.length)} طالب)
+                </p>
+              </div>
+            </div>
+            {searchQuery && (
+              <span className="rounded-full bg-gold-400/20 px-3 py-1 text-xs font-bold text-gold-700">
+                تصفية حسب: «{searchQuery}»
+              </span>
+            )}
+          </div>
+
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="border-b border-grape-100 text-right text-xs font-extrabold text-grape-500">
+                <th className="p-2.5 text-center w-12">#</th>
+                <th className="p-2.5">الطالب</th>
+                <th className="p-2.5 text-center bg-gold-50/60 rounded-t-xl text-gold-800 font-black">
+                  إجمالي صفحات الحفظ
+                </th>
+                <th className="p-2.5 text-center">جلسات الحفظ</th>
+                <th className="p-2.5 text-center">آيات الحفظ</th>
+                <th className="p-2.5 text-center">أسطر الحفظ</th>
+                <th className="p-2.5 text-center">أيام الحضور</th>
+                <th className="p-2.5 text-center">أيام الغياب</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedMemorization.map((item) => (
+                <tr key={item.id} className="border-b border-grape-50 hover:bg-grape-50/40 transition">
+                  <td className="p-2.5 text-center font-display font-extrabold">
+                    {item.rank === 1 && item.memorizationPages > 0 ? (
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gold-400 text-xs font-black text-ink shadow-sm">
+                        1
+                      </span>
+                    ) : item.rank === 2 && item.memorizationPages > 0 ? (
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-xs font-black text-slate-700 shadow-sm">
+                        2
+                      </span>
+                    ) : item.rank === 3 && item.memorizationPages > 0 ? (
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-600/20 text-xs font-black text-amber-800 shadow-sm">
+                        3
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold text-grape-400">{ar(item.rank ?? 0)}</span>
+                    )}
+                  </td>
+                  <td className="p-2.5 font-extrabold text-ink flex items-center gap-2.5">
+                    <Avatar photo={item.photo} name={item.name} size={30} />
+                    <span className="text-sm font-extrabold">{item.name}</span>
+                  </td>
+                  <td className="p-2.5 text-center font-display text-base font-extrabold text-gold-600 bg-gold-50/30">
+                    {n(item.memorizationPages)}
+                  </td>
+                  <td className="p-2.5 text-center font-bold text-ink">{ar(item.memorizationSessions)}</td>
+                  <td className="p-2.5 text-center font-bold text-grape-600">{ar(item.memorizationVerses)}</td>
+                  <td className="p-2.5 text-center font-bold text-grape-600">{n(item.memorizationLines)}</td>
+                  <td className="p-2.5 text-center font-bold text-mint-600">{ar(item.present)}</td>
+                  <td className="p-2.5 text-center font-bold text-coral-600">{ar(item.absent)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {sortedMemorization.length === 0 && (
+            <p className="p-6 text-center text-sm font-bold text-grape-400">
+              {searchQuery ? `لا يوجد طالب يطابق «${searchQuery}»` : "لا توجد بيانات حفظ مسجلة لهذه الفترة."}
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* 2. قسم إحصائيات المراجعة (منفصل ومرتب من الأكثر إلى الأقل حسب صفحات المراجعة) */}
+      {(statsView === "both" || statsView === "review") && (
+        <section className="overflow-x-auto rounded-3xl border border-grape-200 bg-white p-4 sm:p-5 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-2xl bg-grape-100 text-grape-700">
+                <Icon name="refresh" className="h-5 w-5" strokeWidth={2.2} />
+              </span>
+              <div>
+                <h4 className="font-display text-lg font-extrabold text-ink flex items-center gap-2">
+                  <span>إحصائيات المراجعة</span>
+                  <span className="rounded-full bg-grape-100 px-2.5 py-0.5 text-xs font-black text-grape-800">
+                    مرتبة من الأكثر إلى الأقل
+                  </span>
+                </h4>
+                <p className="text-xs font-bold text-grape-500 mt-0.5">
+                  الطالب صاحب أكبر عدد صفحات مراجعة يظهر أولًا ({ar(sortedReview.length)} طالب)
+                </p>
+              </div>
+            </div>
+            {searchQuery && (
+              <span className="rounded-full bg-gold-400/20 px-3 py-1 text-xs font-bold text-gold-700">
+                تصفية حسب: «{searchQuery}»
+              </span>
+            )}
+          </div>
+
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="border-b border-grape-100 text-right text-xs font-extrabold text-grape-500">
+                <th className="p-2.5 text-center w-12">#</th>
+                <th className="p-2.5">الطالب</th>
+                <th className="p-2.5 text-center bg-grape-50/60 rounded-t-xl text-grape-800 font-black">
+                  إجمالي صفحات المراجعة
+                </th>
+                <th className="p-2.5 text-center">جلسات المراجعة</th>
+                <th className="p-2.5 text-center">آيات المراجعة</th>
+                <th className="p-2.5 text-center">أسطر المراجعة</th>
+                <th className="p-2.5 text-center">أيام الحضور</th>
+                <th className="p-2.5 text-center">أيام الغياب</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedReview.map((item) => (
+                <tr key={item.id} className="border-b border-grape-50 hover:bg-grape-50/40 transition">
+                  <td className="p-2.5 text-center font-display font-extrabold">
+                    {item.rank === 1 && item.reviewPages > 0 ? (
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gold-400 text-xs font-black text-ink shadow-sm">
+                        1
+                      </span>
+                    ) : item.rank === 2 && item.reviewPages > 0 ? (
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-xs font-black text-slate-700 shadow-sm">
+                        2
+                      </span>
+                    ) : item.rank === 3 && item.reviewPages > 0 ? (
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-600/20 text-xs font-black text-amber-800 shadow-sm">
+                        3
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold text-grape-400">{ar(item.rank ?? 0)}</span>
+                    )}
+                  </td>
+                  <td className="p-2.5 font-extrabold text-ink flex items-center gap-2.5">
+                    <Avatar photo={item.photo} name={item.name} size={30} />
+                    <span className="text-sm font-extrabold">{item.name}</span>
+                  </td>
+                  <td className="p-2.5 text-center font-display text-base font-extrabold text-grape-700 bg-grape-50/30">
+                    {n(item.reviewPages)}
+                  </td>
+                  <td className="p-2.5 text-center font-bold text-ink">{ar(item.reviewSessions)}</td>
+                  <td className="p-2.5 text-center font-bold text-grape-600">{ar(item.reviewVerses)}</td>
+                  <td className="p-2.5 text-center font-bold text-grape-600">{n(item.reviewLines)}</td>
+                  <td className="p-2.5 text-center font-bold text-mint-600">{ar(item.present)}</td>
+                  <td className="p-2.5 text-center font-bold text-coral-600">{ar(item.absent)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {sortedReview.length === 0 && (
+            <p className="p-6 text-center text-sm font-bold text-grape-400">
+              {searchQuery ? `لا يوجد طالب يطابق «${searchQuery}»` : "لا توجد بيانات مراجعة مسجلة لهذه الفترة."}
+            </p>
+          )}
         </section>
       )}
     </div>
