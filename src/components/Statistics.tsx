@@ -76,8 +76,8 @@ function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
   const result = emptyMetrics(record);
   const selected = day ? DAYS.filter((item) => item.key === day) : DAYS;
   for (const item of selected) {
-    const state = record.days[item.key];
-    const ward = record.ward[item.key];
+    const state = record.days?.[item.key] ?? { a: false, h: false, r: false };
+    const ward = record.ward?.[item.key] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
     if (state.a) result.present += 1;
     if (state.absent) result.absent += 1;
     if (state.h && !state.absent) {

@@ -35,7 +35,9 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
     update({ ...record, days });
   };
   const setLines = (day: DayKey, key: "memorizationLines" | "reviewLines", value: number) => {
-    update({ ...record, ward: { ...record.ward, [day]: { ...record.ward[day], [key]: Math.max(0, value || 0) } } });
+    const curWard = record.ward ?? emptyWeeklyWard();
+    const curDay = curWard[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
+    update({ ...record, ward: { ...curWard, [day]: { ...curDay, [key]: Math.max(0, value || 0) } } });
   };
   return <article className="rounded-2xl border-2 border-grape-100 bg-white p-4">
     <div className="flex flex-wrap items-center gap-3">
@@ -48,12 +50,12 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
       {DAYS.map((day) => <div key={day.key} className="rounded-xl bg-grape-50 p-3">
         <p className="mb-2 font-display text-sm font-extrabold">{day.label}{weekStartDateIso ? <span className="ms-2 text-xs text-grape-400">{formatHijriDate(addCalendarDays(weekStartDateIso, DAYS.findIndex((item) => item.key === day.key)), { day: "numeric", month: "long" })}</span> : null}</p>
         <div className="grid grid-cols-4 gap-1 text-xs">
-          {(["a", "h", "r"] as DayPart[]).map((part) => <label key={part} className="rounded-lg bg-white p-2 text-center font-bold"><input className="me-1" type="checkbox" disabled={!!record.days[day.key].absent} checked={record.days[day.key][part]} onChange={(e) => setDay(day.key, part, e.target.checked)} />{part === "a" ? "حضور" : part === "h" ? "حفظ" : "مراجعة"}</label>)}
-          <label className="rounded-lg bg-coral-50 p-2 text-center font-bold text-coral-600"><input className="me-1" type="checkbox" checked={!!record.days[day.key].absent} onChange={(e) => setDay(day.key, "absent", e.target.checked)} />غائب</label>
+          {(["a", "h", "r"] as DayPart[]).map((part) => <label key={part} className="rounded-lg bg-white p-2 text-center font-bold"><input className="me-1" type="checkbox" disabled={!!record.days?.[day.key]?.absent} checked={!!record.days?.[day.key]?.[part]} onChange={(e) => setDay(day.key, part, e.target.checked)} />{part === "a" ? "حضور" : part === "h" ? "حفظ" : "مراجعة"}</label>)}
+          <label className="rounded-lg bg-coral-50 p-2 text-center font-bold text-coral-600"><input className="me-1" type="checkbox" checked={!!record.days?.[day.key]?.absent} onChange={(e) => setDay(day.key, "absent", e.target.checked)} />غائب</label>
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2">
-          <label className="text-xs font-bold text-grape-500">أسطر الحفظ<input className="field-control mt-1 w-full" type="number" min="0" step="0.5" value={record.ward[day.key].memorizationLines} onChange={(e) => setLines(day.key, "memorizationLines", Number(e.target.value))} /></label>
-          <label className="text-xs font-bold text-grape-500">أسطر المراجعة<input className="field-control mt-1 w-full" type="number" min="0" step="0.5" value={record.ward[day.key].reviewLines} onChange={(e) => setLines(day.key, "reviewLines", Number(e.target.value))} /></label>
+          <label className="text-xs font-bold text-grape-500">أسطر الحفظ<input className="field-control mt-1 w-full" type="number" min="0" step="0.5" value={record.ward?.[day.key]?.memorizationLines ?? 0} onChange={(e) => setLines(day.key, "memorizationLines", Number(e.target.value))} /></label>
+          <label className="text-xs font-bold text-grape-500">أسطر المراجعة<input className="field-control mt-1 w-full" type="number" min="0" step="0.5" value={record.ward?.[day.key]?.reviewLines ?? 0} onChange={(e) => setLines(day.key, "reviewLines", Number(e.target.value))} /></label>
         </div>
       </div>)}
     </div>

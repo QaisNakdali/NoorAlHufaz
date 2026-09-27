@@ -250,7 +250,7 @@ function StudentDetailsModal({ student, onClose }: { student: Student; onClose: 
     const record = log.records?.find((item) => item.id === student.id);
     if (!record) return [];
     return DAYS.flatMap((day) => {
-      const state = record.days[day.key]; const ward = record.ward[day.key];
+      const state = record.days?.[day.key] ?? { a: false, h: false, r: false }; const ward = record.ward?.[day.key] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
       return [
         ...(state.h && !state.absent ? [{ kind: "حفظ", day: `${day.label} — ${log.savedAtIso ? formatHijriDate(log.savedAtIso) : "أسبوع محفوظ سابقًا"}`, text: ward.memorization, verses: ward.memorizationVerses, lines: ward.memorizationLines }] : []),
         ...(state.r && !state.absent ? [{ kind: "مراجعة", day: `${day.label} — ${log.savedAtIso ? formatHijriDate(log.savedAtIso) : "أسبوع محفوظ سابقًا"}`, text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines }] : []),
@@ -260,7 +260,7 @@ function StudentDetailsModal({ student, onClose }: { student: Student; onClose: 
   const current = DAYS.flatMap((day, index) => {
     const actualDate = dateForCurrentWeekDay(index);
     if (hijriMonthKey(actualDate) !== month) return [];
-    const state = student.days[day.key]; const ward = student.ward[day.key]; const date = formatHijriDate(actualDate);
+    const state = student.days?.[day.key] ?? { a: false, h: false, r: false }; const ward = student.ward?.[day.key] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 }; const date = formatHijriDate(actualDate);
     return [
       ...(state.h && !state.absent ? [{ kind: "حفظ", day: `${day.label} — ${date}`, text: ward.memorization, verses: ward.memorizationVerses, lines: ward.memorizationLines }] : []),
       ...(state.r && !state.absent ? [{ kind: "مراجعة", day: `${day.label} — ${date}`, text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines }] : []),
@@ -268,7 +268,7 @@ function StudentDetailsModal({ student, onClose }: { student: Student; onClose: 
   });
   const sessions = [...archived, ...current];
   const currentMonthDays = DAYS.filter((_, index) => hijriMonthKey(dateForCurrentWeekDay(index)) === month);
-  const attendance = [...monthLogs.flatMap((log) => log.records?.filter((item) => item.id === student.id) ?? [])].reduce((sum, record) => ({ present: sum.present + DAYS.filter((day) => record.days[day.key].a).length, absent: sum.absent + DAYS.filter((day) => record.days[day.key].absent).length }), { present: currentMonthDays.filter((day) => student.days[day.key].a).length, absent: currentMonthDays.filter((day) => student.days[day.key].absent).length });
+  const attendance = [...monthLogs.flatMap((log) => log.records?.filter((item) => item.id === student.id) ?? [])].reduce((sum, record) => ({ present: sum.present + DAYS.filter((day) => !!record.days?.[day.key]?.a).length, absent: sum.absent + DAYS.filter((day) => !!record.days?.[day.key]?.absent).length }), { present: currentMonthDays.filter((day) => !!student.days?.[day.key]?.a).length, absent: currentMonthDays.filter((day) => !!student.days?.[day.key]?.absent).length });
   const rate = attendance.present + attendance.absent ? Math.round(attendance.present / (attendance.present + attendance.absent) * 100) : null;
   return <Modal open onClose={onClose} wide><div className="p-6"><div className="flex items-center gap-3"><Avatar photo={student.photo} name={student.name} size={62}/><div className="flex-1"><h3 className="font-display text-2xl font-extrabold text-ink">{student.name}</h3><p className="text-sm font-bold text-grape-500">تفاصيل وتحليل الطالب — {formatHijriDate(new Date(), { month: "long", year: "numeric" })}</p></div><button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-grape-100 text-grape-600">×</button></div>
     <div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl bg-mint-50 p-4"><b>الحضور</b><p className="mt-2 text-xl font-extrabold">{ar(attendance.present)} حضور · {ar(attendance.absent)} غياب</p><p className="text-xs font-bold text-grape-500">{rate === null ? "لا توجد بيانات كافية" : `النسبة ${ar(rate)}٪${attendance.absent >= 2 ? " — يوجد غياب متكرر" : ""}`}</p></div><div className="rounded-2xl bg-grape-50 p-4"><b>الحفظ</b><p className="mt-2 text-sm font-bold text-grape-600">{analysis.memorization.label}</p><p className="mt-1 text-xs text-grape-500">{analysis.memorization.trend === "insufficient-data" ? "لا توجد بيانات كافية لتحديد الاتجاه بدقة." : `الاتجاه: ${analysis.memorization.trend === "improving" ? "يتحسن" : analysis.memorization.trend === "declining" ? "يتراجع" : "ثابت ضمن المستوى المطلوب"}`}</p></div><div className="rounded-2xl bg-gold-50 p-4"><b>المراجعة</b><p className="mt-2 text-sm font-bold text-grape-600">{analysis.review.label}</p><p className="mt-1 text-xs text-grape-500">{analysis.review.trend === "insufficient-data" ? "لا توجد بيانات كافية لتحديد الاتجاه بدقة." : `الاتجاه: ${analysis.review.trend === "improving" ? "تتحسن" : analysis.review.trend === "declining" ? "تتراجع" : "ثابتة ضمن المستوى المطلوب"}`}</p></div></div>
@@ -278,8 +278,25 @@ function StudentDetailsModal({ student, onClose }: { student: Student; onClose: 
   </div></Modal>;
 }
 
-function RegisterRow({ s, delay, onManage, onDetails }: { s: Student; delay: number; onManage: () => void; onDetails: () => void }) {
-  const { markDay, markAbsent, updateWard, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso } = useApp();
+function RegisterRow({
+  s,
+  delay,
+  isExpanded,
+  onToggleExpand,
+  todayKey,
+  onManage,
+  onDetails,
+}: {
+  s: Student;
+  delay: number;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  todayKey: string;
+  onManage: () => void;
+  onDetails: () => void;
+}) {
+  const { markDay, markAbsent, updateWard, toggleDailyRecitation, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso } = useApp();
+  const isRecitedToday = s.dailyRecitedDate === todayKey;
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
   const { level, into, need } = levelInfo(s.xp);
@@ -321,6 +338,16 @@ function RegisterRow({ s, delay, onManage, onDetails }: { s: Student; delay: num
               {s.isTesting && <span className="shrink-0 rounded-full bg-sky-600 px-2.5 py-1 text-xs font-extrabold text-white">اختبار</span>}
               <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-xs! shadow-none!" />
               <span className="shrink-0 rounded-full bg-grape-100 px-2 py-0.5 text-xs font-extrabold text-grape-500">{halaqas.find((h) => h.id === s.halaqaId)?.name ?? "بلا حلقة"}</span>
+              <button
+                type="button"
+                onClick={onToggleExpand}
+                className="inline-flex items-center gap-1 rounded-xl border border-grape-200 bg-grape-50/80 px-2.5 py-1 text-xs font-extrabold text-grape-700 transition hover:bg-grape-100 active:scale-95"
+                title={isExpanded ? "طي أيام الطالب" : "عرض أيام الطالب (الأحد - الأربعاء)"}
+                aria-expanded={isExpanded}
+              >
+                <span>{isExpanded ? "طي الأيام" : "عرض الأيام"}</span>
+                <span className="text-[11px] font-bold text-grape-500">{isExpanded ? "▲" : "▼"}</span>
+              </button>
             </div>
             <div className="mt-2 flex items-center gap-2">
               <HeartsRow hearts={s.hearts} max={MAX_HEARTS} size="w-6 h-6" />
@@ -346,6 +373,22 @@ function RegisterRow({ s, delay, onManage, onDetails }: { s: Student; delay: num
         </div>
 
         <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              toggleDailyRecitation(s.id);
+              if (!isRecitedToday) sfx.pop();
+            }}
+            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all active:scale-95 shadow-sm ${
+              isRecitedToday
+                ? "bg-mint-600 text-white shadow-[0_3px_0_#0a7a50] hover:bg-mint-700"
+                : "border-2 border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:border-amber-400"
+            }`}
+            title={isRecitedToday ? "تم تسميع الطالب اليوم — اضغط لإلغاء التحديد" : "اضغط لتعليم الطالب: تم التسميع اليوم"}
+          >
+            <Icon name={isRecitedToday ? "check" : "refresh"} className="h-4 w-4" strokeWidth={2.6} />
+            <span>{isRecitedToday ? "تم التسميع ✓" : "تم التسميع"}</span>
+          </button>
           <div className="rounded-xl bg-gold-400/15 px-3 py-2 text-center">
             <p className="font-display text-lg font-extrabold leading-5 text-gold-600">+{ar(s.weekXp)}</p>
             <p className="mt-1 text-xs font-bold text-grape-500">نقطة</p>
@@ -361,8 +404,9 @@ function RegisterRow({ s, delay, onManage, onDetails }: { s: Student; delay: num
         </div>
       </div>
 
-      {/* خطة أسبوعية واضحة ومدمجة */}
-      <div className={`border-t border-grape-100 bg-grape-50/25 p-4 sm:p-5 ${noHearts ? "opacity-65" : ""}`}>
+      {/* خطة أسبوعية واضحة ومدمجة — مطوية افتراضيًا */}
+      {isExpanded && (
+        <div className={`border-t border-grape-100 bg-grape-50/25 p-4 sm:p-5 ${noHearts ? "opacity-65" : ""}`}>
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h4 className="font-display text-base font-extrabold text-ink">خطة الورد الأسبوعية</h4>
@@ -431,6 +475,7 @@ function RegisterRow({ s, delay, onManage, onDetails }: { s: Student; delay: num
           })}
         </div>
       </div>
+      )}
 
       {noHearts && (
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-100 px-5 py-3">
@@ -553,6 +598,9 @@ export default function Register() {
   const [editingHalaqaId, setEditingHalaqaId] = useState<string | null>(null);
   const [teacherDraft, setTeacherDraft] = useState<string[]>([]);
   const [teacherFilter, setTeacherFilter] = useState<string>("all");
+  const [expandedStudentIds, setExpandedStudentIds] = useState<Set<string>>(new Set());
+  const [recitationFilter, setRecitationFilter] = useState<"all" | "pending" | "recited">("all");
+  const todayKey = localDateKey(new Date());
   const [weekDateDraft, setWeekDateDraft] = useState(hijriInputValue(weekStartDateIso));
   useEffect(() => setWeekDateDraft(hijriInputValue(weekStartDateIso)), [weekStartDateIso]);
 
@@ -584,6 +632,36 @@ export default function Register() {
       .filter((s) => !currentDistribution?.enabled || teacherFilter === "all" || currentDistribution.teacherForStudent[s.id] === teacherFilter)
       .sort((a, b) => a.name.localeCompare(b.name, "ar"));
   }, [students, query, halaqaFilter, teacherFilter, currentDistribution]);
+
+  const filteredList = useMemo(() => {
+    return byName.filter((s) => {
+      const isRecited = s.dailyRecitedDate === todayKey;
+      if (recitationFilter === "pending") return !isRecited;
+      if (recitationFilter === "recited") return isRecited;
+      return true;
+    });
+  }, [byName, recitationFilter, todayKey]);
+
+  const totalCount = countedStudents.length;
+  const recitedCount = countedStudents.filter((s) => s.dailyRecitedDate === todayKey).length;
+  const pendingCount = Math.max(0, totalCount - recitedCount);
+
+  const toggleStudentExpand = (id: string) => {
+    setExpandedStudentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllExpand = () => {
+    if (expandedStudentIds.size > 0) {
+      setExpandedStudentIds(new Set());
+    } else {
+      setExpandedStudentIds(new Set(filteredList.map((s) => s.id)));
+    }
+  };
   const nextLesson = useMemo(
     () => { const ordered = [...lessons].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt); return ordered.find((lesson) => lesson.id === nextLessonId && lesson.completedAt === null) ?? ordered.find((lesson) => lesson.completedAt === null); },
     [lessons, nextLessonId]
@@ -695,6 +773,70 @@ export default function Register() {
         {activeHalaqaStudents.length === 0 && <p className="mt-3 rounded-xl bg-grape-50 p-3 text-center text-sm font-bold text-grape-500">لا يوجد طلاب في هذه الحلقة حاليًا.</p>}
       </div>}
 
+      {/* لوحة متابعة التسميع اليومي وتصنيف الطلاب */}
+      <div className="mb-4 rounded-2xl border-2 border-grape-200/90 bg-white p-3.5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-grape-100 text-grape-600">
+              <Icon name="book" className="h-5 w-5" strokeWidth={2.4} />
+            </span>
+            <div>
+              <h4 className="font-display text-base font-extrabold text-ink">متابعة التسميع اليومي</h4>
+              <p className="text-xs font-bold text-grape-500">
+                تتجدد تلقائيًا كل يوم جديد · لا تؤثر على درجات الحفظ والمراجعة المحفوظة
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setRecitationFilter("all")}
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-extrabold transition ${
+                recitationFilter === "all" ? "bg-grape-600 text-white shadow" : "bg-grape-50 text-grape-600 hover:bg-grape-100"
+              }`}
+            >
+              الكل ({ar(totalCount)})
+            </button>
+            <button
+              type="button"
+              onClick={() => setRecitationFilter("pending")}
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-extrabold transition ${
+                recitationFilter === "pending"
+                  ? "bg-amber-500 text-white shadow"
+                  : "border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              }`}
+            >
+              <span>لم يتم التسميع ({ar(pendingCount)})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRecitationFilter("recited")}
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-extrabold transition ${
+                recitationFilter === "recited"
+                  ? "bg-mint-600 text-white shadow"
+                  : "border border-mint-200 bg-mint-50 text-mint-700 hover:bg-mint-100"
+              }`}
+            >
+              <Icon name="check" className="h-3.5 w-3.5" strokeWidth={3} />
+              <span>تم التسميع ({ar(recitedCount)})</span>
+            </button>
+
+            <div className="mx-1 hidden h-6 w-px bg-grape-200 sm:block" />
+
+            <button
+              type="button"
+              onClick={toggleAllExpand}
+              className="flex items-center gap-1 rounded-xl border border-grape-200 bg-white px-3 py-2 text-xs font-extrabold text-grape-600 transition hover:bg-grape-50 active:scale-95"
+              title="فتح أو طي تفاصيل أيام الأسبوع لجميع الطلاب المعروضين"
+            >
+              <span>{expandedStudentIds.size > 0 ? "طي أيام الجميع" : "عرض أيام الجميع"}</span>
+              <span className="text-[10px]">{expandedStudentIds.size > 0 ? "▲" : "▼"}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* قاعدة النقاط */}
       <div className="mb-4 grid gap-2 rounded-2xl border border-grape-200/80 bg-white/90 p-3 shadow-[0_16px_40px_-36px_rgba(76,29,149,.55)] sm:grid-cols-3">
         <span className="flex items-center gap-2 rounded-xl bg-mint-400/15 px-3 py-2 text-sm font-extrabold text-mint-600">
@@ -714,15 +856,62 @@ export default function Register() {
         </p>
       </div>
 
-      {byName.length === 0 ? (
-        <div className="dashed-border rounded-3xl bg-white/70 p-16 text-center">
-          <p className="font-display text-xl font-extrabold text-grape-600">{query ? "لا يوجد طالب بهذا الاسم" : "الكشف فارغ"}</p>
-          <p className="mt-1 text-sm text-grape-700/70">{query ? "جرّب كتابة اسم آخر" : "أضف أول طالب باسمه وصورته"}</p>
+      {filteredList.length === 0 ? (
+        <div className="dashed-border rounded-3xl bg-white/70 p-14 text-center">
+          {recitationFilter === "pending" && totalCount > 0 ? (
+            <div>
+              <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-mint-100 text-3xl">🎉</span>
+              <p className="mt-3 font-display text-xl font-extrabold text-mint-700">
+                تم تسميع جميع الطلاب لليوم ({ar(recitedCount)} طالبًا)
+              </p>
+              <p className="mt-1 text-sm font-bold text-grape-500">
+                أنهيت التسميع لجميع الطلاب المستحقين بنجاح
+              </p>
+              <button
+                type="button"
+                onClick={() => setRecitationFilter("all")}
+                className="mt-4 rounded-xl bg-grape-600 px-4 py-2 text-xs font-extrabold text-white shadow hover:bg-grape-700"
+              >
+                عرض جميع الطلاب
+              </button>
+            </div>
+          ) : recitationFilter === "recited" && totalCount > 0 ? (
+            <div>
+              <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-amber-100 text-3xl">⏳</span>
+              <p className="mt-3 font-display text-xl font-extrabold text-amber-700">
+                لم يُسمّع أي طالب بعد اليوم
+              </p>
+              <p className="mt-1 text-sm font-bold text-grape-500">
+                اختر أي طالب واضغط زر «تم التسميع» بعد الانتهاء من ورده
+              </p>
+              <button
+                type="button"
+                onClick={() => setRecitationFilter("pending")}
+                className="mt-4 rounded-xl bg-amber-500 px-4 py-2 text-xs font-extrabold text-white shadow hover:bg-amber-600"
+              >
+                عرض الطلاب بانتظار التسميع ({ar(pendingCount)})
+              </button>
+            </div>
+          ) : (
+            <div>
+              <p className="font-display text-xl font-extrabold text-grape-600">{query ? "لا يوجد طالب بهذا الاسم" : "الكشف فارغ"}</p>
+              <p className="mt-1 text-sm text-grape-700/70">{query ? "جرّب كتابة اسم آخر" : "أضف أول طالب باسمه وصورته"}</p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-2.5">
-          {byName.map((s, i) => (
-            <RegisterRow key={s.id} s={s} delay={i * 50} onManage={() => setManageId(s.id)} onDetails={() => setDetailsId(s.id)} />
+          {filteredList.map((s, i) => (
+            <RegisterRow
+              key={s.id}
+              s={s}
+              delay={i * 35}
+              isExpanded={expandedStudentIds.has(s.id)}
+              onToggleExpand={() => toggleStudentExpand(s.id)}
+              todayKey={todayKey}
+              onManage={() => setManageId(s.id)}
+              onDetails={() => setDetailsId(s.id)}
+            />
           ))}
         </div>
       )}
