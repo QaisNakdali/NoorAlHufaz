@@ -76,7 +76,7 @@ const hasPlannedWork = (student: Student, day: DayKey, kind: LearningTrack): boo
     : !!ward.review.trim() || ward.reviewVerses > 0 || ward.reviewLines > 0;
 };
 
-function pagesForWardDay(student: Student, day: DayKey, kind: LearningTrack): { pages: number; estimated: boolean } {
+export function pagesForWardDay(student: Student, day: DayKey, kind: LearningTrack): { pages: number; estimated: boolean } {
   const ward = student.ward[day];
   const text = kind === "memorization" ? ward.memorization : ward.review;
   const from = kind === "memorization" ? ward.memorizationFromVerse : ward.reviewFromVerse;
