@@ -304,59 +304,58 @@ export default function PastWeeks() {
             {!shown.records && <p className="mt-4 rounded-xl bg-gold-50 p-3 text-xs font-bold text-gold-700">هذا سجل قديم لا يحتوي لقطة يومية كاملة؛ تُعرض معلوماته المحفوظة فقط دون اختراع بيانات.</p>}
           </section>
         )}
-
-        <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)}>
-          <div className="p-6 text-right">
-            <div className="flex items-center gap-3 text-coral-600">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-coral-100 text-2xl">⚠️</span>
-              <div>
-                <h3 className="font-display text-xl font-extrabold text-ink">حذف الأسبوع من الأرشيف</h3>
-                <p className="text-xs font-bold text-grape-500">
-                  {current?.name || `الأسبوع ${ar(current?.week ?? 0)}`}
-                </p>
-              </div>
-            </div>
-            <p className="mt-4 text-sm font-bold leading-6 text-grape-700">
-              سيتم حذف هذا الأسبوع المحدد فقط من أرشيف الأسابيع الماضية، وتحديث الإحصائيات التراكمية تلقائيًا بناءً على الأسابيع المتبقية. لن يتم حذف أي طالب، ولن تتأثر العملات أو القلوب أو المستويات أو الجوائز، ولن يتم حذف أي أسبوع آخر.
-            </p>
-            <div className="mt-4 rounded-2xl bg-grape-50 p-4">
-              <label className="block text-xs font-extrabold text-grape-700">
-                أدخل رمز الحذف لتأكيد العملية (الرمز هو 911):
-              </label>
-              <input
-                type="password"
-                inputMode="numeric"
-                autoFocus
-                value={deletePin}
-                onChange={(e) => { setDeletePin(e.target.value); setDeleteError(""); }}
-                onKeyDown={(e) => { if (e.key === "Enter") handleDeleteWeek(); }}
-                placeholder="أدخل رمز الحذف..."
-                className="field-control mt-2 w-full text-center text-lg font-extrabold tracking-widest"
-              />
-              {deleteError && (
-                <p className="mt-2 text-xs font-extrabold text-coral-600">{deleteError}</p>
-              )}
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDeleteOpen(false)}
-                className="rounded-xl bg-grape-100 px-4 py-2.5 text-xs font-extrabold text-grape-600 hover:bg-grape-200"
-              >
-                إلغاء
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteWeek}
-                className="rounded-xl bg-coral-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-sm hover:bg-coral-700"
-              >
-                تأكيد حذف الأسبوع
-              </button>
-            </div>
-          </div>
-        </Modal>
-        )}
       </div>
     )}
+
+    <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+      <div className="p-6 text-right">
+        <div className="flex items-center gap-3 text-coral-600">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-coral-100 text-2xl">⚠️</span>
+          <div>
+            <h3 className="font-display text-xl font-extrabold text-ink">حذف الأسبوع من الأرشيف</h3>
+            <p className="text-xs font-bold text-grape-500">
+              {current?.name || `الأسبوع ${ar(current?.week ?? 0)}`}
+            </p>
+          </div>
+        </div>
+        <p className="mt-4 text-sm font-bold leading-6 text-grape-700">
+          سيتم حذف هذا الأسبوع المحدد فقط من أرشيف الأسابيع الماضية، وتحديث الإحصائيات التراكمية تلقائيًا بناءً على الأسابيع المتبقية. لن يتم حذف أي طالب، ولن تتأثر العملات أو القلوب أو المستويات أو الجوائز، ولن يتم حذف أي أسبوع آخر.
+        </p>
+        <div className="mt-4 rounded-2xl bg-grape-50 p-4">
+          <label className="block text-xs font-extrabold text-grape-700">
+            أدخل رمز الحذف لتأكيد العملية (الرمز هو 911):
+          </label>
+          <input
+            type="password"
+            inputMode="numeric"
+            autoFocus
+            value={deletePin}
+            onChange={(e) => { setDeletePin(e.target.value); setDeleteError(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleDeleteWeek(); }}
+            placeholder="أدخل رمز الحذف..."
+            className="field-control mt-2 w-full text-center text-lg font-extrabold tracking-widest"
+          />
+          {deleteError && (
+            <p className="mt-2 text-xs font-extrabold text-coral-600">{deleteError}</p>
+          )}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(false)}
+            className="rounded-xl bg-grape-100 px-4 py-2.5 text-xs font-extrabold text-grape-600 hover:bg-grape-200"
+          >
+            إلغاء
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteWeek}
+            className="rounded-xl bg-coral-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-sm hover:bg-coral-700"
+          >
+            تأكيد حذف الأسبوع
+          </button>
+        </div>
+      </div>
+    </Modal>
   </div>;
 }
