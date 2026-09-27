@@ -208,7 +208,8 @@ export type Student = {
   days: WeekDays;
   /** وصف جودة التسميع فقط؛ المكافأة تظل مرتبطة بقيمة days المنجزة. */
   recitationRatings?: RecitationRatings;
-  ward: WeeklyWard; // الخطة اليومية؛ لا تتصفّر عند بدء أسبوع جديد
+  ward: WeeklyWard; // خطة الورد الأسبوعية؛ تُؤرشف في نهاية الأسبوع وتُصفّر مع بداية الأسبوع الجديد
+  dailyRecitedDate?: string | null; // تاريخ آخر تسميع يومي (YYYY-MM-DD) لتنظيم حالة تم التسميع اليومية
   lastHeard?: LastHeard; // آخر حفظ ومراجعة سمعهما الطالب؛ لا يتصفّران أسبوعيًا
   inventory: string[]; // ids خصائص البروفايل المملوكة
   bag: BagEntry[]; // المشتريات الخارجية
@@ -543,6 +544,7 @@ export type WeekStudentRecord = {
   id: string; name: string; photo: string | null; halaqaId?: string | null; isTesting?: boolean;
   days: WeekDays; recitationRatings: RecitationRatings; ward: WeeklyWard;
   hearts: number; heartsLostWeek: number; xp: number; coins: number;
+  dailyRecitedDate?: string | null;
 };
 
 export type WeekLog = {

@@ -135,6 +135,7 @@ type Ctx = State & {
   markDay: (id: string, day: DayKey, part: DayPart, rating?: RecitationRating) => void;
   markAbsent: (id: string, day: DayKey) => void;
   updateWard: (id: string, day: DayKey, ward: DailyWard) => void;
+  toggleDailyRecitation: (id: string, dateKey?: string) => void;
 
   addXp: (id: string, amount: number) => void;
   deductXp: (id: string, amount: number) => void;
@@ -245,6 +246,61 @@ function normStudent(s: Student): Student {
     createdAt: typeof s.createdAt === "number" ? s.createdAt : undefined,
     memorizationRecords: Array.isArray(s.memorizationRecords) ? s.memorizationRecords : [],
     highestRewardedLevel: typeof s.highestRewardedLevel === "number" ? s.highestRewardedLevel : levelInfo(typeof s.xp === "number" ? Math.max(0, s.xp) : 0).level,
+    dailyRecitedDate: typeof s.dailyRecitedDate === "string" ? s.dailyRecitedDate : null,
+  };
+}
+
+function normWeekRecord(r: any): WeekStudentRecord {
+  const days = emptyWeekDays();
+  const srcDays = (r?.days ?? {}) as Record<string, unknown>;
+  for (const d of DAYS) {
+    const v = srcDays[d.key];
+    if (typeof v === "boolean") days[d.key] = { a: v, h: v, r: false };
+    else if (v && typeof v === "object") {
+      const e = v as Record<string, unknown>;
+      days[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true };
+    }
+  }
+  const ward = emptyWeeklyWard();
+  const srcWard = (r?.ward ?? {}) as Record<string, unknown>;
+  for (const d of DAYS) {
+    const item = srcWard[d.key] as Record<string, unknown> | undefined;
+    if (item && typeof item === "object") {
+      ward[d.key] = {
+        memorization: String(item.memorization ?? ""),
+        review: String(item.review ?? ""),
+        memorizationVerses: Math.max(0, Number(item.memorizationVerses ?? 0) || 0),
+        reviewVerses: Math.max(0, Number(item.reviewVerses ?? 0) || 0),
+        memorizationLines: Math.max(0, Number(item.memorizationLines ?? 0) || 0),
+        reviewLines: Math.max(0, Number(item.reviewLines ?? 0) || 0),
+      };
+    }
+  }
+  return {
+    id: String(r?.id ?? ""),
+    name: String(r?.name ?? ""),
+    photo: r?.photo ?? null,
+    halaqaId: typeof r?.halaqaId === "string" ? r.halaqaId : null,
+    isTesting: r?.isTesting === true,
+    days,
+    recitationRatings: r?.recitationRatings ?? emptyRecitationRatings(),
+    ward,
+    hearts: typeof r?.hearts === "number" ? Math.max(0, Math.min(MAX_HEARTS, r.hearts)) : MAX_HEARTS,
+    heartsLostWeek: typeof r?.heartsLostWeek === "number" ? r.heartsLostWeek : 0,
+    xp: typeof r?.xp === "number" ? Math.max(0, r.xp) : 0,
+    coins: typeof r?.coins === "number" ? Math.max(0, r.coins) : 0,
+    dailyRecitedDate: typeof r?.dailyRecitedDate === "string" ? r.dailyRecitedDate : null,
+  };
+}
+
+function normWeekLog(log: any): WeekLog {
+  return {
+    ...log,
+    students: Array.isArray(log?.students) ? log.students : [],
+    top: Array.isArray(log?.top) ? log.top : [],
+    awards: Array.isArray(log?.awards) ? log.awards : [],
+    records: Array.isArray(log?.records) ? log.records.map(normWeekRecord) : [],
+    tripAttendeeIds: Array.isArray(log?.tripAttendeeIds) ? log.tripAttendeeIds : [],
   };
 }
 
@@ -283,7 +339,7 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
     week: typeof p.week === "number" ? p.week : 1,
     weekName: typeof p.weekName === "string" ? p.weekName : "",
     weekStartDateIso: typeof p.weekStartDateIso === "string" ? p.weekStartDateIso : hijriLocalDateKey(teachingWeekStart()),
-    weeksLog: Array.isArray(p.weeksLog) ? (p.weeksLog as WeekLog[]) : [],
+    weeksLog: Array.isArray(p.weeksLog) ? (p.weeksLog as WeekLog[]).map(normWeekLog) : [],
     sound: p.sound !== false,
     ceremonyPicks: p.ceremonyPicks ?? {},
     tripOn: !!p.tripOn,
@@ -1116,7 +1172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
 
           const dayLabel = DAYS.find((d) => d.key === day)?.label ?? "";
-          const ward = s.ward[day];
+          const ward = s.ward?.[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
           const lastHeard = turningOn && (part === "h" || part === "r")
             ? {
                 ...(s.lastHeard ?? {}),
@@ -1183,14 +1239,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateWard = useCallback((id: string, day: DayKey, ward: DailyWard) => {
     setStudents((ss) => ss.map((s) => s.id === id
-      ? { ...s, ward: { ...s.ward, [day]: {
+      ? { ...s, ward: { ...(s.ward ?? emptyWeeklyWard()), [day]: {
           ...ward,
+          memorization: String(ward.memorization ?? ""),
+          review: String(ward.review ?? ""),
           memorizationVerses: Math.max(0, Number(ward.memorizationVerses) || 0),
           reviewVerses: Math.max(0, Number(ward.reviewVerses) || 0),
           memorizationLines: Math.max(0, Number(ward.memorizationLines) || 0),
           reviewLines: Math.max(0, Number(ward.reviewLines) || 0),
         } } }
       : s));
+  }, []);
+
+  /** تبديل حالة تم التسميع اليومية للطالب */
+  const toggleDailyRecitation = useCallback((id: string, targetDateKey?: string) => {
+    const today = targetDateKey || localDateKey();
+    setStudents((ss) => ss.map((s) => {
+      if (s.id !== id) return s;
+      const isRecited = s.dailyRecitedDate === today;
+      return { ...s, dailyRecitedDate: isRecited ? null : today };
+    }));
   }, []);
 
   /* ===== الخبرة والعملات اليدوية ===== */
@@ -1709,7 +1777,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .slice(0, 10)
         ,
       awards,
-      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins })),
+      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins, dailyRecitedDate: s.dailyRecitedDate ?? null })),
       ceremonyPicks: structuredClone(ceremonyPicks),
       rewardSettings: structuredClone(rewardSettings),
       tripAttendeeIds: [...tripAttendees],
@@ -1731,12 +1799,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setWeek((w) => w + 1);
     setWeekNameState("");
     setWeekStartDateIsoState(hijriLocalDateKey(addCalendarDays(weekStartDateIso, 7)));
-    setStudents((ss) => ss.map((s) => ({ ...s, days: emptyWeekDays(), recitationRatings: emptyRecitationRatings(), weekXp: 0, weekCoins: 0, heartsLostWeek: 0 })));
+    setStudents((ss) => ss.map((s) => ({
+      ...s,
+      days: emptyWeekDays(),
+      recitationRatings: emptyRecitationRatings(),
+      ward: emptyWeeklyWard(),
+      weekXp: 0,
+      weekCoins: 0,
+      heartsLostWeek: 0,
+      dailyRecitedDate: null,
+    })));
     setCeremonyPicks({});
     setCeremonyProductIds([]);
     setTripOn(false);
     setTripDay(null);
     setTripAttendees([]);
+    setShowCeremony(false);
     sfx.sparkle();
     toast("success", "بدأ أسبوع جديد — كشف نظيف للجميع، والقلوب كما هي");
   }, [ceremonyPicks, ceremonyProductIds, rewardSettings, showNewProducts, students, toast, tripAttendees, tripDay, tripOn, week, weekName, weekStartDateIso]);
@@ -1802,6 +1880,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     markDay,
     markAbsent,
     updateWard,
+    toggleDailyRecitation,
     addXp,
     deductXp,
     addCoins,

@@ -70,20 +70,28 @@ const round = (n: number, digits = 1) => Number(n.toFixed(digits));
 const trackPart = (kind: LearningTrack): RecitationPart => kind === "memorization" ? "h" : "r";
 
 const hasPlannedWork = (student: Student, day: DayKey, kind: LearningTrack): boolean => {
-  const ward = student.ward[day];
+  const ward = student.ward?.[day];
+  if (!ward) return false;
+  const mem = typeof ward.memorization === "string" ? ward.memorization.trim() : "";
+  const rev = typeof ward.review === "string" ? ward.review.trim() : "";
+  const memV = Number(ward.memorizationVerses) || 0;
+  const memL = Number(ward.memorizationLines) || 0;
+  const revV = Number(ward.reviewVerses) || 0;
+  const revL = Number(ward.reviewLines) || 0;
   return kind === "memorization"
-    ? !!ward.memorization.trim() || ward.memorizationVerses > 0 || ward.memorizationLines > 0
-    : !!ward.review.trim() || ward.reviewVerses > 0 || ward.reviewLines > 0;
+    ? (mem.length > 0 || memV > 0 || memL > 0)
+    : (rev.length > 0 || revV > 0 || revL > 0);
 };
 
 export function pagesForWardDay(student: Student, day: DayKey, kind: LearningTrack): { pages: number; estimated: boolean } {
-  const ward = student.ward[day];
-  const text = kind === "memorization" ? ward.memorization : ward.review;
+  const ward = student.ward?.[day];
+  if (!ward) return { pages: 0, estimated: true };
+  const text = (kind === "memorization" ? ward.memorization : ward.review) ?? "";
   const from = kind === "memorization" ? ward.memorizationFromVerse : ward.reviewFromVerse;
   const to = kind === "memorization" ? ward.memorizationToVerse : ward.reviewToVerse;
-  const lines = kind === "memorization" ? ward.memorizationLines : ward.reviewLines;
-  const verses = kind === "memorization" ? ward.memorizationVerses : ward.reviewVerses;
-  const parsed = parseQuranRange(text);
+  const lines = Number(kind === "memorization" ? ward.memorizationLines : ward.reviewLines) || 0;
+  const verses = Number(kind === "memorization" ? ward.memorizationVerses : ward.reviewVerses) || 0;
+  const parsed = text ? parseQuranRange(text) : null;
   const exact = parsed ? pagesForAyahRange(parsed.surah, from || parsed.from, to || parsed.to) : null;
   if (exact) return { pages: exact.pages, estimated: false };
   if (lines > 0) return { pages: lines / 15, estimated: true };
@@ -93,9 +101,12 @@ export function pagesForWardDay(student: Student, day: DayKey, kind: LearningTra
 
 export function measureStudentWork(student: Student, kind: "memorization" | "review"): WorkMeasure {
   const part = kind === "memorization" ? "h" : "r";
-  const completed = DAYS.filter((d) => !student.days[d.key].absent && student.days[d.key][part]);
-  const verses = completed.reduce((sum, d) => sum + (kind === "memorization" ? student.ward[d.key].memorizationVerses : student.ward[d.key].reviewVerses), 0);
-  const enteredLines = completed.reduce((sum, d) => sum + (kind === "memorization" ? student.ward[d.key].memorizationLines : student.ward[d.key].reviewLines), 0);
+  const completed = DAYS.filter((d) => {
+    const entry = student.days?.[d.key];
+    return !!entry && !entry.absent && !!entry[part];
+  });
+  const verses = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationVerses : student.ward?.[d.key]?.reviewVerses) || 0), 0);
+  const enteredLines = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationLines : student.ward?.[d.key]?.reviewLines) || 0), 0);
   const pageMeasures = completed.map((d) => pagesForWardDay(student, d.key, kind));
   const lines = enteredLines > 0 ? enteredLines : estimatedLinesFromVerses(verses);
   const pagesEstimated = pageMeasures.some((measure) => measure.estimated);
@@ -111,8 +122,8 @@ export function measureStudentWork(student: Student, kind: "memorization" | "rev
 }
 
 export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAnalysis {
-  const attendanceDays = DAYS.filter((d) => student.days[d.key].a).length;
-  const absenceDays = DAYS.filter((d) => student.days[d.key].absent === true).length;
+  const attendanceDays = DAYS.filter((d) => !!student.days?.[d.key]?.a).length;
+  const absenceDays = DAYS.filter((d) => student.days?.[d.key]?.absent === true).length;
   const memorization = measureStudentWork(student, "memorization");
   const review = measureStudentWork(student, "review");
   const recitationSessions = memorization.sessions + review.sessions;
@@ -156,16 +167,16 @@ type TrackSnapshot = {
 export function buildTrackSnapshot(student: Student, kind: LearningTrack): TrackSnapshot {
   const part = trackPart(kind);
   const evaluableDays = DAYS.filter((day) => {
-    const entry = student.days[day.key];
-    return entry.absent !== true && (entry.a || entry.h || entry.r);
+    const entry = student.days?.[day.key];
+    return !!entry && entry.absent !== true && (entry.a || entry.h || entry.r);
   });
   const plannedDays = evaluableDays.filter((day) => hasPlannedWork(student, day.key, kind));
-  const completedDays = evaluableDays.filter((day) => student.days[day.key][part]).length;
+  const completedDays = evaluableDays.filter((day) => !!student.days?.[day.key]?.[part]).length;
   const expectedPagesValue = plannedDays.reduce((sum, day) => sum + pagesForWardDay(student, day.key, kind).pages, 0);
   let excellent = 0;
   let veryGood = 0;
   for (const day of plannedDays) {
-    if (!student.days[day.key][part]) continue;
+    if (!student.days?.[day.key]?.[part]) continue;
     const rating = student.recitationRatings?.[day.key]?.[part];
     if (rating === "excellent") excellent += 1;
     if (rating === "very-good") veryGood += 1;

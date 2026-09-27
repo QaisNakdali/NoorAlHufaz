@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { Component, useState, type ErrorInfo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AppProvider, useApp, type Toast } from "./appState";
 import type { Tab } from "./core";
@@ -253,10 +253,79 @@ function Shell() {
 }
 
 
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-center" dir="rtl">
+          <div className="max-w-md w-full rounded-3xl border-2 border-grape-200 bg-white p-6 shadow-xl">
+            <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-amber-100 text-3xl">
+              🛡️
+            </span>
+            <h2 className="mt-4 font-display text-xl font-extrabold text-ink">تم حفظ بياناتك بأمان</h2>
+            <p className="mt-2 text-sm text-grape-600 leading-relaxed">
+              حدث تنبيه غير متوقع أثناء عرض الصفحة، وجميع بيانات الطلاب والعملات والقلوب محفوظة بأمان ولم يتأثر أي سجل.
+            </p>
+            {this.state.error?.message && (
+              <p className="mt-2 rounded-xl bg-grape-50 p-2 text-xs font-mono text-grape-500 break-all text-start" dir="ltr">
+                {this.state.error.message}
+              </p>
+            )}
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={this.handleReset}
+                className="flex-1 rounded-xl bg-grape-600 px-4 py-2.5 text-sm font-extrabold text-white shadow hover:bg-grape-700 transition"
+              >
+                إعادة المحاولة
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded-xl border border-grape-200 bg-white px-4 py-2.5 text-sm font-extrabold text-grape-600 hover:bg-grape-50 transition"
+              >
+                تحديث الصفحة
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <AppProvider>
-      <Shell />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <Shell />
+      </AppProvider>
+    </ErrorBoundary>
   );
 }

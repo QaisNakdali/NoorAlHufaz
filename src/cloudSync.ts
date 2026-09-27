@@ -22,9 +22,16 @@ export type CloudPayload = { rev: number; data: unknown };
 export type CloudSaveResult = CloudPayload & { applied: boolean };
 
 function errMsg(e: unknown): string {
+  if (!e) return "حدث خطأ غير محدد";
   if (e instanceof Error) return e.message;
-  if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
-  return String(e);
+  if (typeof e === "string") return e;
+  if (typeof e === "object") {
+    const obj = e as Record<string, unknown>;
+    if (typeof obj.message === "string" && obj.message) return obj.message;
+    if (typeof obj.error_description === "string" && obj.error_description) return obj.error_description;
+    if (typeof obj.details === "string" && obj.details) return obj.details;
+  }
+  return "حدث خطأ في المزامنة";
 }
 
 function isDataImage(value: unknown): value is string {
@@ -55,8 +62,12 @@ async function preparePayload(payload: CloudPayload): Promise<CloudPayload> {
 
   const students = await Promise.all(state.students.map(async (student) => {
     if (!isDataImage(student.photo)) return student;
-    const photo = await uploadStudentPhoto(student.id, student.photo);
-    return { ...student, photo };
+    try {
+      const photo = await uploadStudentPhoto(student.id, student.photo);
+      return { ...student, photo };
+    } catch {
+      return student;
+    }
   }));
   return { ...payload, data: { ...state, students } };
 }
