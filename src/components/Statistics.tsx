@@ -94,13 +94,13 @@ function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
   const ward = record.ward?.[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
   if (state.a) result.present += 1;
   if (state.absent) result.absent += 1;
-  if (state.h && !state.absent) {
+  if ((state.h || Number(ward.memorizationLines) > 0 || Number(ward.memorizationVerses) > 0 || !!ward.memorization?.trim()) && !state.absent) {
     result.memorizationSessions = 1;
     result.memorizationVerses = ward.memorizationVerses || 0;
     result.memorizationLines = ward.memorizationLines || (ward.memorizationVerses ? estimatedLinesFromVerses(ward.memorizationVerses) : 0);
     result.memorizationPages = pagesForWardDay(mockStudent, day, "memorization").pages;
   }
-  if (state.r && !state.absent) {
+  if ((state.r || Number(ward.reviewLines) > 0 || Number(ward.reviewVerses) > 0 || !!ward.review?.trim()) && !state.absent) {
     result.reviewSessions = 1;
     result.reviewVerses = ward.reviewVerses || 0;
     result.reviewLines = ward.reviewLines || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0);
@@ -137,13 +137,14 @@ function fromStudent(student: Student, day?: DayKey): StudentMetrics {
     result.reviewVerses = review.verses;
   } else {
     const state = student.days[day];
-    if (state.h && !state.absent) {
+    const ward = student.ward?.[day];
+    if ((state?.h || Number(ward?.memorizationLines) > 0 || Number(ward?.memorizationVerses) > 0 || !!ward?.memorization?.trim()) && !state?.absent) {
       const memMeasure = pagesForWardDay(student, day, "memorization");
       result.memorizationPages = memMeasure.pages;
     } else {
       result.memorizationPages = 0;
     }
-    if (state.r && !state.absent) {
+    if ((state?.r || Number(ward?.reviewLines) > 0 || Number(ward?.reviewVerses) > 0 || !!ward?.review?.trim()) && !state?.absent) {
       const revMeasure = pagesForWardDay(student, day, "review");
       result.reviewPages = revMeasure.pages;
     } else {
@@ -179,6 +180,10 @@ function logDate(log: WeekLog): Date | null {
 }
 
 function fromEntry(entry: WeekLogEntry): StudentMetrics {
+  const memLines = entry.memorizationLines ?? 0;
+  const revLines = entry.reviewLines ?? 0;
+  const memPages = typeof entry.memorizationPages === "number" ? entry.memorizationPages : (memLines > 0 ? memLines / 15 : 0);
+  const revPages = typeof entry.reviewPages === "number" ? entry.reviewPages : (revLines > 0 ? revLines / 15 : 0);
   return {
     id: entry.id,
     name: entry.name,
@@ -189,10 +194,10 @@ function fromEntry(entry: WeekLogEntry): StudentMetrics {
     reviewSessions: entry.reviewSessions ?? entry.reviewDays ?? 0,
     memorizationVerses: entry.memorizationVerses ?? 0,
     reviewVerses: entry.reviewVerses ?? 0,
-    memorizationLines: entry.memorizationLines ?? 0,
-    reviewLines: entry.reviewLines ?? 0,
-    memorizationPages: entry.memorizationPages ?? ((entry.memorizationLines ?? 0) / 15),
-    reviewPages: entry.reviewPages ?? ((entry.reviewLines ?? 0) / 15),
+    memorizationLines: memLines,
+    reviewLines: revLines,
+    memorizationPages: memPages,
+    reviewPages: revPages,
   };
 }
 
@@ -220,20 +225,16 @@ function logMetrics(log: WeekLog, allStudents?: Student[]): StudentMetrics[] {
     const existing = map.get(entry.id) || [...map.values()].find((m) => normalizeArabic(m.name) === normalizeArabic(entry.name));
 
     if (existing) {
-      if (existing.memorizationPages === 0 && (entryMetrics.memorizationPages > 0 || entryMetrics.memorizationLines > 0)) {
-        existing.memorizationPages = entryMetrics.memorizationPages;
-        existing.memorizationLines = entryMetrics.memorizationLines;
-        existing.memorizationVerses = entryMetrics.memorizationVerses || existing.memorizationVerses;
-        existing.memorizationSessions = entryMetrics.memorizationSessions || existing.memorizationSessions;
-      }
-      if (existing.reviewPages === 0 && (entryMetrics.reviewPages > 0 || entryMetrics.reviewLines > 0)) {
-        existing.reviewPages = entryMetrics.reviewPages;
-        existing.reviewLines = entryMetrics.reviewLines;
-        existing.reviewVerses = entryMetrics.reviewVerses || existing.reviewVerses;
-        existing.reviewSessions = entryMetrics.reviewSessions || existing.reviewSessions;
-      }
-      if (existing.present === 0 && entryMetrics.present > 0) existing.present = entryMetrics.present;
-      if (existing.absent === 0 && entryMetrics.absent > 0) existing.absent = entryMetrics.absent;
+      existing.memorizationPages = Math.max(existing.memorizationPages, entryMetrics.memorizationPages);
+      existing.reviewPages = Math.max(existing.reviewPages, entryMetrics.reviewPages);
+      existing.memorizationLines = Math.max(existing.memorizationLines, entryMetrics.memorizationLines);
+      existing.reviewLines = Math.max(existing.reviewLines, entryMetrics.reviewLines);
+      existing.memorizationVerses = Math.max(existing.memorizationVerses, entryMetrics.memorizationVerses);
+      existing.reviewVerses = Math.max(existing.reviewVerses, entryMetrics.reviewVerses);
+      existing.memorizationSessions = Math.max(existing.memorizationSessions, entryMetrics.memorizationSessions);
+      existing.reviewSessions = Math.max(existing.reviewSessions, entryMetrics.reviewSessions);
+      existing.present = Math.max(existing.present, entryMetrics.present);
+      existing.absent = Math.max(existing.absent, entryMetrics.absent);
     } else {
       map.set(entry.id, entryMetrics);
     }
@@ -282,7 +283,7 @@ function MetricCard({
 
 export default function StatisticsPage() {
   const { students, weeksLog, halaqas, week, weekStartDateIso } = useApp();
-  const [period, setPeriod] = useState<Period>("weekly");
+  const [period, setPeriod] = useState<Period>("all");
   const [studentId, setStudentId] = useState("all");
   const [halaqaId, setHalaqaId] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -294,7 +295,9 @@ export default function StatisticsPage() {
   const uniqueLogs = useMemo(() => {
     const map = new Map<number, WeekLog>();
     for (const log of weeksLog) {
-      map.set(log.week, log);
+      if (log && log.week != null) {
+        map.set(Number(log.week), log);
+      }
     }
     return [...map.values()];
   }, [weeksLog]);
@@ -360,7 +363,7 @@ export default function StatisticsPage() {
               return date && hijriMonthKey(date) === selectedMonth;
             })
           : uniqueLogs
-      ).filter((log) => log.week !== week);
+      ).filter((log) => Number(log.week) !== Number(week));
 
       const map = new Map<string, StudentMetrics>();
       for (const student of currentStudents) {
@@ -703,7 +706,7 @@ export default function StatisticsPage() {
                   : `بيانات الأسبوع المختار (${ar(selectedWeek)})`
                 : period === "monthly"
                 ? "بيانات الشهر الهجري المحدد"
-                : "من أول سجل متاح حتى الآن"}
+                : "من أول سجل متاح حتى الآن (جميع الأسابيع الماضية + الأسبوع الحالي)"}
             </p>
           </div>
         </div>

@@ -8,6 +8,7 @@ import {
   ATTEND_XP,
   DAYS,
   DAY_PARTS,
+  getWeekDayKey,
   levelInfo,
   MAX_HEARTS,
   RECITE_COINS,
@@ -296,8 +297,9 @@ function RegisterRow({
   onDetails: () => void;
 }) {
   const { markDay, markAbsent, updateWard, toggleDailyRecitation, toggleDailyAbsent, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso } = useApp();
-  const isAbsentToday = s.dailyAbsentDate === todayKey;
-  const isRecitedToday = s.dailyRecitedDate === todayKey;
+  const currentDayKey = getWeekDayKey(todayKey, weekStartDateIso);
+  const isAbsentToday = s.dailyAbsentDate === todayKey || (s.days[currentDayKey]?.absent === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date));
+  const isRecitedToday = s.dailyRecitedDate === todayKey || (s.days[currentDayKey]?.h === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date));
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
   const { level, into, need } = levelInfo(s.xp);
@@ -368,7 +370,7 @@ function RegisterRow({
             <button
               type="button"
               onClick={() => {
-                toggleDailyRecitation(s.id);
+                toggleDailyRecitation(s.id, todayKey);
                 if (!isRecitedToday) sfx.pop();
               }}
               className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all active:scale-95 ${
@@ -385,7 +387,7 @@ function RegisterRow({
             <button
               type="button"
               onClick={() => {
-                toggleDailyAbsent(s.id);
+                toggleDailyAbsent(s.id, todayKey);
                 if (!isAbsentToday) sfx.pop();
               }}
               className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all active:scale-95 ${
@@ -462,7 +464,7 @@ function RegisterRow({
             <button
               type="button"
               onClick={() => {
-                toggleDailyRecitation(s.id);
+                toggleDailyRecitation(s.id, todayKey);
                 if (!isRecitedToday) sfx.pop();
               }}
               className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all active:scale-95 shadow-sm ${
@@ -478,7 +480,7 @@ function RegisterRow({
             <button
               type="button"
               onClick={() => {
-                toggleDailyAbsent(s.id);
+                toggleDailyAbsent(s.id, todayKey);
                 if (!isAbsentToday) sfx.pop();
               }}
               className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all active:scale-95 shadow-sm ${
@@ -736,20 +738,22 @@ export default function Register() {
       .sort((a, b) => a.name.localeCompare(b.name, "ar"));
   }, [students, query, halaqaFilter, teacherFilter, currentDistribution]);
 
+  const currentDayKey = getWeekDayKey(todayKey, weekStartDateIso);
+
   const filteredList = useMemo(() => {
     return byName.filter((s) => {
-      const isRecited = s.dailyRecitedDate === todayKey;
-      const isAbsent = s.dailyAbsentDate === todayKey;
+      const isRecited = s.dailyRecitedDate === todayKey || (s.days[currentDayKey]?.h === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date));
+      const isAbsent = s.dailyAbsentDate === todayKey || (s.days[currentDayKey]?.absent === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date));
       if (recitationFilter === "pending") return !isRecited && !isAbsent;
       if (recitationFilter === "recited") return isRecited;
       if (recitationFilter === "absent") return isAbsent;
       return true;
     });
-  }, [byName, recitationFilter, todayKey]);
+  }, [byName, recitationFilter, todayKey, currentDayKey]);
 
   const totalCount = countedStudents.length;
-  const recitedCount = countedStudents.filter((s) => s.dailyRecitedDate === todayKey).length;
-  const absentCount = countedStudents.filter((s) => s.dailyAbsentDate === todayKey).length;
+  const recitedCount = countedStudents.filter((s) => s.dailyRecitedDate === todayKey || (s.days[currentDayKey]?.h === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date))).length;
+  const absentCount = countedStudents.filter((s) => s.dailyAbsentDate === todayKey || (s.days[currentDayKey]?.absent === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date))).length;
   const pendingCount = Math.max(0, totalCount - recitedCount - absentCount);
 
   const toggleStudentExpand = (id: string) => {
