@@ -74,27 +74,38 @@ const normalizeArabic = (text: string): string => {
 
 function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
   const result = emptyMetrics(record);
-  const selected = day ? DAYS.filter((item) => item.key === day) : DAYS;
-  for (const item of selected) {
-    const state = record.days?.[item.key] ?? { a: false, h: false, r: false };
-    const ward = record.ward?.[item.key] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
-    if (state.a) result.present += 1;
-    if (state.absent) result.absent += 1;
-    if (state.h && !state.absent) {
-      result.memorizationSessions += 1;
-      result.memorizationVerses += ward.memorizationVerses || 0;
-      const lines = ward.memorizationLines || (ward.memorizationVerses ? estimatedLinesFromVerses(ward.memorizationVerses) : 0);
-      result.memorizationLines += lines;
-    }
-    if (state.r && !state.absent) {
-      result.reviewSessions += 1;
-      result.reviewVerses += ward.reviewVerses || 0;
-      const lines = ward.reviewLines || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0);
-      result.reviewLines += lines;
-    }
+  const mockStudent = record as unknown as Student;
+  if (!day) {
+    const mem = measureStudentWork(mockStudent, "memorization");
+    const rev = measureStudentWork(mockStudent, "review");
+    result.present = DAYS.filter((d) => !!record.days?.[d.key]?.a).length;
+    result.absent = DAYS.filter((d) => record.days?.[d.key]?.absent === true).length;
+    result.memorizationSessions = mem.sessions;
+    result.reviewSessions = rev.sessions;
+    result.memorizationVerses = mem.verses;
+    result.reviewVerses = rev.verses;
+    result.memorizationLines = mem.lines;
+    result.reviewLines = rev.lines;
+    result.memorizationPages = mem.pages;
+    result.reviewPages = rev.pages;
+    return result;
   }
-  result.memorizationPages = result.memorizationLines / 15;
-  result.reviewPages = result.reviewLines / 15;
+  const state = record.days?.[day] ?? { a: false, h: false, r: false };
+  const ward = record.ward?.[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
+  if (state.a) result.present += 1;
+  if (state.absent) result.absent += 1;
+  if (state.h && !state.absent) {
+    result.memorizationSessions = 1;
+    result.memorizationVerses = ward.memorizationVerses || 0;
+    result.memorizationLines = ward.memorizationLines || (ward.memorizationVerses ? estimatedLinesFromVerses(ward.memorizationVerses) : 0);
+    result.memorizationPages = pagesForWardDay(mockStudent, day, "memorization").pages;
+  }
+  if (state.r && !state.absent) {
+    result.reviewSessions = 1;
+    result.reviewVerses = ward.reviewVerses || 0;
+    result.reviewLines = ward.reviewLines || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0);
+    result.reviewPages = pagesForWardDay(mockStudent, day, "review").pages;
+  }
   return result;
 }
 
@@ -186,15 +197,55 @@ function fromEntry(entry: WeekLogEntry): StudentMetrics {
 }
 
 function logMetrics(log: WeekLog, allStudents?: Student[]): StudentMetrics[] {
-  const list = log.records?.length
-    ? log.records.map((record) => fromRecord(record))
-    : (log.students ?? log.top).map(fromEntry);
+  const map = new Map<string, StudentMetrics>();
 
+  // 1. قراءة السجلات التفصيلية اليومية أولاً إن وُجدت
+  if (Array.isArray(log.records) && log.records.length > 0) {
+    for (const record of log.records) {
+      if (!record || !record.name) continue;
+      const m = fromRecord(record);
+      map.set(record.id, m);
+    }
+  }
+
+  // 2. دمج إحصائيات الطلاب المحفوظة في الأسبوع لتكملة أي بيانات ناقصة أو سجلات أرشيف قديم
+  const studentEntries = [
+    ...(Array.isArray(log.students) ? log.students : []),
+    ...(Array.isArray(log.top) ? log.top : []),
+  ];
+
+  for (const entry of studentEntries) {
+    if (!entry || !entry.name) continue;
+    const entryMetrics = fromEntry(entry);
+    const existing = map.get(entry.id) || [...map.values()].find((m) => normalizeArabic(m.name) === normalizeArabic(entry.name));
+
+    if (existing) {
+      if (existing.memorizationPages === 0 && (entryMetrics.memorizationPages > 0 || entryMetrics.memorizationLines > 0)) {
+        existing.memorizationPages = entryMetrics.memorizationPages;
+        existing.memorizationLines = entryMetrics.memorizationLines;
+        existing.memorizationVerses = entryMetrics.memorizationVerses || existing.memorizationVerses;
+        existing.memorizationSessions = entryMetrics.memorizationSessions || existing.memorizationSessions;
+      }
+      if (existing.reviewPages === 0 && (entryMetrics.reviewPages > 0 || entryMetrics.reviewLines > 0)) {
+        existing.reviewPages = entryMetrics.reviewPages;
+        existing.reviewLines = entryMetrics.reviewLines;
+        existing.reviewVerses = entryMetrics.reviewVerses || existing.reviewVerses;
+        existing.reviewSessions = entryMetrics.reviewSessions || existing.reviewSessions;
+      }
+      if (existing.present === 0 && entryMetrics.present > 0) existing.present = entryMetrics.present;
+      if (existing.absent === 0 && entryMetrics.absent > 0) existing.absent = entryMetrics.absent;
+    } else {
+      map.set(entry.id, entryMetrics);
+    }
+  }
+
+  const list = [...map.values()];
   if (allStudents?.length) {
     const photoMap = new Map(allStudents.map((s) => [s.id, s.photo]));
+    const namePhotoMap = new Map(allStudents.map((s) => [normalizeArabic(s.name), s.photo]));
     for (const item of list) {
-      if (!item.photo && photoMap.has(item.id)) {
-        item.photo = photoMap.get(item.id) ?? null;
+      if (!item.photo) {
+        item.photo = photoMap.get(item.id) ?? namePhotoMap.get(normalizeArabic(item.name)) ?? null;
       }
     }
   }
@@ -285,7 +336,19 @@ export default function StatisticsPage() {
         rows = currentStudents.map((student) => fromStudent(student));
       } else {
         const log = uniqueLogs.find((item) => item.week === Number(selectedWeek));
-        rows = log ? logMetrics(log, students) : [];
+        if (log) {
+          const logRows = logMetrics(log, students);
+          const nameToStudent = new Map(currentStudents.map((s) => [normalizeArabic(s.name), s]));
+          rows = logRows.map((r) => {
+            const matched = currentStudents.find((s) => s.id === r.id) || nameToStudent.get(normalizeArabic(r.name));
+            if (matched) {
+              return { ...r, id: matched.id, name: matched.name, halaqaId: matched.halaqaId, photo: matched.photo ?? r.photo };
+            }
+            return r;
+          });
+        } else {
+          rows = [];
+        }
       }
     }
     if (period === "monthly" || period === "all") {
@@ -300,21 +363,39 @@ export default function StatisticsPage() {
       ).filter((log) => log.week !== week);
 
       const map = new Map<string, StudentMetrics>();
-      for (const student of currentStudents) map.set(student.id, emptyMetrics(student));
+      for (const student of currentStudents) {
+        map.set(student.id, emptyMetrics(student));
+      }
 
-      for (const row of sourceLogs.flatMap((log) => logMetrics(log, students))) {
-        if (map.has(row.id)) {
-          map.set(row.id, add(map.get(row.id)!, row));
+      const nameToStudentId = new Map<string, string>();
+      for (const student of currentStudents) {
+        nameToStudentId.set(normalizeArabic(student.name), student.id);
+      }
+
+      for (const log of sourceLogs) {
+        const rowsForLog = logMetrics(log, students);
+        for (const row of rowsForLog) {
+          const targetId = map.has(row.id) ? row.id : nameToStudentId.get(normalizeArabic(row.name));
+          if (targetId && map.has(targetId)) {
+            map.set(targetId, add(map.get(targetId)!, row));
+          } else if (halaqaId === "all" && !targetId) {
+            map.set(row.id, row);
+            nameToStudentId.set(normalizeArabic(row.name), row.id);
+          }
         }
       }
 
       if (period === "all") {
         for (const student of currentStudents) {
-          map.set(student.id, add(map.get(student.id) ?? emptyMetrics(student), fromStudent(student)));
+          if (map.has(student.id)) {
+            map.set(student.id, add(map.get(student.id)!, fromStudent(student)));
+          }
         }
       } else if (selectedMonth === hijriMonthKey(dateFromLocalKey(weekStartDateIso) ?? new Date())) {
         for (const student of currentStudents) {
-          map.set(student.id, add(map.get(student.id) ?? emptyMetrics(student), fromStudentHijriMonth(student, selectedMonth, weekStartDateIso)));
+          if (map.has(student.id)) {
+            map.set(student.id, add(map.get(student.id)!, fromStudentHijriMonth(student, selectedMonth, weekStartDateIso)));
+          }
         }
       }
       rows = [...map.values()];

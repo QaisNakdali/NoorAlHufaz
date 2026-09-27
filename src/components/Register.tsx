@@ -295,7 +295,8 @@ function RegisterRow({
   onManage: () => void;
   onDetails: () => void;
 }) {
-  const { markDay, markAbsent, updateWard, toggleDailyRecitation, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso } = useApp();
+  const { markDay, markAbsent, updateWard, toggleDailyRecitation, toggleDailyAbsent, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso } = useApp();
+  const isAbsentToday = s.dailyAbsentDate === todayKey;
   const isRecitedToday = s.dailyRecitedDate === todayKey;
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
@@ -328,81 +329,183 @@ function RegisterRow({
       }`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      {/* رأس البطاقة: بيانات الطالب والإحصاءات والإجراءات في سطر مريح */}
-      <div className={`grid items-center gap-4 px-4 py-4 md:grid-cols-[minmax(220px,1fr)_minmax(190px,.75fr)_auto] sm:px-5 ${fade}`}>
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar photo={s.photo} name={s.name} size={58} frame={s.frame} crown={s.crown} glow={s.glow} />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={onDetails} className="truncate text-right font-display text-lg font-extrabold leading-tight text-ink underline-offset-4 hover:text-grape-600 hover:underline sm:text-xl">{s.name}</button>
-              {s.isTesting && <span className="shrink-0 rounded-full bg-sky-600 px-2.5 py-1 text-xs font-extrabold text-white">اختبار</span>}
-              <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-xs! shadow-none!" />
-              <span className="shrink-0 rounded-full bg-grape-100 px-2 py-0.5 text-xs font-extrabold text-grape-500">{halaqas.find((h) => h.id === s.halaqaId)?.name ?? "بلا حلقة"}</span>
-              <button
-                type="button"
-                onClick={onToggleExpand}
-                className="inline-flex items-center gap-1 rounded-xl border border-grape-200 bg-grape-50/80 px-2.5 py-1 text-xs font-extrabold text-grape-700 transition hover:bg-grape-100 active:scale-95"
-                title={isExpanded ? "طي أيام الطالب" : "عرض أيام الطالب (الأحد - الأربعاء)"}
-                aria-expanded={isExpanded}
-              >
-                <span>{isExpanded ? "طي الأيام" : "عرض الأيام"}</span>
-                <span className="text-[11px] font-bold text-grape-500">{isExpanded ? "▲" : "▼"}</span>
-              </button>
+      {/* حالة الطي: صف صغير ومضغوط Compact يتيح رؤية أكبر عدد من الطلاب */}
+      {!isExpanded ? (
+        <div className={`flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 sm:px-4 ${fade}`}>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Avatar photo={s.photo} name={s.name} size={42} frame={s.frame} crown={s.crown} glow={s.glow} />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button type="button" onClick={onDetails} className="truncate text-right font-display text-base font-extrabold leading-tight text-ink hover:text-grape-600 hover:underline">
+                  {s.name}
+                </button>
+                {s.isTesting && <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-extrabold text-white">اختبار</span>}
+                <LevelBadge level={level} className="px-2! py-0! text-[11px]! shadow-none!" />
+                <span className="rounded-full bg-grape-100 px-2 py-0.5 text-[11px] font-bold text-grape-500">
+                  {halaqas.find((h) => h.id === s.halaqaId)?.name ?? "بلا حلقة"}
+                </span>
+                {isAbsentToday && (
+                  <span className="rounded-full bg-coral-100 px-2 py-0.5 text-[11px] font-extrabold text-coral-600">
+                    غائب اليوم
+                  </span>
+                )}
+                {isRecitedToday && (
+                  <span className="rounded-full bg-mint-100 px-2 py-0.5 text-[11px] font-extrabold text-mint-700">
+                    تم التسميع ✓
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-xs">
+                <HeartsRow hearts={s.hearts} max={MAX_HEARTS} size="w-3.5 h-3.5" />
+                {noHearts && <span className="text-[10px] font-extrabold text-coral-600">نفدت القلوب</span>}
+                <span className="font-bold text-gold-600">+{ar(s.weekXp)} نقطة</span>
+                <span className="font-bold text-grape-500">· +{ar(s.weekCoins)} عملة</span>
+              </div>
             </div>
-            <div className="mt-2 flex items-center gap-2">
-              <HeartsRow hearts={s.hearts} max={MAX_HEARTS} size="w-6 h-6" />
-              {noHearts && <span className="rounded-full bg-coral-100 px-2 py-1 text-xs font-extrabold text-coral-600">نفدت القلوب</span>}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${requirementStyle[insight.memorization.requirement]}`}>{insight.memorization.label}</span>
-              <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${requirementStyle[insight.review.requirement]}`}>{insight.review.label}</span>
-              {insight.memorization.trend !== "insufficient-data" && <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${trendStyle[insight.memorization.trend]}`}>اتجاه الحفظ: {insight.memorization.trend === "improving" ? "يتحسن" : insight.memorization.trend === "declining" ? "يتراجع" : "ثابت"}</span>}
-              {insight.review.trend !== "insufficient-data" && <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${trendStyle[insight.review.trend]}`}>اتجاه المراجعة: {insight.review.trend === "improving" ? "يتحسن" : insight.review.trend === "declining" ? "يتراجع" : "ثابت"}</span>}
-            </div>
-            <p className="mt-2 max-w-2xl text-xs font-bold leading-5 text-grape-600">💡 {insight.advice}</p>
           </div>
-        </div>
 
-        <div className="min-w-0" title={`المستوى ${ar(level)} — باقي ${ar(need - into)} نقطة للمستوى التالي`}>
-          <div className="mb-2 flex items-center justify-between text-xs font-extrabold text-grape-500">
-            <span>تقدم المستوى</span><span>{ar(into)} / {ar(need)}</span>
-          </div>
-          <div className="h-2.5 overflow-hidden rounded-full bg-grape-100">
-            <div className="xp-fill h-full rounded-full transition-[width] duration-700" style={{ width: levelPct + "%" }} />
-          </div>
-        </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                toggleDailyRecitation(s.id);
+                if (!isRecitedToday) sfx.pop();
+              }}
+              className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all active:scale-95 ${
+                isRecitedToday
+                  ? "bg-mint-600 text-white shadow-sm hover:bg-mint-700"
+                  : "border-2 border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              }`}
+              title={isRecitedToday ? "تم تسميع الطالب اليوم — اضغط لإلغاء التحديد" : "اضغط لتعليم الطالب: تم التسميع اليوم"}
+            >
+              <Icon name={isRecitedToday ? "check" : "refresh"} className="h-3.5 w-3.5" strokeWidth={2.6} />
+              <span>{isRecitedToday ? "تم التسميع ✓" : "تم التسميع"}</span>
+            </button>
 
-        <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
-          <button
-            type="button"
-            onClick={() => {
-              toggleDailyRecitation(s.id);
-              if (!isRecitedToday) sfx.pop();
-            }}
-            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all active:scale-95 shadow-sm ${
-              isRecitedToday
-                ? "bg-mint-600 text-white shadow-[0_3px_0_#0a7a50] hover:bg-mint-700"
-                : "border-2 border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:border-amber-400"
-            }`}
-            title={isRecitedToday ? "تم تسميع الطالب اليوم — اضغط لإلغاء التحديد" : "اضغط لتعليم الطالب: تم التسميع اليوم"}
-          >
-            <Icon name={isRecitedToday ? "check" : "refresh"} className="h-4 w-4" strokeWidth={2.6} />
-            <span>{isRecitedToday ? "تم التسميع ✓" : "تم التسميع"}</span>
-          </button>
-          <div className="rounded-xl bg-gold-400/15 px-3 py-2 text-center">
-            <p className="font-display text-lg font-extrabold leading-5 text-gold-600">+{ar(s.weekXp)}</p>
-            <p className="mt-1 text-xs font-bold text-grape-500">نقطة</p>
+            <button
+              type="button"
+              onClick={() => {
+                toggleDailyAbsent(s.id);
+                if (!isAbsentToday) sfx.pop();
+              }}
+              className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all active:scale-95 ${
+                isAbsentToday
+                  ? "bg-coral-500 text-white shadow-sm hover:bg-coral-600"
+                  : "border-2 border-coral-200 bg-coral-50/70 text-coral-700 hover:bg-coral-100"
+              }`}
+              title={isAbsentToday ? "مسجل غائب اليوم — اضغط لإلغاء الغياب" : "تسجيل غياب الطالب اليوم"}
+            >
+              <Icon name={isAbsentToday ? "x" : "alert"} className="h-3.5 w-3.5" strokeWidth={2.6} />
+              <span>{isAbsentToday ? "غائب اليوم ✕" : "غائب"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="inline-flex items-center gap-1 rounded-xl border border-grape-200 bg-grape-50 px-2.5 py-1.5 text-xs font-extrabold text-grape-700 transition hover:bg-grape-100 active:scale-95"
+              title="عرض أيام الطالب (الأحد - الأربعاء)"
+              aria-expanded={false}
+            >
+              <span>عرض الأيام</span>
+              <span className="text-[11px] font-bold text-grape-500">▼</span>
+            </button>
           </div>
-          <div className="rounded-xl bg-grape-100 px-3 py-2 text-center">
-            <p className="flex items-center gap-1 font-display text-lg font-extrabold leading-5 text-grape-600"><Coin className="h-4 w-4" />+{ar(s.weekCoins)}</p>
-            <p className="mt-1 text-xs font-bold text-grape-500">عملة</p>
-          </div>
-          <button type="button" onClick={() => removeHeart(s.id)} disabled={noHearts} title="خصم قلب" className="grid h-10 w-10 place-items-center rounded-xl bg-coral-500/10 text-coral-500 transition hover:bg-coral-500 hover:text-white disabled:opacity-30"><Icon name="heart" fill className="h-4.5 w-4.5" /></button>
-          <button type="button" onClick={() => toggleStudentTesting(s.id)} className={`h-10 rounded-xl px-3 text-xs font-extrabold ${s.isTesting ? "bg-sky-600 text-white" : "border-2 border-sky-200 bg-sky-50 text-sky-700"}`}>{s.isTesting ? "إنهاء الاختبار" : "اختبار"}</button>
-          <button type="button" onClick={onManage} title="إعدادات الطالب" className="grid h-10 w-10 place-items-center rounded-xl bg-grape-100 text-grape-600 transition hover:bg-grape-600 hover:text-white"><Icon name="wand" className="h-4.5 w-4.5" /></button>
-          <DeleteBtn label="" onDelete={() => removeStudent(s.id)} />
         </div>
-      </div>
+      ) : (
+        /* رأس البطاقة في حالة الفتح: تفاصيل كاملة مع تقدم المستوى والإجراءات */
+        <div className={`grid items-center gap-4 px-4 py-4 md:grid-cols-[minmax(220px,1fr)_minmax(190px,.75fr)_auto] sm:px-5 ${fade}`}>
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar photo={s.photo} name={s.name} size={58} frame={s.frame} crown={s.crown} glow={s.glow} />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={onDetails} className="truncate text-right font-display text-lg font-extrabold leading-tight text-ink underline-offset-4 hover:text-grape-600 hover:underline sm:text-xl">{s.name}</button>
+                {s.isTesting && <span className="shrink-0 rounded-full bg-sky-600 px-2.5 py-1 text-xs font-extrabold text-white">اختبار</span>}
+                <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-xs! shadow-none!" />
+                <span className="shrink-0 rounded-full bg-grape-100 px-2 py-0.5 text-xs font-extrabold text-grape-500">{halaqas.find((h) => h.id === s.halaqaId)?.name ?? "بلا حلقة"}</span>
+                {isAbsentToday && <span className="shrink-0 rounded-full bg-coral-100 px-2 py-0.5 text-xs font-extrabold text-coral-600">غائب اليوم</span>}
+                {isRecitedToday && <span className="shrink-0 rounded-full bg-mint-100 px-2 py-0.5 text-xs font-extrabold text-mint-700">تم التسميع ✓</span>}
+                <button
+                  type="button"
+                  onClick={onToggleExpand}
+                  className="inline-flex items-center gap-1 rounded-xl border border-grape-200 bg-grape-50/80 px-2.5 py-1 text-xs font-extrabold text-grape-700 transition hover:bg-grape-100 active:scale-95"
+                  title="طي أيام الطالب"
+                  aria-expanded={true}
+                >
+                  <span>طي الأيام</span>
+                  <span className="text-[11px] font-bold text-grape-500">▲</span>
+                </button>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <HeartsRow hearts={s.hearts} max={MAX_HEARTS} size="w-6 h-6" />
+                {noHearts && <span className="rounded-full bg-coral-100 px-2 py-1 text-xs font-extrabold text-coral-600">نفدت القلوب</span>}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${requirementStyle[insight.memorization.requirement]}`}>{insight.memorization.label}</span>
+                <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${requirementStyle[insight.review.requirement]}`}>{insight.review.label}</span>
+                {insight.memorization.trend !== "insufficient-data" && <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${trendStyle[insight.memorization.trend]}`}>اتجاه الحفظ: {insight.memorization.trend === "improving" ? "يتحسن" : insight.memorization.trend === "declining" ? "يتراجع" : "ثابت"}</span>}
+                {insight.review.trend !== "insufficient-data" && <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${trendStyle[insight.review.trend]}`}>اتجاه المراجعة: {insight.review.trend === "improving" ? "يتحسن" : insight.review.trend === "declining" ? "يتراجع" : "ثابت"}</span>}
+              </div>
+              <p className="mt-2 max-w-2xl text-xs font-bold leading-5 text-grape-600">💡 {insight.advice}</p>
+            </div>
+          </div>
+
+          <div className="min-w-0" title={`المستوى ${ar(level)} — باقي ${ar(need - into)} نقطة للمستوى التالي`}>
+            <div className="mb-2 flex items-center justify-between text-xs font-extrabold text-grape-500">
+              <span>تقدم المستوى</span><span>{ar(into)} / {ar(need)}</span>
+            </div>
+            <div className="h-2.5 overflow-hidden rounded-full bg-grape-100">
+              <div className="xp-fill h-full rounded-full transition-[width] duration-700" style={{ width: levelPct + "%" }} />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                toggleDailyRecitation(s.id);
+                if (!isRecitedToday) sfx.pop();
+              }}
+              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all active:scale-95 shadow-sm ${
+                isRecitedToday
+                  ? "bg-mint-600 text-white shadow-[0_3px_0_#0a7a50] hover:bg-mint-700"
+                  : "border-2 border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:border-amber-400"
+              }`}
+              title={isRecitedToday ? "تم تسميع الطالب اليوم — اضغط لإلغاء التحديد" : "اضغط لتعليم الطالب: تم التسميع اليوم"}
+            >
+              <Icon name={isRecitedToday ? "check" : "refresh"} className="h-4 w-4" strokeWidth={2.6} />
+              <span>{isRecitedToday ? "تم التسميع ✓" : "تم التسميع"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                toggleDailyAbsent(s.id);
+                if (!isAbsentToday) sfx.pop();
+              }}
+              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all active:scale-95 shadow-sm ${
+                isAbsentToday
+                  ? "bg-coral-500 text-white shadow-[0_3px_0_#9f2b43] hover:bg-coral-600"
+                  : "border-2 border-coral-200 bg-coral-50/70 text-coral-700 hover:bg-coral-100 hover:border-coral-300"
+              }`}
+              title={isAbsentToday ? "مسجل غائب اليوم — اضغط لإلغاء الغياب" : "تسجيل غياب الطالب اليوم"}
+            >
+              <Icon name={isAbsentToday ? "x" : "alert"} className="h-4 w-4" strokeWidth={2.6} />
+              <span>{isAbsentToday ? "غائب اليوم ✕" : "غائب"}</span>
+            </button>
+            <div className="rounded-xl bg-gold-400/15 px-3 py-2 text-center">
+              <p className="font-display text-lg font-extrabold leading-5 text-gold-600">+{ar(s.weekXp)}</p>
+              <p className="mt-1 text-xs font-bold text-grape-500">نقطة</p>
+            </div>
+            <div className="rounded-xl bg-grape-100 px-3 py-2 text-center">
+              <p className="flex items-center gap-1 font-display text-lg font-extrabold leading-5 text-grape-600"><Coin className="h-4 w-4" />+{ar(s.weekCoins)}</p>
+              <p className="mt-1 text-xs font-bold text-grape-500">عملة</p>
+            </div>
+            <button type="button" onClick={() => removeHeart(s.id)} disabled={noHearts} title="خصم قلب" className="grid h-10 w-10 place-items-center rounded-xl bg-coral-500/10 text-coral-500 transition hover:bg-coral-500 hover:text-white disabled:opacity-30"><Icon name="heart" fill className="h-4.5 w-4.5" /></button>
+            <button type="button" onClick={() => toggleStudentTesting(s.id)} className={`h-10 rounded-xl px-3 text-xs font-extrabold ${s.isTesting ? "bg-sky-600 text-white" : "border-2 border-sky-200 bg-sky-50 text-sky-700"}`}>{s.isTesting ? "إنهاء الاختبار" : "اختبار"}</button>
+            <button type="button" onClick={onManage} title="إعدادات الطالب" className="grid h-10 w-10 place-items-center rounded-xl bg-grape-100 text-grape-600 transition hover:bg-grape-600 hover:text-white"><Icon name="wand" className="h-4.5 w-4.5" /></button>
+            <DeleteBtn label="" onDelete={() => removeStudent(s.id)} />
+          </div>
+        </div>
+      )}
 
       {/* خطة أسبوعية واضحة ومدمجة — مطوية افتراضيًا */}
       {isExpanded && (
@@ -599,7 +702,7 @@ export default function Register() {
   const [teacherDraft, setTeacherDraft] = useState<string[]>([]);
   const [teacherFilter, setTeacherFilter] = useState<string>("all");
   const [expandedStudentIds, setExpandedStudentIds] = useState<Set<string>>(new Set());
-  const [recitationFilter, setRecitationFilter] = useState<"all" | "pending" | "recited">("all");
+  const [recitationFilter, setRecitationFilter] = useState<"all" | "pending" | "recited" | "absent">("all");
   const todayKey = localDateKey(new Date());
   const [weekDateDraft, setWeekDateDraft] = useState(hijriInputValue(weekStartDateIso));
   useEffect(() => setWeekDateDraft(hijriInputValue(weekStartDateIso)), [weekStartDateIso]);
@@ -636,15 +739,18 @@ export default function Register() {
   const filteredList = useMemo(() => {
     return byName.filter((s) => {
       const isRecited = s.dailyRecitedDate === todayKey;
-      if (recitationFilter === "pending") return !isRecited;
+      const isAbsent = s.dailyAbsentDate === todayKey;
+      if (recitationFilter === "pending") return !isRecited && !isAbsent;
       if (recitationFilter === "recited") return isRecited;
+      if (recitationFilter === "absent") return isAbsent;
       return true;
     });
   }, [byName, recitationFilter, todayKey]);
 
   const totalCount = countedStudents.length;
   const recitedCount = countedStudents.filter((s) => s.dailyRecitedDate === todayKey).length;
-  const pendingCount = Math.max(0, totalCount - recitedCount);
+  const absentCount = countedStudents.filter((s) => s.dailyAbsentDate === todayKey).length;
+  const pendingCount = Math.max(0, totalCount - recitedCount - absentCount);
 
   const toggleStudentExpand = (id: string) => {
     setExpandedStudentIds((prev) => {
@@ -821,6 +927,18 @@ export default function Register() {
               <Icon name="check" className="h-3.5 w-3.5" strokeWidth={3} />
               <span>تم التسميع ({ar(recitedCount)})</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setRecitationFilter("absent")}
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-extrabold transition ${
+                recitationFilter === "absent"
+                  ? "bg-coral-500 text-white shadow"
+                  : "border border-coral-200 bg-coral-50 text-coral-700 hover:bg-coral-100"
+              }`}
+            >
+              <Icon name="alert" className="h-3.5 w-3.5" strokeWidth={2.8} />
+              <span>غائبين ({ar(absentCount)})</span>
+            </button>
 
             <div className="mx-1 hidden h-6 w-px bg-grape-200 sm:block" />
 
@@ -873,6 +991,23 @@ export default function Register() {
                 className="mt-4 rounded-xl bg-grape-600 px-4 py-2 text-xs font-extrabold text-white shadow hover:bg-grape-700"
               >
                 عرض جميع الطلاب
+              </button>
+            </div>
+          ) : recitationFilter === "absent" && totalCount > 0 ? (
+            <div>
+              <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-coral-50 text-3xl">✨</span>
+              <p className="mt-3 font-display text-xl font-extrabold text-coral-600">
+                لا يوجد طلاب مسجلون كغائبين اليوم
+              </p>
+              <p className="mt-1 text-sm font-bold text-grape-500">
+                جميع الطلاب حاضرون أو بانتظار التسميع
+              </p>
+              <button
+                type="button"
+                onClick={() => setRecitationFilter("all")}
+                className="mt-4 rounded-xl bg-grape-600 px-4 py-2 text-xs font-extrabold text-white shadow hover:bg-grape-700"
+              >
+                عرض جميع الطلاب ({ar(totalCount)})
               </button>
             </div>
           ) : recitationFilter === "recited" && totalCount > 0 ? (
