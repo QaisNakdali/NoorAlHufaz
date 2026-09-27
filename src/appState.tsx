@@ -1155,13 +1155,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
           let levelCoins = 0;
           let nextHighest = highestRewarded;
 
-          // مكافأة ارتقاء المستوى: تُمنح مرة واحدة فقط لكل مستوى (+5 عملات لكل مستوى)
+          // مكافأة ارتقاء المستوى: تُمنح عند الصعود (+5 عملات لكل مستوى)
           if (turningOn && newLvl > highestRewarded) {
             const levelsUp = newLvl - highestRewarded;
             levelCoins = levelsUp * LEVEL_COIN_REWARD;
             nextHighest = newLvl;
             leveledName = s.name;
             leveledTo = newLvl;
+          } else if (!turningOn && newLvl < highestRewarded) {
+            // إلغاء أثر الارتقاء الذي حدث بسبب هذا التقييم عند التراجع عنه
+            const levelsDown = highestRewarded - newLvl;
+            levelCoins = -levelsDown * LEVEL_COIN_REWARD;
+            nextHighest = newLvl;
           }
 
           const dayLabel = DAYS.find((d) => d.key === day)?.label ?? "";
@@ -1196,6 +1201,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             msgKind = "xp";
             msgText = `${target.name}: +${def.xp} نقاط ${def.label === "حضور" ? "حضور" : "تسميع " + def.label}`;
           }
+        } else {
+          msgKind = "coin";
+          msgText = `${target.name}: أُلغي تسجيل ${def.label === "حضور" ? "الحضور" : "تسميع " + def.label} (-${def.coins} عملات)`;
         }
 
         return nextList;
@@ -1270,32 +1278,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /** تبديل حالة تم التسميع اليومية للطالب */
   const toggleDailyRecitation = useCallback((id: string, targetDateKey?: string) => {
     const today = targetDateKey || localDateKey(new Date());
-    const dayKey = getWeekDayKey(today, weekStartDateIso);
     setStudents((ss) => ss.map((s) => {
       if (s.id !== id) return s;
       const isRecited = s.dailyRecitedDate === today;
       const turningOn = !isRecited;
-      const updatedDays: WeekDays = {
-        ...s.days,
-        [dayKey]: {
-          ...s.days[dayKey],
-          absent: turningOn ? false : s.days[dayKey].absent,
-          date: turningOn ? today : s.days[dayKey].date,
-          a: turningOn ? true : s.days[dayKey].a,
-          h: turningOn ? (s.days[dayKey].h || !s.days[dayKey].r ? true : s.days[dayKey].h) : s.days[dayKey].h,
-        },
-      };
-
       return {
         ...s,
         dailyRecitedDate: turningOn ? today : null,
         dailyAbsentDate: turningOn && s.dailyAbsentDate === today ? null : s.dailyAbsentDate,
-        days: updatedDays,
-        weekXp: weekXpOf(updatedDays),
-        weekCoins: weekCoinsOf(updatedDays),
       };
     }));
-  }, [weekStartDateIso]);
+  }, []);
 
   /** تبديل حالة الغياب اليومية للطالب مع ربطه باليوم والتاريخ الحقيقي */
   const toggleDailyAbsent = useCallback((id: string, targetDateKey?: string) => {
@@ -1752,8 +1745,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const updateWeekLog = useCallback((targetWeek: number, next: WeekLog) => {
-    setWeeksLog((logs) => logs.map((log) => log.week === targetWeek ? { ...next, week: targetWeek } : log));
-    // حفظ هادئ
+    const updatedEntries = next.records ? next.records.map((r) => {
+      const mockStudent = r as unknown as Student;
+      const mem = measureStudentWork(mockStudent, "memorization");
+      const rev = measureStudentWork(mockStudent, "review");
+      return {
+        id: r.id,
+        name: r.name,
+        photo: r.photo,
+        xp: r.xp,
+        weekXp: weekXpOf(r.days),
+        level: levelInfo(r.xp).level,
+        coins: r.coins,
+        hearts: r.hearts,
+        attendanceDays: DAYS.filter((d) => r.days[d.key].a).length,
+        absenceDays: DAYS.filter((d) => r.days[d.key].absent === true).length,
+        evaluatedDays: DAYS.filter((d) => r.days[d.key].a || r.days[d.key].absent === true).length,
+        memorizationLines: mem.lines,
+        reviewLines: rev.lines,
+        memorizationVerses: mem.verses,
+        reviewVerses: rev.verses,
+        memorizationPages: mem.pages,
+        reviewPages: rev.pages,
+        memorizationDays: mem.sessions,
+        reviewDays: rev.sessions,
+        isTesting: r.isTesting === true,
+        halaqaId: r.halaqaId ?? null,
+      };
+    }) : (next.students ?? []);
+
+    const updatedLog: WeekLog = {
+      ...next,
+      week: targetWeek,
+      students: updatedEntries,
+      top: [...updatedEntries].sort((a, b) => (b.weekXp ?? 0) - (a.weekXp ?? 0) || (b.xp ?? 0) - (a.xp ?? 0)).slice(0, 10),
+    };
+
+    setWeeksLog((logs) => logs.map((log) => log.week === targetWeek ? updatedLog : log));
+    toast("success", "تم حفظ تعديلات الأسبوع وتحديث الإحصائيات");
   }, [toast]);
 
   /* ===== الرحلة الأسبوعية ===== */
@@ -1859,10 +1888,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : null,
     };
     setWeeksLog((logs) => [log, ...logs.filter((l) => l.week !== week)]);
-    // لا يُوسم المنتج بأنه عُرض إلا بعد إكمال الحفل. غير المحدد يبقى متاحًا للحفلات القادمة.
-    if (showNewProducts && ceremonyProductIds.length > 0) {
+    // لا يُوسم المنتج بأنه عُرض إلا بعد إكمال الحفل. المنتجات المعروضة تُستبعد من الحفلات القادمة.
+    if (showNewProducts) {
       const selected = new Set(ceremonyProductIds);
-      setProducts((items) => items.map((item) => selected.has(item.id) && item.shownInCeremonyWeek == null ? { ...item, shownInCeremonyWeek: week, ceremonyPending: false } : item));
+      const toMark = ceremonyProductIds.length > 0 ? selected : new Set(products.filter((p) => p.showInCeremony !== false && p.shownInCeremonyWeek == null && !p.shownInCeremony).map((p) => p.id));
+      if (toMark.size > 0) {
+        setProducts((items) => items.map((item) => toMark.has(item.id) ? { ...item, shownInCeremonyWeek: week, shownInCeremony: true, ceremonyPending: false } : item));
+      }
     }
     // أسبوع جديد: كشف نظيف — والقلوب تبقى كما هي (تُستعاد بالشراء أو بمنحة المعلم فقط)
     setWeek((w) => w + 1);

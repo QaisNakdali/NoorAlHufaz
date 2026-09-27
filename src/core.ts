@@ -105,6 +105,8 @@ export type DailyWard = {
   reviewVerses: number;
   memorizationLines: number;
   reviewLines: number;
+  memorizationPages?: number;
+  reviewPages?: number;
   memorizationFromVerse?: number;
   memorizationToVerse?: number;
   reviewFromVerse?: number;
@@ -258,6 +260,7 @@ export type ShopItem = {
   ceremonyPending?: boolean;
   /** خيار التحكم في ظهور المنتج في الحفل الأسبوعي */
   showInCeremony?: boolean;
+  shownInCeremony?: boolean;
   stock?: number | null; // الكمية المتوفرة لدى المعلم (null = غير محدودة) — للنوعين
 };
 
