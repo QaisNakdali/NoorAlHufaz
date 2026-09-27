@@ -25,6 +25,7 @@ import {
   equipOn,
   findItem,
   DEFAULT_HEART_PRICE,
+  getWeekDayKey,
   levelInfo,
   LEVEL_COIN_REWARD,
   MAX_HEARTS,
@@ -185,7 +186,7 @@ function normStudent(s: Student): Student {
     if (typeof v === "boolean") out[d.key] = { a: v, h: v, r: false };
     else if (v && typeof v === "object") {
       const e = v as Record<string, unknown>;
-      out[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true };
+      out[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined };
     }
   }
   return {
@@ -260,7 +261,7 @@ function normWeekRecord(r: any): WeekStudentRecord {
     if (typeof v === "boolean") days[d.key] = { a: v, h: v, r: false };
     else if (v && typeof v === "object") {
       const e = v as Record<string, unknown>;
-      days[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true };
+      days[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined };
     }
   }
   const ward = emptyWeeklyWard();
@@ -1223,11 +1224,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toast("error", `${st.name}: توجد بيانات مسجلة لهذا اليوم؛ ألغِها يدويًا قبل تحديده كغائب حتى لا نفقد أي سجل`);
       return;
     }
-    setStudents((ss) => ss.map((s) => s.id === id
-      ? { ...s, days: { ...s.days, [day]: { ...s.days[day], absent: turningOn } } }
-      : s));
-    toast(turningOn ? "success" : "xp", turningOn ? `سُجّل ${st.name} غائبًا دون تقييم الحفظ والمراجعة` : `أُلغيت حالة الغياب عن ${st.name}`);
-  }, [students, toast]);
+    const dayIndex = DAYS.findIndex((d) => d.key === day);
+    const dayDate = localDateKey(addCalendarDays(weekStartDateIso, dayIndex >= 0 ? dayIndex : 0));
+    const today = localDateKey(new Date());
+
+    setStudents((ss) => ss.map((s) => {
+      if (s.id !== id) return s;
+      const updatedDays: WeekDays = {
+        ...s.days,
+        [day]: {
+          ...s.days[day],
+          absent: turningOn,
+          date: turningOn ? dayDate : undefined,
+          a: turningOn ? false : s.days[day].a,
+          h: turningOn ? false : s.days[day].h,
+          r: turningOn ? false : s.days[day].r,
+        },
+      };
+      return {
+        ...s,
+        days: updatedDays,
+        dailyAbsentDate: dayDate === today ? (turningOn ? today : null) : s.dailyAbsentDate,
+        dailyRecitedDate: dayDate === today && turningOn && s.dailyRecitedDate === today ? null : s.dailyRecitedDate,
+        weekXp: weekXpOf(updatedDays),
+        weekCoins: weekCoinsOf(updatedDays),
+      };
+    }));
+    toast(turningOn ? "success" : "xp", turningOn ? `سُجّل ${st.name} غائبًا ليوم ${DAYS.find((d) => d.key === day)?.label}` : `أُلغي غياب ${st.name} ليوم ${DAYS.find((d) => d.key === day)?.label}`);
+  }, [students, toast, weekStartDateIso]);
 
   const updateWard = useCallback((id: string, day: DayKey, ward: DailyWard) => {
     setStudents((ss) => ss.map((s) => s.id === id
@@ -1245,31 +1269,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /** تبديل حالة تم التسميع اليومية للطالب */
   const toggleDailyRecitation = useCallback((id: string, targetDateKey?: string) => {
-    const today = targetDateKey || localDateKey();
+    const today = targetDateKey || localDateKey(new Date());
+    const dayKey = getWeekDayKey(today, weekStartDateIso);
     setStudents((ss) => ss.map((s) => {
       if (s.id !== id) return s;
       const isRecited = s.dailyRecitedDate === today;
+      const turningOn = !isRecited;
+      const updatedDays: WeekDays = {
+        ...s.days,
+        [dayKey]: {
+          ...s.days[dayKey],
+          absent: turningOn ? false : s.days[dayKey].absent,
+          date: turningOn ? today : s.days[dayKey].date,
+          a: turningOn ? true : s.days[dayKey].a,
+          h: turningOn ? (s.days[dayKey].h || !s.days[dayKey].r ? true : s.days[dayKey].h) : s.days[dayKey].h,
+        },
+      };
+
       return {
         ...s,
-        dailyRecitedDate: isRecited ? null : today,
-        dailyAbsentDate: !isRecited && s.dailyAbsentDate === today ? null : s.dailyAbsentDate,
+        dailyRecitedDate: turningOn ? today : null,
+        dailyAbsentDate: turningOn && s.dailyAbsentDate === today ? null : s.dailyAbsentDate,
+        days: updatedDays,
+        weekXp: weekXpOf(updatedDays),
+        weekCoins: weekCoinsOf(updatedDays),
       };
     }));
-  }, []);
+  }, [weekStartDateIso]);
 
-  /** تبديل حالة الغياب اليومية للطالب */
+  /** تبديل حالة الغياب اليومية للطالب مع ربطه باليوم والتاريخ الحقيقي */
   const toggleDailyAbsent = useCallback((id: string, targetDateKey?: string) => {
-    const today = targetDateKey || localDateKey();
+    const today = targetDateKey || localDateKey(new Date());
+    const dayKey = getWeekDayKey(today, weekStartDateIso);
     setStudents((ss) => ss.map((s) => {
       if (s.id !== id) return s;
-      const isAbsent = s.dailyAbsentDate === today;
+      const entry = s.days[dayKey];
+      const isAbsent = s.dailyAbsentDate === today || (entry?.absent === true && (entry.date === today || !entry.date));
+      const turningOn = !isAbsent;
+
+      const updatedDays: WeekDays = {
+        ...s.days,
+        [dayKey]: {
+          ...s.days[dayKey],
+          absent: turningOn,
+          date: turningOn ? today : undefined,
+          a: turningOn ? false : s.days[dayKey].a,
+          h: turningOn ? false : s.days[dayKey].h,
+          r: turningOn ? false : s.days[dayKey].r,
+        },
+      };
+
       return {
         ...s,
-        dailyAbsentDate: isAbsent ? null : today,
-        dailyRecitedDate: !isAbsent && s.dailyRecitedDate === today ? null : s.dailyRecitedDate,
+        dailyAbsentDate: turningOn ? today : null,
+        dailyRecitedDate: turningOn && s.dailyRecitedDate === today ? null : s.dailyRecitedDate,
+        days: updatedDays,
+        weekXp: weekXpOf(updatedDays),
+        weekCoins: weekCoinsOf(updatedDays),
       };
     }));
-  }, []);
+  }, [weekStartDateIso]);
 
   /* ===== الخبرة والعملات اليدوية ===== */
   const addXp = useCallback(

@@ -1,5 +1,5 @@
 /* الأنواع والبيانات والمنطق الأساسي للمنصة */
-import { currentHijriMonthBounds } from "./hijriDate";
+import { addCalendarDays, currentHijriMonthBounds, dateFromLocalKey, localDateKey } from "./hijriDate";
 
 /* ---------- أدوات ---------- */
 export const ar = (n: number | string): string =>
@@ -92,7 +92,7 @@ export type DayPart = "a" | "h" | "r"; // حضور | تسميع حفظ | تسم�
 export type RecitationPart = "h" | "r";
 export type RecitationRating = "excellent" | "very-good";
 /** absent حالة مستقلة اختيارية؛ غيابها في البيانات القديمة يعني أن اليوم غير محدد، لا أنه غياب. */
-export type DayEntry = Record<DayPart, boolean> & { absent?: boolean };
+export type DayEntry = Record<DayPart, boolean> & { absent?: boolean; date?: string };
 export type WeekDays = Record<DayKey, DayEntry>;
 export type RecitationRatings = Record<DayKey, Partial<Record<RecitationPart, RecitationRating>>>;
 
@@ -136,6 +136,21 @@ export const RECITE_COINS = 5;
 export function emptyWeekDays(): WeekDays {
   const mk = (): DayEntry => ({ a: false, h: false, r: false, absent: false });
   return { sun: mk(), mon: mk(), tue: mk(), wed: mk() };
+}
+
+export function getWeekDayKey(dateKey: string, weekStartDateIso?: string): DayKey {
+  if (weekStartDateIso) {
+    for (let i = 0; i < DAYS.length; i++) {
+      const d = addCalendarDays(weekStartDateIso, i);
+      if (localDateKey(d) === dateKey) return DAYS[i].key;
+    }
+  }
+  const d = dateFromLocalKey(dateKey) ?? new Date();
+  const dayIdx = d.getDay(); // 0 = sun, 1 = mon, 2 = tue, 3 = wed
+  if (dayIdx >= 0 && dayIdx < DAYS.length) {
+    return DAYS[dayIdx].key;
+  }
+  return "wed";
 }
 
 export function emptyRecitationRatings(): RecitationRatings {

@@ -103,7 +103,14 @@ export function measureStudentWork(student: Student, kind: "memorization" | "rev
   const part = kind === "memorization" ? "h" : "r";
   const completed = DAYS.filter((d) => {
     const entry = student.days?.[d.key];
-    return !!entry && !entry.absent && !!entry[part];
+    const ward = student.ward?.[d.key];
+    if (!entry || entry.absent) return false;
+    if (entry[part]) return true;
+    if (kind === "memorization") {
+      return Number(ward?.memorizationLines) > 0 || Number(ward?.memorizationVerses) > 0 || !!ward?.memorization?.trim();
+    } else {
+      return Number(ward?.reviewLines) > 0 || Number(ward?.reviewVerses) > 0 || !!ward?.review?.trim();
+    }
   });
   const verses = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationVerses : student.ward?.[d.key]?.reviewVerses) || 0), 0);
   const enteredLines = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationLines : student.ward?.[d.key]?.reviewLines) || 0), 0);
@@ -138,27 +145,19 @@ export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAn
   const history = weeksLog
     .map((w) => {
       const record = w.records?.find((r) => r.id === student.id || r.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
-      if (record) {
-        const mem = measureStudentWork(record as unknown as Student, "memorization");
-        const rev = measureStudentWork(record as unknown as Student, "review");
-        return {
-          id: record.id,
-          name: record.name,
-          memorizationPages: mem.pages,
-          reviewPages: rev.pages,
-          memorizationLines: mem.lines,
-          reviewLines: rev.lines,
-        };
-      }
       const entry = (w.students ?? w.top).find((e) => e.id === student.id || e.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
-      if (entry) {
+      if (record || entry) {
+        const memRecord = record ? measureStudentWork(record as unknown as Student, "memorization") : null;
+        const revRecord = record ? measureStudentWork(record as unknown as Student, "review") : null;
+        const entryMemPages = entry?.memorizationPages ?? ((entry?.memorizationLines ?? 0) / 15);
+        const entryRevPages = entry?.reviewPages ?? ((entry?.reviewLines ?? 0) / 15);
         return {
-          id: entry.id,
-          name: entry.name,
-          memorizationPages: entry.memorizationPages ?? ((entry.memorizationLines ?? 0) / 15),
-          reviewPages: entry.reviewPages ?? ((entry.reviewLines ?? 0) / 15),
-          memorizationLines: entry.memorizationLines ?? 0,
-          reviewLines: entry.reviewLines ?? 0,
+          id: record?.id ?? entry?.id ?? student.id,
+          name: record?.name ?? entry?.name ?? student.name,
+          memorizationPages: Math.max(memRecord?.pages ?? 0, entryMemPages || 0),
+          reviewPages: Math.max(revRecord?.pages ?? 0, entryRevPages || 0),
+          memorizationLines: Math.max(memRecord?.lines ?? 0, entry?.memorizationLines ?? 0),
+          reviewLines: Math.max(revRecord?.lines ?? 0, entry?.reviewLines ?? 0),
         };
       }
       return null;
