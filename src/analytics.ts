@@ -127,8 +127,42 @@ export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAn
   const memorization = measureStudentWork(student, "memorization");
   const review = measureStudentWork(student, "review");
   const recitationSessions = memorization.sessions + review.sessions;
+  const normTarget = student.name
+    .replace(/[ًٌٍَُِّْـ]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .trim()
+    .toLowerCase();
+
   const history = weeksLog
-    .map((w) => (w.students ?? w.top).find((e) => e.id === student.id))
+    .map((w) => {
+      const record = w.records?.find((r) => r.id === student.id || r.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
+      if (record) {
+        const mem = measureStudentWork(record as unknown as Student, "memorization");
+        const rev = measureStudentWork(record as unknown as Student, "review");
+        return {
+          id: record.id,
+          name: record.name,
+          memorizationPages: mem.pages,
+          reviewPages: rev.pages,
+          memorizationLines: mem.lines,
+          reviewLines: rev.lines,
+        };
+      }
+      const entry = (w.students ?? w.top).find((e) => e.id === student.id || e.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
+      if (entry) {
+        return {
+          id: entry.id,
+          name: entry.name,
+          memorizationPages: entry.memorizationPages ?? ((entry.memorizationLines ?? 0) / 15),
+          reviewPages: entry.reviewPages ?? ((entry.reviewLines ?? 0) / 15),
+          memorizationLines: entry.memorizationLines ?? 0,
+          reviewLines: entry.reviewLines ?? 0,
+        };
+      }
+      return null;
+    })
     .filter((e): e is NonNullable<typeof e> => !!e);
   const previous = history[0];
   const previousPages = previous

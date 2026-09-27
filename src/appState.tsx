@@ -136,6 +136,7 @@ type Ctx = State & {
   markAbsent: (id: string, day: DayKey) => void;
   updateWard: (id: string, day: DayKey, ward: DailyWard) => void;
   toggleDailyRecitation: (id: string, dateKey?: string) => void;
+  toggleDailyAbsent: (id: string, dateKey?: string) => void;
 
   addXp: (id: string, amount: number) => void;
   deductXp: (id: string, amount: number) => void;
@@ -247,6 +248,7 @@ function normStudent(s: Student): Student {
     memorizationRecords: Array.isArray(s.memorizationRecords) ? s.memorizationRecords : [],
     highestRewardedLevel: typeof s.highestRewardedLevel === "number" ? s.highestRewardedLevel : levelInfo(typeof s.xp === "number" ? Math.max(0, s.xp) : 0).level,
     dailyRecitedDate: typeof s.dailyRecitedDate === "string" ? s.dailyRecitedDate : null,
+    dailyAbsentDate: typeof s.dailyAbsentDate === "string" ? s.dailyAbsentDate : null,
   };
 }
 
@@ -290,6 +292,7 @@ function normWeekRecord(r: any): WeekStudentRecord {
     xp: typeof r?.xp === "number" ? Math.max(0, r.xp) : 0,
     coins: typeof r?.coins === "number" ? Math.max(0, r.coins) : 0,
     dailyRecitedDate: typeof r?.dailyRecitedDate === "string" ? r.dailyRecitedDate : null,
+    dailyAbsentDate: typeof r?.dailyAbsentDate === "string" ? r.dailyAbsentDate : null,
   };
 }
 
@@ -536,9 +539,10 @@ export function mergeLocalChanges(
     && typeof base === "number" && typeof local === "number" && typeof remote === "number") {
     return Math.max(0, remote + (local - base));
   }
-  // تعارض على نفس الحقل غير التراكمي لا يمكن دمجه بأمان: نحافظ على النسخة السحابية
-  // ونبلغ المستخدم بدل أن تكتب النسخة القديمة فوق تعديل معلم آخر بصمت.
-  noteConflict(conflicts, path, "same-field");
+  // إذا اختلف التعديل المحلي عن الأساس، فالأولوية لتعديل المعلم على هذا الجهاز لضمان عدم ضياع أي كتابة أو إدخال
+  if (!sameValue(local, base)) {
+    return local;
+  }
   return remote;
 }
 
@@ -679,13 +683,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dirtyRef.current = stillDirty;
       cloudDataRef.current = finalLocal;
       applySnapshot(finalLocal, savedRev, stillDirty);
-      if (conflicts.length > 0) {
-        const signature = conflicts.map((item) => `${item.kind}:${item.path}`).sort().join("|");
-        if (reportedConflictRef.current !== signature) {
-          reportedConflictRef.current = signature;
-          toast("error", "وُجد تعديل متزامن على نفس البيانات؛ تم الاحتفاظ بالنسخة السحابية الأحدث دون حذف سجلات أي معلم.");
-        }
-      }
+      // تم الاحتفاظ بالتعديلات دون رسائل منبثقة مزعجة
       if (stillDirty) pushAgain.current = true;
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
     } catch (e) {
@@ -731,13 +729,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dirtyRef.current = dirty;
     cloudDataRef.current = merged;
     applySnapshot(merged, remoteRev, dirty);
-    if (conflicts.length > 0) {
-      const signature = conflicts.map((item) => `${item.kind}:${item.path}`).sort().join("|");
-      if (reportedConflictRef.current !== signature) {
-        reportedConflictRef.current = signature;
-        toast("error", "وصل تعديل أحدث على نفس البيانات؛ تم منع الكتابة القديمة والاحتفاظ بالنسخة السحابية.");
-      }
-    }
+    // تم الحفظ الآمن دون رسائل منبثقة مزعجة
   }, [applySnapshot, prepareRemote, toast]);
 
   /** سحب أحدث نسخة من السحابة وتطبيقها إن كانت أحدث من المحلية */
@@ -928,7 +920,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...(changes.hearts !== undefined ? { hearts: Math.max(0, Math.min(MAX_HEARTS, Math.floor(changes.hearts))) } : {}),
       ...(changes.halaqaId !== undefined ? { halaqaId: changes.halaqaId } : {}),
     } : s));
-    toast("success", "تم حفظ بيانات الطالب دون تغيير سجلاته");
+    // حفظ هادئ
   }, [toast]);
 
   const toggleStudentTesting = useCallback((id: string) => {
@@ -991,7 +983,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const teachers = names.map((teacher, index) => old.find((item) => item.name.trim().toLocaleLowerCase("ar") === teacher.toLocaleLowerCase("ar")) ?? { id: uid(), name: teacher, createdAt: now + index });
         return { ...halaqa, teachers, rotationAnchorDate: localDateKey(), rotationSeed: now };
       });
-      toast("success", "تم حفظ معلمي الحلقة وإعادة بدء دورة التوزيع بأمان");
+      // حفظ هادئ
       return next;
     });
   }, [toast]);
@@ -1045,7 +1037,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (completedTitle) {
       setLastCompletedLessonId(id);
       setNextLessonId((current) => current === id ? null : current);
-      toast("success", `تم تسجيل إعطاء درس: ${completedTitle}`);
+      // إعطاء هادئ
     }
   }, [toast]);
 
@@ -1082,7 +1074,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     setLessons((items) => items.map((lesson) => lesson.id === id ? { ...lesson, title: cleanTitle, teacher: cleanTeacher } : lesson));
-    toast("success", "تم تعديل الدرس دون تغيير ترتيبه أو حالته");
+    // تعديل هادئ
   }, [toast]);
 
   const removeLesson = useCallback((id: string) => {
@@ -1257,7 +1249,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStudents((ss) => ss.map((s) => {
       if (s.id !== id) return s;
       const isRecited = s.dailyRecitedDate === today;
-      return { ...s, dailyRecitedDate: isRecited ? null : today };
+      return {
+        ...s,
+        dailyRecitedDate: isRecited ? null : today,
+        dailyAbsentDate: !isRecited && s.dailyAbsentDate === today ? null : s.dailyAbsentDate,
+      };
+    }));
+  }, []);
+
+  /** تبديل حالة الغياب اليومية للطالب */
+  const toggleDailyAbsent = useCallback((id: string, targetDateKey?: string) => {
+    const today = targetDateKey || localDateKey();
+    setStudents((ss) => ss.map((s) => {
+      if (s.id !== id) return s;
+      const isAbsent = s.dailyAbsentDate === today;
+      return {
+        ...s,
+        dailyAbsentDate: isAbsent ? null : today,
+        dailyRecitedDate: !isAbsent && s.dailyRecitedDate === today ? null : s.dailyRecitedDate,
+      };
     }));
   }, []);
 
@@ -1684,7 +1694,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateWeekLog = useCallback((targetWeek: number, next: WeekLog) => {
     setWeeksLog((logs) => logs.map((log) => log.week === targetWeek ? { ...next, week: targetWeek } : log));
-    toast("success", "تم حفظ تعديلات الأسبوع السابق دون تغيير بيانات الطلاب الحالية");
+    // حفظ هادئ
   }, [toast]);
 
   /* ===== الرحلة الأسبوعية ===== */
@@ -1777,7 +1787,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .slice(0, 10)
         ,
       awards,
-      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins, dailyRecitedDate: s.dailyRecitedDate ?? null })),
+      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins, dailyRecitedDate: s.dailyRecitedDate ?? null, dailyAbsentDate: s.dailyAbsentDate ?? null })),
       ceremonyPicks: structuredClone(ceremonyPicks),
       rewardSettings: structuredClone(rewardSettings),
       tripAttendeeIds: [...tripAttendees],
@@ -1808,6 +1818,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       weekCoins: 0,
       heartsLostWeek: 0,
       dailyRecitedDate: null,
+      dailyAbsentDate: null,
     })));
     setCeremonyPicks({});
     setCeremonyProductIds([]);
@@ -1824,7 +1835,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setHeartPrice = useCallback((price: number) => {
     const normalized = Math.max(0, Math.round(Number.isFinite(price) ? price : DEFAULT_HEART_PRICE));
     setHeartPriceState(normalized);
-    toast("success", `تم حفظ سعر القلب: ${ar(normalized)} عملة`);
+    // حفظ هادئ
   }, [toast]);
 
   const value: Ctx = {
@@ -1881,6 +1892,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     markAbsent,
     updateWard,
     toggleDailyRecitation,
+    toggleDailyAbsent,
     addXp,
     deductXp,
     addCoins,

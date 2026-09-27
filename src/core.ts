@@ -210,6 +210,7 @@ export type Student = {
   recitationRatings?: RecitationRatings;
   ward: WeeklyWard; // خطة الورد الأسبوعية؛ تُؤرشف في نهاية الأسبوع وتُصفّر مع بداية الأسبوع الجديد
   dailyRecitedDate?: string | null; // تاريخ آخر تسميع يومي (YYYY-MM-DD) لتنظيم حالة تم التسميع اليومية
+  dailyAbsentDate?: string | null; // تاريخ آخر غياب يومي (YYYY-MM-DD) لتنظيم قائمة الغائبين اليومية
   lastHeard?: LastHeard; // آخر حفظ ومراجعة سمعهما الطالب؛ لا يتصفّران أسبوعيًا
   inventory: string[]; // ids خصائص البروفايل المملوكة
   bag: BagEntry[]; // المشتريات الخارجية
@@ -545,6 +546,7 @@ export type WeekStudentRecord = {
   days: WeekDays; recitationRatings: RecitationRatings; ward: WeeklyWard;
   hearts: number; heartsLostWeek: number; xp: number; coins: number;
   dailyRecitedDate?: string | null;
+  dailyAbsentDate?: string | null;
 };
 
 export type WeekLog = {
