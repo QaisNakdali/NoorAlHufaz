@@ -6,8 +6,6 @@ import { compressImage } from "../photos";
 import { sfx } from "../sound";
 import Avatar from "./Avatar";
 import CosmeticThumb from "./CosmeticThumb";
-import { normalizeNumericDraft } from "../numericInput";
-import NumericInput from "./NumericInput";
 import { BigBtn, Coin, heartFade, HeartsRow, Icon, Modal, SectionHead } from "./ui";
 import WeeklyAwards from "./WeeklyAwards";
 
@@ -25,14 +23,16 @@ function KindBadge({ p }: { p: ShopProduct }) {
 /* صورة المنتج: صورة المعلم إن وُجدت، وإلا رسم تلقائي لخصائص البروفايل */
 function ProductImage({ p, dimmed = false }: { p: ShopProduct; dimmed?: boolean }) {
   return (
-    <div className={`h-24 overflow-hidden rounded-xl ${dimmed ? "opacity-45 grayscale" : ""}`}>
+    <div className={`h-36 sm:h-40 w-full overflow-hidden rounded-xl bg-slate-50 flex items-center justify-center p-2 border border-slate-100/80 transition group-hover:bg-white ${dimmed ? "opacity-45 grayscale" : ""}`}>
       {p.image ? (
-        <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
+        <img src={p.image} alt={p.name} className="max-h-full max-w-full object-contain drop-shadow-xs transition duration-200 group-hover:scale-105" />
       ) : p.kind === "cosmetic" ? (
-        <CosmeticThumb slot={p.slot} value={p.value} />
+        <div className="h-full w-full flex items-center justify-center">
+          <CosmeticThumb slot={p.slot} value={p.value} />
+        </div>
       ) : (
-        <div className="grid h-full w-full place-items-center bg-grape-100 text-grape-500">
-          <Icon name={p.icon} className="h-10 w-10" strokeWidth={1.8} />
+        <div className="grid h-full w-full place-items-center text-grape-400">
+          <Icon name={p.icon || "gift"} className="h-10 w-10" strokeWidth={1.8} />
         </div>
       )}
     </div>
@@ -246,7 +246,7 @@ export function StudentShop({ s, canGrant = false }: { s: Student; canGrant?: bo
               )}
               <span className="ms-auto text-xs font-bold text-grape-700/50">{ar(items.length)} منتج</span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
               {items.map((p, i) => (
                 <BuyCard key={p.id} s={s} p={p} delay={i * 40} canGrant={canGrant} />
               ))}
@@ -433,15 +433,15 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
         <div className="mt-4 grid grid-cols-3 gap-3">
           <div>
             <label className="mb-1 block text-xs font-extrabold text-grape-700">السعر (عملات)</label>
-            <NumericInput min={1} value={price} onValueChange={setPrice} className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
+            <input type="number" min={1} value={price} onChange={(e) => setPrice(Number(e.target.value) || 1)} className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-extrabold text-grape-700">يُفتح في المستوى</label>
-            <NumericInput min={1} value={minLevel} onValueChange={setMinLevel} className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
+            <input type="number" min={1} value={minLevel} onChange={(e) => setMinLevel(Number(e.target.value) || 1)} className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-extrabold text-grape-700">الكمية المتوفرة</label>
-            <input type="number" min={0} value={stockStr} onChange={(e) => setStockStr(normalizeNumericDraft(e.target.value))} placeholder="غير محدودة" className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
+            <input type="number" min={0} value={stockStr} onChange={(e) => setStockStr(e.target.value)} placeholder="غير محدودة" className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
           </div>
         </div>
         <p className="mt-2 text-xs font-bold leading-5 text-grape-700/60">
@@ -489,7 +489,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
 
 /* ===== تبويب المتجر (المعلم) ===== */
 export default function StoreTab() {
-  const { sorted = [], products = [], removeProduct, saveProduct, heartPrice = 40, setHeartPrice, parentStoreOpen = true, toggleParentStore } = useApp();
+  const { sorted = [], products = [], removeProduct, heartPrice = 10, setHeartPrice, parentStoreOpen = true, toggleParentStore } = useApp();
   const [notifyModalOpen, setNotifyModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ShopProduct | null>(null);
@@ -578,7 +578,7 @@ export default function StoreTab() {
             <label className="mt-3 block text-xs font-bold text-grape-600">
               سعر القلب الواحد
               <div className="mt-1 flex items-center gap-2">
-                <NumericInput className="field-control w-32" min={0} step={1} value={heartPriceDraft} onValueChange={setHeartPriceDraft} />
+                <input className="field-control w-32" type="number" min="0" step="1" value={heartPriceDraft} onChange={(e) => setHeartPriceDraft(Math.max(0, Number(e.target.value) || 0))} />
                 <span className="font-extrabold text-grape-500">عملة</span>
               </div>
             </label>
@@ -591,61 +591,69 @@ export default function StoreTab() {
       {/* إدارة المنتجات */}
       <div className="mb-6 rounded-[24px] border-2 border-grape-200 bg-white p-4">
         <p className="mb-3 font-display text-base font-extrabold text-ink">منتجات المتجر ({ar(products.length)})</p>
-        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
           {products.map((p) => (
-            <div key={p.id} className="flex items-center gap-3 rounded-2xl border-2 border-grape-100 bg-grape-50/50 p-2.5">
-              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl">
-                {p.image ? (
-                  <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
-                ) : p.kind === "cosmetic" ? (
-                  <CosmeticThumb slot={p.slot} value={p.value} />
-                ) : (
-                  <div className="grid h-full w-full place-items-center bg-grape-100 text-grape-500">
-                    <Icon name={p.icon} className="h-6 w-6" strokeWidth={1.8} />
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-display text-sm font-extrabold text-ink">{p.name}</p>
-                <p className="flex flex-wrap items-center gap-x-2 text-xs font-bold text-grape-700/60">
-                  <span className="flex items-center gap-0.5"><Coin className="h-3 w-3" />{ar(p.price)}</span>
-                  <span>م{ar(p.minLevel)}</span>
-                  <span className={p.kind === "cosmetic" ? "text-grape-500" : "text-mint-600"}>
+            <div key={p.id} className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border-2 border-grape-200 bg-white p-3 shadow-xs hover:border-grape-400 hover:shadow-md transition">
+              <div className="relative">
+                <div className="h-32 sm:h-36 w-full overflow-hidden rounded-xl bg-slate-50 flex items-center justify-center p-2 border border-slate-100/80 mb-2">
+                  {p.image ? (
+                    <img src={p.image} alt={p.name} className="max-h-full max-w-full object-contain drop-shadow-xs transition duration-200 group-hover:scale-105" />
+                  ) : p.kind === "cosmetic" ? (
+                    <div className="h-full w-full flex items-center justify-center">
+                      <CosmeticThumb slot={p.slot} value={p.value} />
+                    </div>
+                  ) : (
+                    <div className="grid h-full w-full place-items-center text-grape-400">
+                      <Icon name={p.icon || "gift"} className="h-10 w-10" strokeWidth={1.8} />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <p className="truncate font-display text-sm font-extrabold text-ink">{p.name}</p>
+                  <span className="rounded-full bg-gold-400/25 px-2 py-0.5 text-xs font-extrabold text-gold-700 whitespace-nowrap">
+                    {ar(p.price)} 🪙
+                  </span>
+                </div>
+                <p className="text-[11px] font-bold text-grape-500 line-clamp-2 min-h-7 leading-4">{p.desc}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold text-grape-600">
+                  <span className="rounded-md bg-grape-50 px-1.5 py-0.5 border border-grape-200/50">م{ar(p.minLevel)}</span>
+                  <span className={`rounded-md px-1.5 py-0.5 border ${p.kind === "cosmetic" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-mint-50 text-mint-700 border-mint-200"}`}>
                     {p.kind === "cosmetic" ? "خاصية" : "خارجية"}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => saveProduct({ ...p, showInCeremony: p.showInCeremony === false ? true : false })}
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold transition ${
-                      p.showInCeremony !== false ? "bg-mint-100 text-mint-700 hover:bg-mint-200" : "bg-slate-200 text-slate-500 hover:bg-slate-300"
-                    }`}
-                    title="اضغط للتبديل السريع بين العرض وعدم العرض في الحفل"
-                  >
-                    {p.showInCeremony !== false ? "☑ في الحفل" : "☐ غير معروض"}
-                  </button>
                   {typeof p.stock === "number" && (
-                    <span className={p.stock <= 0 ? "text-coral-500" : "text-gold-600"}>
-                      {p.stock <= 0 ? "نفدت" : `متبقي ${ar(p.stock)}`}
+                    <span className={`rounded-md px-1.5 py-0.5 border ${p.stock <= 0 ? "bg-red-50 text-red-600 border-red-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                      {p.stock <= 0 ? "نفدت" : `باقٍ ${ar(p.stock)}`}
                     </span>
                   )}
-                </p>
+                </div>
               </div>
-              <div className="flex shrink-0 gap-1">
+              
+              <div className="mt-3 pt-2 border-t border-grape-100 flex items-center justify-between gap-1.5">
                 <button
                   type="button"
-                  onClick={() => { setEditing(p); setEditorOpen(true); }}
-                  title="تعديل"
-                  className="grid h-8 w-8 place-items-center rounded-lg bg-grape-600/12 text-grape-600 transition hover:bg-grape-600 hover:text-white active:scale-90"
+                  onClick={() => saveProduct({ ...p, showInCeremony: p.showInCeremony === false ? true : false })}
+                  className={`rounded-lg px-2 py-1 text-[10px] font-extrabold transition flex-1 text-center ${
+                    p.showInCeremony !== false ? "bg-mint-100 text-mint-700 hover:bg-mint-200" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  }`}
+                  title="التحكم في ظهور المنتج في الحفل"
                 >
-                  <Icon name="pencil" className="h-3.5 w-3.5" strokeWidth={2.4} />
+                  {p.showInCeremony !== false ? "في الحفل ✓" : "المتجر فقط"}
                 </button>
                 <button
                   type="button"
-                  onClick={() => { if (window.confirm(`هل أنت متأكد من حذف المنتج «${p.name}»؟ لن تُحذف مشتريات الطلاب السابقة.`)) removeProduct(p.id); }}
-                  title="حذف"
-                  className="grid h-8 w-8 place-items-center rounded-lg bg-coral-500/12 text-coral-500 transition hover:bg-coral-500 hover:text-white active:scale-90"
+                  onClick={() => { setEditing(p); setEditorOpen(true); }}
+                  title="تعديل المنتج"
+                  className="grid h-7 w-7 place-items-center rounded-lg bg-grape-100 text-grape-600 hover:bg-grape-600 hover:text-white transition"
                 >
-                  <Icon name="x" className="h-3.5 w-3.5" strokeWidth={3} />
+                  <Icon name="pencil" className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeProduct(p.id)}
+                  title="حذف المنتج"
+                  className="grid h-7 w-7 place-items-center rounded-lg bg-coral-50 text-coral-600 hover:bg-coral-600 hover:text-white transition"
+                >
+                  <Icon name="x" className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
