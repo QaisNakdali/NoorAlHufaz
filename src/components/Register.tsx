@@ -74,11 +74,10 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
   const [hearts, setHearts] = useState(s?.hearts ?? MAX_HEARTS);
   const [studentLevel, setStudentLevel] = useState(s ? levelInfo(s.xp).level : 1);
   const [halaqaId, setHalaqaId] = useState<string | null>(s?.halaqaId ?? null);
+  const [guardianPhone, setGuardianPhone] = useState(s?.guardianPhone ?? "");
   const [busy, setBusy] = useState(false);
   const [deductInput, setDeductInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-
-  if (!s) return null;
 
   const confirmDeduct = (amount: number) => {
     const clean = Math.min(s.xp, Math.max(1, Math.floor(amount)));
@@ -89,9 +88,10 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
       setDeductInput("");
     }
   };
+  if (!s) return null;
   const { level } = levelInfo(s.xp);
   const saveProfile = () => {
-    updateStudentProfile(s.id, { name, photo, coins, hearts, xp: studentLevel !== level ? xpForLevel(Math.max(1, studentLevel)) : undefined, halaqaId });
+    updateStudentProfile(s.id, { name, photo, coins, hearts, xp: studentLevel !== level ? xpForLevel(Math.max(1, studentLevel)) : undefined, halaqaId, guardianPhone: guardianPhone.trim() || undefined });
     onClose();
   };
   const onFile = async (file: File | null) => {
@@ -129,6 +129,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
               <label className="text-xs font-bold text-grape-600">العملات<input type="number" min="0" value={coins} onChange={(e) => setCoins(Number(e.target.value))} className="field-control mt-1 w-full" /></label>
               <label className="text-xs font-bold text-grape-600">المستوى<input type="number" min="1" value={studentLevel} onChange={(e) => setStudentLevel(Number(e.target.value))} className="field-control mt-1 w-full" /></label>
               <label className="text-xs font-bold text-grape-600">القلوب<select value={hearts} onChange={(e) => setHearts(Number(e.target.value))} className="field-control mt-1 w-full">{[0,1,2,3].map((v) => <option key={v} value={v}>{ar(v)}</option>)}</select></label>
+                <label className="text-xs font-bold text-grape-600 sm:col-span-3">رقم ولي الأمر (اختياري — للتواصل عبر واتساب)<input type="tel" dir="ltr" value={guardianPhone} onChange={(e) => setGuardianPhone(e.target.value)} placeholder="مثال: 0501234567 أو +966501234567" className="field-control mt-1 w-full text-start font-mono" /></label>
             </div>
             <div className="mt-3 flex gap-2"><BigBtn onClick={saveProfile} className="flex-1"><Icon name="check" className="h-4 w-4" />حفظ التعديلات</BigBtn>{photo && <button type="button" onClick={() => setPhoto(null)} className="rounded-xl border-2 border-coral-200 px-3 text-xs font-extrabold text-coral-500">إزالة الصورة</button>}</div>
             <p className="mt-2 text-xs font-bold text-grape-400">تغيير الحلقة أو البيانات لا يعيد إنشاء الطالب ولا يمس حضوره أو ورده أو سجلاته.</p>
@@ -270,7 +271,7 @@ function StudentDetailsModal({ student, onClose }: { student: Student; onClose: 
   });
   const sessions = [...archived, ...current];
   const currentMonthDays = DAYS.filter((_, index) => hijriMonthKey(dateForCurrentWeekDay(index)) === month);
-  const attendance = [...monthLogs.flatMap((log) => log.records?.filter((item) => item.id === student.id) ?? [])].reduce((sum, record) => ({ present: sum.present + DAYS.filter((day) => !!record.days?.[day.key]?.a).length, absent: sum.absent + DAYS.filter((day) => !!record.days?.[day.key]?.absent).length }), { present: currentMonthDays.filter((day) => !!student.days?.[day.key]?.a).length, absent: currentMonthDays.filter((day) => !!student.days?.[day.key]?.absent).length });
+  const attendance = [...monthLogs.flatMap((log) => log.records?.filter((item) => item.id === student.id) ?? [])].reduce((sum, record) => ({ present: sum.present + DAYS.filter((day) => !!record.days?.[day.key]?.a && !record.days?.[day.key]?.absent).length, absent: sum.absent + DAYS.filter((day) => !!record.days?.[day.key]?.absent).length }), { present: currentMonthDays.filter((day) => !!student.days?.[day.key]?.a).length, absent: currentMonthDays.filter((day) => !!student.days?.[day.key]?.absent).length });
   const rate = attendance.present + attendance.absent ? Math.round(attendance.present / (attendance.present + attendance.absent) * 100) : null;
   return <Modal open onClose={onClose} wide><div className="p-6"><div className="flex items-center gap-3"><Avatar photo={student.photo} name={student.name} size={62}/><div className="flex-1"><h3 className="font-display text-2xl font-extrabold text-ink">{student.name}</h3><p className="text-sm font-bold text-grape-500">تفاصيل وتحليل الطالب — {formatHijriDate(new Date(), { month: "long", year: "numeric" })}</p></div><button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-grape-100 text-grape-600">×</button></div>
     <div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl bg-mint-50 p-4"><b>الحضور</b><p className="mt-2 text-xl font-extrabold">{ar(attendance.present)} حضور · {ar(attendance.absent)} غياب</p><p className="text-xs font-bold text-grape-500">{rate === null ? "لا توجد بيانات كافية" : `النسبة ${ar(rate)}٪${attendance.absent >= 2 ? " — يوجد غياب متكرر" : ""}`}</p></div><div className="rounded-2xl bg-grape-50 p-4"><b>الحفظ</b><p className="mt-2 text-sm font-bold text-grape-600">{analysis.memorization.label}</p><p className="mt-1 text-xs text-grape-500">{analysis.memorization.trend === "insufficient-data" ? "لا توجد بيانات كافية لتحديد الاتجاه بدقة." : `الاتجاه: ${analysis.memorization.trend === "improving" ? "يتحسن" : analysis.memorization.trend === "declining" ? "يتراجع" : "ثابت ضمن المستوى المطلوب"}`}</p></div><div className="rounded-2xl bg-gold-50 p-4"><b>المراجعة</b><p className="mt-2 text-sm font-bold text-grape-600">{analysis.review.label}</p><p className="mt-1 text-xs text-grape-500">{analysis.review.trend === "insufficient-data" ? "لا توجد بيانات كافية لتحديد الاتجاه بدقة." : `الاتجاه: ${analysis.review.trend === "improving" ? "تتحسن" : analysis.review.trend === "declining" ? "تتراجع" : "ثابتة ضمن المستوى المطلوب"}`}</p></div></div>
@@ -636,6 +637,7 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [halaqaId, setHalaqaId] = useState<string | null>(null);
+  const [guardianPhone, setGuardianPhone] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const onFile = async (f: File | null) => {
@@ -657,7 +659,7 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
       sfx.error();
       return;
     }
-    addStudent(name.trim(), photo, halaqaId);
+    addStudent(name.trim(), photo, halaqaId, guardianPhone.trim() || undefined);
     onClose();
   };
 
@@ -701,6 +703,16 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
               <option value="">بلا حلقة</option>
               {halaqas.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
             </select>
+
+            <label className="mt-3 block text-sm font-bold text-grape-700">رقم ولي الأمر (اختياري — للتواصل عبر واتساب)</label>
+            <input
+              type="tel"
+              dir="ltr"
+              value={guardianPhone}
+              onChange={(e) => setGuardianPhone(e.target.value)}
+              placeholder="مثال: 0501234567 أو +966501234567"
+              className="mt-1 w-full rounded-2xl border-2 border-grape-200 bg-grape-50 px-4 py-2.5 font-mono font-bold text-ink text-start outline-none transition focus:border-grape-500 focus:bg-white"
+            />
           </div>
         </div>
 

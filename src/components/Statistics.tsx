@@ -1,10 +1,10 @@
 /* إحصائيات الطلاب فقط — قراءة مباشرة من الكشف الحالي وأرشيف الأسابيع مع فصل إحصائيات الحفظ عن المراجعة والترتيب التنازلي التلقائي حسب الصفحات */
-import { useMemo, useState } from "react";
-import { useApp } from "../appState";
+import { useMemo, useState, useEffect } from "react";
+import { useApp, DEFAULT_ABSENCE_MESSAGE, DEFAULT_NOT_HEARD_MESSAGE } from "../appState";
 import { analyzeStudent, analyzeStudentTrend, measureStudentWork, pagesForWardDay } from "../analytics";
 import { ar, DAYS, type DayKey, type Student, type WeekLog, type WeekLogEntry, type WeekStudentRecord, type ParentContactRecord, estimatedLinesFromVerses } from "../core";
 import Avatar from "./Avatar";
-import { Icon, SectionHead } from "./ui";
+import { Icon, Modal, SectionHead } from "./ui";
 import { addCalendarDays, dateFromLocalKey, formatHijriDate, formatHijriMonth, hijriMonthKey, localDateKey } from "../hijriDate";
 import { roundUpToQuarter } from "../statisticsNumber";
 
@@ -71,7 +71,16 @@ const add = (a: StudentMetrics, b: StudentMetrics): StudentMetrics => ({
   notHeardBoth: (a.notHeardBoth ?? 0) + (b.notHeardBoth ?? 0),
 });
 
-
+/**
+ * فحص حالة اليوم الواحد للطالب بدقة وحيادية وفق السجلات الأصلية الفعلية:
+ * 1. إذا لم يُسجل شيء لليوم -> لا يُحسب حضور ولا غياب ولا عدم تسميع (عدم وجود بيانات لا يعني لم يسمع).
+ * 2. إذا كان الطالب غائباً -> يُحسب في الغياب فقط، ولا يُحسب في "لم يسمع" قطعاً (لا حفظ ولا مراجعة ولا كلاهما).
+ * 3. إذا لم يُسجل حضور للطالب -> لا يُحسب "لم يسمع".
+ * 4. إذا كان الطالب حاضراً:
+ *    - لم يسمع الحفظ: حاضر ولم يُسجل له تسميع الحفظ (أو تقييمه "لم يحفظ").
+ *    - لم يسمع المراجعة: حاضر ولم يُسجل له تسميع المراجعة (أو تقييمه "لم يراجع").
+ *    - كلاهما: حاضر ولم يُسجل له الحفظ والمراجعة معاً في نفس هذا اليوم.
+ */
 function checkDayRecitation(
   state?: { a?: boolean; h?: boolean; r?: boolean; absent?: boolean } | null,
   ward?: { memorization?: string; review?: string; memorizationLines?: number; reviewLines?: number; memorizationVerses?: number; reviewVerses?: number } | null,
@@ -86,24 +95,28 @@ function checkDayRecitation(
   if (!state) {
     return { isAbsent: false, isPresent: false, notHeardMem: false, notHeardRev: false, notHeardBoth: false };
   }
-  if (state.absent) {
+  if (state.absent === true) {
     return { isAbsent: true, isPresent: false, notHeardMem: false, notHeardRev: false, notHeardBoth: false };
   }
   if (!state.a) {
     return { isAbsent: false, isPresent: false, notHeardMem: false, notHeardRev: false, notHeardBoth: false };
   }
-  const hasMem = !!state.h || !!ratings?.h || Number(ward?.memorizationLines) > 0 || Number(ward?.memorizationVerses) > 0 || !!ward?.memorization?.trim();
-  const hasRev = !!state.r || !!ratings?.r || Number(ward?.reviewLines) > 0 || Number(ward?.reviewVerses) > 0 || !!ward?.review?.trim();
-  if (hasMem && hasRev) {
-    return { isAbsent: false, isPresent: true, notHeardMem: false, notHeardRev: false, notHeardBoth: false };
-  }
-  if (!hasMem && hasRev) {
-    return { isAbsent: false, isPresent: true, notHeardMem: true, notHeardRev: false, notHeardBoth: false };
-  }
-  if (hasMem && !hasRev) {
-    return { isAbsent: false, isPresent: true, notHeardMem: false, notHeardRev: true, notHeardBoth: false };
-  }
-  return { isAbsent: false, isPresent: true, notHeardMem: false, notHeardRev: false, notHeardBoth: true };
+
+  // الطالب حاضر في هذا اليوم (state.a === true && !state.absent)
+  const hasMem = Boolean(state.h || ratings?.h === "excellent" || ratings?.h === "very-good");
+  const hasRev = Boolean(state.r || ratings?.r === "excellent" || ratings?.r === "very-good");
+
+  const notHeardMem = !hasMem;
+  const notHeardRev = !hasRev;
+  const notHeardBoth = !hasMem && !hasRev;
+
+  return {
+    isAbsent: false,
+    isPresent: true,
+    notHeardMem,
+    notHeardRev,
+    notHeardBoth,
+  };
 }
 
 function formatAbsenceCount(count: number): string {
@@ -121,7 +134,7 @@ function formatNotHeardCount(count: number): string {
 }
 
 const normalizeArabic = (text: string): string => {
-  return text
+  return (text ?? "")
     .replace(/[ًٌٍَُِّْـ]/g, "")
     .replace(/[أإآ]/g, "ا")
     .replace(/ة/g, "ه")
@@ -130,62 +143,141 @@ const normalizeArabic = (text: string): string => {
     .toLowerCase();
 };
 
+/**
+ * تهيئة رقم الهاتف لفتح واتساب بشكل صحيح وموثوق
+ */
+function formatPhoneForWhatsApp(raw?: string | null): string | null {
+  if (!raw) return null;
+  const arabicDigits = "٠١٢٣٤٥٦٧٨٩";
+  let cleaned = "";
+  for (const ch of String(raw)) {
+    const idx = arabicDigits.indexOf(ch);
+    if (idx !== -1) {
+      cleaned += idx;
+    } else if (/[0-9+]/.test(ch)) {
+      cleaned += ch;
+    }
+  }
+
+  if (cleaned.startsWith("+")) cleaned = cleaned.slice(1);
+  if (cleaned.startsWith("00")) cleaned = cleaned.slice(2);
+
+  // الأرقام السعودية: إذا بدأ بـ 05 وكان 10 أرقام -> 9665XXXXXXXX
+  if (cleaned.startsWith("05") && cleaned.length === 10) {
+    cleaned = "966" + cleaned.slice(1);
+  } else if (cleaned.startsWith("5") && cleaned.length === 9) {
+    cleaned = "966" + cleaned;
+  }
+
+  if (cleaned.length >= 8 && cleaned.length <= 15 && /^[0-9]+$/.test(cleaned)) {
+    return cleaned;
+  }
+  return null;
+}
+
+/**
+ * تعبئة متغيرات رسالة واتساب
+ */
+function fillTemplate(
+  template: string,
+  vars: {
+    studentName: string;
+    recitationType?: string;
+    absenceCount?: number;
+    date?: string;
+  }
+): string {
+  let res = template || "";
+  res = res.replace(/\{اسم الطالب\}/g, vars.studentName || "");
+  res = res.replace(/\{نوع التسميع\}/g, vars.recitationType || "التسميع");
+  res = res.replace(/\{عدد الغيابات\}/g, vars.absenceCount != null ? ar(vars.absenceCount) : "");
+  res = res.replace(/\{التاريخ\}/g, vars.date || "");
+  return res;
+}
+
+/**
+ * حساب مقاييس الطالب من سجله الفعلي اليومي
+ */
 function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
   const result = emptyMetrics(record);
   const mockStudent = record as unknown as Student;
+
   if (!day) {
-    const mem = measureStudentWork(mockStudent, "memorization");
-    const rev = measureStudentWork(mockStudent, "review");
-    result.present = DAYS.filter((d) => !!record.days?.[d.key]?.a).length;
-    result.absent = DAYS.filter((d) => record.days?.[d.key]?.absent === true).length;
-    result.memorizationSessions = mem.sessions;
-    result.reviewSessions = rev.sessions;
-    result.memorizationVerses = mem.verses;
-    result.reviewVerses = rev.verses;
-    result.memorizationLines = mem.lines;
-    result.reviewLines = rev.lines;
-    result.memorizationPages = mem.pages;
-    result.reviewPages = rev.pages;
     for (const d of DAYS) {
-      const st = record.days?.[d.key];
-      const wd = record.ward?.[d.key];
-      const rt = record.recitationRatings?.[d.key];
-      const res = checkDayRecitation(st, wd, rt);
+      const state = record.days?.[d.key];
+      const ward = record.ward?.[d.key] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
+      const ratings = record.recitationRatings?.[d.key];
+
+      const res = checkDayRecitation(state, ward, ratings);
+      if (res.isPresent) result.present += 1;
+      if (res.isAbsent) result.absent += 1;
       if (res.notHeardMem) result.notHeardMem += 1;
       if (res.notHeardRev) result.notHeardRev += 1;
       if (res.notHeardBoth) result.notHeardBoth += 1;
+
+      // حساب الجلسات والصفحات فقط للأيام التي سَمّع فيها الطالب بالفعل:
+      const hasMem = Boolean(state?.h || ratings?.h === "excellent" || ratings?.h === "very-good");
+      const hasRev = Boolean(state?.r || ratings?.r === "excellent" || ratings?.r === "very-good");
+
+      if (hasMem && res.isPresent) {
+        result.memorizationSessions += 1;
+        result.memorizationVerses += Number(ward.memorizationVerses) || 0;
+        const lines = Number(ward.memorizationLines) || (ward.memorizationVerses ? estimatedLinesFromVerses(ward.memorizationVerses) : 0);
+        result.memorizationLines += lines;
+        result.memorizationPages += pagesForWardDay(mockStudent, d.key, "memorization").pages;
+      }
+
+      if (hasRev && res.isPresent) {
+        result.reviewSessions += 1;
+        result.reviewVerses += Number(ward.reviewVerses) || 0;
+        const lines = Number(ward.reviewLines) || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0);
+        result.reviewLines += lines;
+        result.reviewPages += pagesForWardDay(mockStudent, d.key, "review").pages;
+      }
     }
     return result;
   }
-  const state = record.days?.[day] ?? { a: false, h: false, r: false };
+
+  // إذا تم تحديد يوم معين:
+  const state = record.days?.[day];
   const ward = record.ward?.[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
   const ratings = record.recitationRatings?.[day];
-  if (state.a && !state.absent) result.present += 1;
-  if (state.absent) result.absent += 1;
-  if ((state.h || Number(ward.memorizationLines) > 0 || Number(ward.memorizationVerses) > 0 || !!ward.memorization?.trim()) && !state.absent) {
-    result.memorizationSessions = 1;
-    result.memorizationVerses = ward.memorizationVerses || 0;
-    result.memorizationLines = ward.memorizationLines || (ward.memorizationVerses ? estimatedLinesFromVerses(ward.memorizationVerses) : 0);
-    result.memorizationPages = pagesForWardDay(mockStudent, day, "memorization").pages;
-  }
-  if ((state.r || Number(ward.reviewLines) > 0 || Number(ward.reviewVerses) > 0 || !!ward.review?.trim()) && !state.absent) {
-    result.reviewSessions = 1;
-    result.reviewVerses = ward.reviewVerses || 0;
-    result.reviewLines = ward.reviewLines || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0);
-    result.reviewPages = pagesForWardDay(mockStudent, day, "review").pages;
-  }
+
   const res = checkDayRecitation(state, ward, ratings);
+  if (res.isPresent) result.present = 1;
+  if (res.isAbsent) result.absent = 1;
   if (res.notHeardMem) result.notHeardMem = 1;
   if (res.notHeardRev) result.notHeardRev = 1;
   if (res.notHeardBoth) result.notHeardBoth = 1;
+
+  const hasMem = Boolean(state?.h || ratings?.h === "excellent" || ratings?.h === "very-good");
+  const hasRev = Boolean(state?.r || ratings?.r === "excellent" || ratings?.r === "very-good");
+
+  if (hasMem && res.isPresent) {
+    result.memorizationSessions = 1;
+    result.memorizationVerses += Number(ward.memorizationVerses) || 0;
+    const lines = Number(ward.memorizationLines) || (ward.memorizationVerses ? estimatedLinesFromVerses(ward.memorizationVerses) : 0);
+    result.memorizationLines = lines;
+    result.memorizationPages += pagesForWardDay(mockStudent, day, "memorization").pages;
+  }
+
+  if (hasRev && res.isPresent) {
+    result.reviewSessions = 1;
+    result.reviewVerses += Number(ward.reviewVerses) || 0;
+    const lines = Number(ward.reviewLines) || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0);
+    result.reviewLines = lines;
+    result.reviewPages += pagesForWardDay(mockStudent, day, "review").pages;
+  }
+
   return result;
 }
 
 function fromStudent(student: Student, day?: DayKey): StudentMetrics {
-  const result = fromRecord({
+  return fromRecord({
     id: student.id,
     name: student.name,
     photo: student.photo,
+    guardianPhone: student.guardianPhone,
     halaqaId: student.halaqaId,
     days: student.days,
     recitationRatings: student.recitationRatings ?? { sun: {}, mon: {}, tue: {}, wed: {} },
@@ -195,35 +287,6 @@ function fromStudent(student: Student, day?: DayKey): StudentMetrics {
     xp: student.xp,
     coins: student.coins,
   }, day);
-
-  if (!day) {
-    const memorization = measureStudentWork(student, "memorization");
-    const review = measureStudentWork(student, "review");
-    result.memorizationPages = memorization.pages;
-    result.reviewPages = review.pages;
-    result.memorizationLines = memorization.lines;
-    result.reviewLines = review.lines;
-    result.memorizationSessions = memorization.sessions;
-    result.reviewSessions = review.sessions;
-    result.memorizationVerses = memorization.verses;
-    result.reviewVerses = review.verses;
-  } else {
-    const state = student.days[day];
-    const ward = student.ward?.[day];
-    if ((state?.h || Number(ward?.memorizationLines) > 0 || Number(ward?.memorizationVerses) > 0 || !!ward?.memorization?.trim()) && !state?.absent) {
-      const memMeasure = pagesForWardDay(student, day, "memorization");
-      result.memorizationPages = memMeasure.pages;
-    } else {
-      result.memorizationPages = 0;
-    }
-    if ((state?.r || Number(ward?.reviewLines) > 0 || Number(ward?.reviewVerses) > 0 || !!ward?.review?.trim()) && !state?.absent) {
-      const revMeasure = pagesForWardDay(student, day, "review");
-      result.reviewPages = revMeasure.pages;
-    } else {
-      result.reviewPages = 0;
-    }
-  }
-  return result;
 }
 
 function fromStudentHijriMonth(student: Student, monthKey: string, weekStartDateIso: string): StudentMetrics {
@@ -259,30 +322,37 @@ function fromEntry(entry: WeekLogEntry): StudentMetrics {
   const revLines = entry.reviewLines ?? 0;
   const memPages = typeof entry.memorizationPages === "number" ? entry.memorizationPages : (memLines > 0 ? memLines / 15 : 0);
   const revPages = typeof entry.reviewPages === "number" ? entry.reviewPages : (revLines > 0 ? revLines / 15 : 0);
+  const present = entry.attendanceDays ?? 0;
+  const absent = entry.absenceDays ?? 0;
+  const memSessions = entry.memorizationSessions ?? entry.memorizationDays ?? 0;
+  const revSessions = entry.reviewSessions ?? entry.reviewDays ?? 0;
+  const notHeardMem = Math.max(0, present - memSessions);
+  const notHeardRev = Math.max(0, present - revSessions);
+
   return {
     id: entry.id,
     name: entry.name,
     photo: entry.photo ?? null,
-    present: entry.attendanceDays ?? 0,
-    absent: entry.absenceDays ?? 0,
-    memorizationSessions: entry.memorizationSessions ?? entry.memorizationDays ?? 0,
-    reviewSessions: entry.reviewSessions ?? entry.reviewDays ?? 0,
+    present,
+    absent,
+    memorizationSessions: memSessions,
+    reviewSessions: revSessions,
     memorizationVerses: entry.memorizationVerses ?? 0,
     reviewVerses: entry.reviewVerses ?? 0,
     memorizationLines: memLines,
     reviewLines: revLines,
     memorizationPages: memPages,
     reviewPages: revPages,
-    notHeardMem: 0,
-    notHeardRev: 0,
-    notHeardBoth: 0,
+    notHeardMem,
+    notHeardRev,
+    notHeardBoth: Math.min(notHeardMem, notHeardRev),
   };
 }
 
 function logMetrics(log: WeekLog, allStudents?: Student[]): StudentMetrics[] {
   const map = new Map<string, StudentMetrics>();
 
-  // 1. قراءة السجلات التفصيلية اليومية أولاً إن وُجدت
+  // 1. قراءة السجلات التفصيلية اليومية أولاً إن وُجدت (المصدر الدقيق والأصلي)
   if (Array.isArray(log.records) && log.records.length > 0) {
     for (const record of log.records) {
       if (!record || !record.name) continue;
@@ -291,7 +361,7 @@ function logMetrics(log: WeekLog, allStudents?: Student[]): StudentMetrics[] {
     }
   }
 
-  // 2. دمج إحصائيات الطلاب المحفوظة في الأسبوع لتكملة أي بيانات ناقصة أو سجلات أرشيف قديم
+  // 2. دمج إحصائيات الطلاب المحفوظة في الأسبوع لتكملة أي طالب قديم غير موجود في records
   const studentEntries = [
     ...(Array.isArray(log.students) ? log.students : []),
     ...(Array.isArray(log.top) ? log.top : []),
@@ -299,26 +369,17 @@ function logMetrics(log: WeekLog, allStudents?: Student[]): StudentMetrics[] {
 
   for (const entry of studentEntries) {
     if (!entry || !entry.name) continue;
-    const entryMetrics = fromEntry(entry);
-    const existing = map.get(entry.id) || [...map.values()].find((m) => normalizeArabic(m.name) === normalizeArabic(entry.name));
-
-    if (existing) {
-      existing.memorizationPages = Math.max(existing.memorizationPages, entryMetrics.memorizationPages);
-      existing.reviewPages = Math.max(existing.reviewPages, entryMetrics.reviewPages);
-      existing.memorizationLines = Math.max(existing.memorizationLines, entryMetrics.memorizationLines);
-      existing.reviewLines = Math.max(existing.reviewLines, entryMetrics.reviewLines);
-      existing.memorizationVerses = Math.max(existing.memorizationVerses, entryMetrics.memorizationVerses);
-      existing.reviewVerses = Math.max(existing.reviewVerses, entryMetrics.reviewVerses);
-      existing.memorizationSessions = Math.max(existing.memorizationSessions, entryMetrics.memorizationSessions);
-      existing.reviewSessions = Math.max(existing.reviewSessions, entryMetrics.reviewSessions);
-      existing.present = Math.max(existing.present, entryMetrics.present);
-      existing.absent = Math.max(existing.absent, entryMetrics.absent);
-      existing.notHeardMem = Math.max(existing.notHeardMem, entryMetrics.notHeardMem);
-      existing.notHeardRev = Math.max(existing.notHeardRev, entryMetrics.notHeardRev);
-      existing.notHeardBoth = Math.max(existing.notHeardBoth, entryMetrics.notHeardBoth);
-    } else {
-      map.set(entry.id, entryMetrics);
+    if (map.has(entry.id)) {
+      const existing = map.get(entry.id)!;
+      if (!existing.photo && entry.photo) existing.photo = entry.photo;
+      continue;
     }
+    const existingByName = [...map.values()].find((m) => normalizeArabic(m.name) === normalizeArabic(entry.name));
+    if (existingByName) {
+      if (!existingByName.photo && entry.photo) existingByName.photo = entry.photo;
+      continue;
+    }
+    map.set(entry.id, fromEntry(entry));
   }
 
   const list = [...map.values()];
@@ -363,7 +424,21 @@ function MetricCard({
 }
 
 export default function StatisticsPage() {
-  const { students = [], weeksLog = [], halaqas = [], week = 1, weekStartDateIso = "", parentContacts = [], recordParentContact, removeParentContact } = useApp();
+  const {
+    students = [],
+    weeksLog = [],
+    halaqas = [],
+    week = 1,
+    weekStartDateIso = "",
+    parentContacts = [],
+    contactMessages,
+    setContactMessage,
+    resetContactMessage,
+    recordParentContact,
+    removeParentContact,
+    toast,
+  } = useApp();
+
   const [archiveTab, setArchiveTab] = useState<"absence" | "notHeard">("absence");
   const [period, setPeriod] = useState<Period>("all");
   const [studentId, setStudentId] = useState("all");
@@ -373,6 +448,42 @@ export default function StatisticsPage() {
   const [selectedWeek, setSelectedWeek] = useState("current");
   const [statsView, setStatsView] = useState<StatsView>("both");
   const [notHeardTab, setNotHeardTab] = useState<"both" | "mem" | "rev">("both");
+  const [detailsCategory, setDetailsCategory] = useState<"absent" | "both" | "mem" | "rev" | null>(null);
+  const [modalSearch, setModalSearch] = useState("");
+
+  // إعدادات رسائل الواتساب
+  const [showMessageSettings, setShowMessageSettings] = useState(false);
+  const [absenceTemplateInput, setAbsenceTemplateInput] = useState(contactMessages?.absence || DEFAULT_ABSENCE_MESSAGE);
+  const [notHeardTemplateInput, setNotHeardTemplateInput] = useState(contactMessages?.notHeard || DEFAULT_NOT_HEARD_MESSAGE);
+
+  // مزامنة حالة نصوص القوالب عند تغير إعدادات التطبيق
+  useEffect(() => {
+    if (contactMessages?.absence) setAbsenceTemplateInput(contactMessages.absence);
+    if (contactMessages?.notHeard) setNotHeardTemplateInput(contactMessages.notHeard);
+  }, [contactMessages]);
+
+  // حالة طي وتوسعة الأقسام مع الحفظ في التخزين المحلي
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem("noor_stats_collapsed");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return {
+      absent: false,
+      notHeard: false,
+      archive: false,
+    };
+  });
+
+  const toggleCollapse = (section: string) => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [section]: !prev[section] };
+      try {
+        localStorage.setItem("noor_stats_collapsed", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // استبعاد أي تكرار محتمل في أرقام الأسابيع لحماية الحسابات من التكرار
   const uniqueLogs = useMemo(() => {
@@ -496,7 +607,7 @@ export default function StatisticsPage() {
     return rows;
   }, [period, currentStudents, day, selectedWeek, selectedMonth, uniqueLogs, week, students, halaqaId, weekStartDateIso]);
 
-  // تصفية المقاييس العامة حسب الطالب المحدد أو نص البحث أولاً لتفادي أي خطأ في ترتيب التهيئة
+  // تصفية المقاييس العامة حسب الطالب المحدد أو نص البحث أولاً
   const metrics = useMemo(() => {
     let list = rawMetrics;
     if (studentId !== "all") {
@@ -540,13 +651,11 @@ export default function StatisticsPage() {
     return sorted.map((item, idx) => ({ ...item, rank: idx + 1 }));
   }, [metrics]);
 
-  // تصفية نتائج الحفظ
   const sortedMemorization = memorizationRanked;
-
-  // تصفية نتائج المراجعة
   const sortedReview = reviewRanked;
 
-  // ترتيب الطلاب الغائبين مع استبعاد الحالات التي تم التواصل مع ولي أمرها
+  // 1. الطلاب الغائبون مع استبعاد المؤرشفين (الحالات النشطة بحاجة لمتابعة)
+  // مصدر وحيد للبيانات: العدد في البطاقة يطابق تماماً طول هذه المصفوفة
   const absentRanked = useMemo(() => {
     return metrics
       .map((s) => {
@@ -556,22 +665,19 @@ export default function StatisticsPage() {
         const lastContactedCount = studentAbsenceContacts.length > 0
           ? Math.max(...studentAbsenceContacts.map((c) => c.absenceCountAtContact ?? 0))
           : 0;
-        const unaddressedAbsence = s.absent - lastContactedCount;
+        const activeAbsence = Math.max(0, s.absent - lastContactedCount);
         return {
           ...s,
-          activeAbsence: unaddressedAbsence,
+          activeAbsence,
+          lastContactedCount,
           hasPriorContact: studentAbsenceContacts.length > 0,
         };
       })
       .filter((s) => s.activeAbsence > 0)
-      .sort((a, b) => {
-        const diff = b.activeAbsence - a.activeAbsence;
-        if (diff !== 0) return diff;
-        return a.name.localeCompare(b.name, "ar");
-      });
+      .sort((a, b) => b.activeAbsence - a.activeAbsence || a.name.localeCompare(b.name, "ar"));
   }, [metrics, parentContacts]);
 
-  // الطلاب الذين حصلوا على "لم يسمع — كلاهما" مع استبعاد الحالات التي تم التواصل بشأنها
+  // 2. الطلاب الذين لم يسمعوا الحفظ والمراجعة معًا في نفس اليوم مع استبعاد المؤرشفين
   const notHeardBothRanked = useMemo(() => {
     return metrics
       .map((s) => {
@@ -581,10 +687,11 @@ export default function StatisticsPage() {
         const lastBoth = studentContacts.length > 0
           ? Math.max(...studentContacts.map((c) => c.notHeardBothAtContact ?? 0))
           : 0;
-        const unaddressedBoth = s.notHeardBoth - lastBoth;
+        const activeCount = Math.max(0, s.notHeardBoth - lastBoth);
         return {
           ...s,
-          activeCount: unaddressedBoth,
+          activeCount,
+          lastContactedCount: lastBoth,
           hasPriorContact: studentContacts.length > 0,
         };
       })
@@ -592,7 +699,7 @@ export default function StatisticsPage() {
       .sort((a, b) => b.activeCount - a.activeCount || a.name.localeCompare(b.name, "ar"));
   }, [metrics, parentContacts]);
 
-  // الطلاب الذين حصلوا على "لم يسمع — حفظ" مع استبعاد الحالات التي تم التواصل بشأنها
+  // 3. الطلاب الذين لم يسمعوا الحفظ مع استبعاد المؤرشفين
   const notHeardMemRanked = useMemo(() => {
     return metrics
       .map((s) => {
@@ -602,10 +709,11 @@ export default function StatisticsPage() {
         const lastMem = studentContacts.length > 0
           ? Math.max(...studentContacts.map((c) => c.notHeardMemAtContact ?? 0))
           : 0;
-        const unaddressedMem = s.notHeardMem - lastMem;
+        const activeCount = Math.max(0, s.notHeardMem - lastMem);
         return {
           ...s,
-          activeCount: unaddressedMem,
+          activeCount,
+          lastContactedCount: lastMem,
           hasPriorContact: studentContacts.length > 0,
         };
       })
@@ -613,7 +721,7 @@ export default function StatisticsPage() {
       .sort((a, b) => b.activeCount - a.activeCount || a.name.localeCompare(b.name, "ar"));
   }, [metrics, parentContacts]);
 
-  // الطلاب الذين حصلوا على "لم يسمع — مراجعة" مع استبعاد الحالات التي تم التواصل بشأنها
+  // 4. الطلاب الذين لم يسمعوا المراجعة مع استبعاد المؤرشفين
   const notHeardRevRanked = useMemo(() => {
     return metrics
       .map((s) => {
@@ -623,10 +731,11 @@ export default function StatisticsPage() {
         const lastRev = studentContacts.length > 0
           ? Math.max(...studentContacts.map((c) => c.notHeardRevAtContact ?? 0))
           : 0;
-        const unaddressedRev = s.notHeardRev - lastRev;
+        const activeCount = Math.max(0, s.notHeardRev - lastRev);
         return {
           ...s,
-          activeCount: unaddressedRev,
+          activeCount,
+          lastContactedCount: lastRev,
           hasPriorContact: studentContacts.length > 0,
         };
       })
@@ -634,7 +743,7 @@ export default function StatisticsPage() {
       .sort((a, b) => b.activeCount - a.activeCount || a.name.localeCompare(b.name, "ar"));
   }, [metrics, parentContacts]);
 
-  // أرشيف الغائبين المفلتر حسب الحلقة أو البحث إن وجد
+  // أرشيف الغائبين المفلتر
   const absenceArchive = useMemo(() => {
     const list = parentContacts.filter((c) => c.type === "absence");
     if (studentId !== "all") {
@@ -706,13 +815,154 @@ export default function StatisticsPage() {
   const totalSessions = total.present + total.absent;
   const attendanceRate = totalSessions > 0 ? Math.round((total.present / totalSessions) * 100) : 0;
 
+  // إعداد بيانات نافذة التفاصيل Modal
+  const activeCategoryData = useMemo(() => {
+    if (detailsCategory === "absent") {
+      return {
+        title: "قائمة الطلاب الغائبين",
+        countLabel: "طالب غائب بحاجة لمتابعة",
+        icon: "alert",
+        tone: "coral",
+        list: absentRanked,
+        formatCount: (item: any) =>
+          item.lastContactedCount > 0
+            ? `${formatAbsenceCount(item.activeAbsence)} جديدة (إجمالي غيابه: ${ar(item.absent)})`
+            : formatAbsenceCount(item.activeAbsence),
+        contactType: "absence" as const,
+      };
+    }
+    if (detailsCategory === "both") {
+      return {
+        title: "قائمة الطلاب الذين لم يسمعوا الحفظ والمراجعة معًا",
+        countLabel: "طالب بحاجة لمتابعة",
+        icon: "book",
+        tone: "amber",
+        list: notHeardBothRanked,
+        formatCount: (item: any) =>
+          item.lastContactedCount > 0
+            ? `${formatNotHeardCount(item.activeCount)} جديدة (إجمالي: ${ar(item.notHeardBoth)} كلاهما)`
+            : `${formatNotHeardCount(item.activeCount)} (حفظ ومراجعة معًا في نفس اليوم)`,
+        contactType: "notHeard" as const,
+      };
+    }
+    if (detailsCategory === "mem") {
+      return {
+        title: "قائمة الطلاب الذين لم يسمعوا الحفظ",
+        countLabel: "طالب بحاجة لمتابعة",
+        icon: "book",
+        tone: "grape",
+        list: notHeardMemRanked,
+        formatCount: (item: any) =>
+          item.lastContactedCount > 0
+            ? `${formatNotHeardCount(item.activeCount)} جديدة (إجمالي: ${ar(item.notHeardMem)} حفظ)`
+            : `${formatNotHeardCount(item.activeCount)} (حفظ)`,
+        contactType: "notHeard" as const,
+      };
+    }
+    if (detailsCategory === "rev") {
+      return {
+        title: "قائمة الطلاب الذين لم يسمعوا المراجعة",
+        countLabel: "طالب بحاجة لمتابعة",
+        icon: "refresh",
+        tone: "grape",
+        list: notHeardRevRanked,
+        formatCount: (item: any) =>
+          item.lastContactedCount > 0
+            ? `${formatNotHeardCount(item.activeCount)} جديدة (إجمالي: ${ar(item.notHeardRev)} مراجعة)`
+            : `${formatNotHeardCount(item.activeCount)} (مراجعة)`,
+        contactType: "notHeard" as const,
+      };
+    }
+    return null;
+  }, [detailsCategory, absentRanked, notHeardBothRanked, notHeardMemRanked, notHeardRevRanked]);
+
+  const filteredModalList = useMemo(() => {
+    if (!activeCategoryData) return [];
+    if (!modalSearch.trim()) return activeCategoryData.list;
+    const q = normalizeArabic(modalSearch);
+    return activeCategoryData.list.filter((s: any) => normalizeArabic(s.name).includes(q));
+  }, [activeCategoryData, modalSearch]);
+
+  /**
+   * إجراء التواصل عبر واتساب مع التحقق من الرقم ونقل الطالب تلقائيًا إلى الأرشيف
+   */
+  const handleContactWhatsApp = (
+    item: StudentMetrics & { activeAbsence?: number; activeCount?: number },
+    category: "absence" | "notHeard",
+    specificRecitationType?: "both" | "mem" | "rev"
+  ) => {
+    const stObj = students.find((s) => s.id === item.id);
+    const rawPhone = stObj?.guardianPhone;
+
+    if (!rawPhone || !rawPhone.trim()) {
+      toast("error", "لا يوجد رقم ولي أمر مسجل لهذا الطالب. يمكنك إضافة الرقم من بيانات الطالب.");
+      return;
+    }
+
+    const formatted = formatPhoneForWhatsApp(rawPhone);
+    if (!formatted) {
+      toast("error", "تعذر فتح WhatsApp لهذا الرقم. يرجى التأكد من صحة رقم ولي الأمر وأن الرقم مسجل على WhatsApp.");
+      return;
+    }
+
+    const template =
+      category === "absence"
+        ? (contactMessages?.absence || DEFAULT_ABSENCE_MESSAGE)
+        : (contactMessages?.notHeard || DEFAULT_NOT_HEARD_MESSAGE);
+
+    const typeKey = specificRecitationType || notHeardTab;
+    const recitationType =
+      typeKey === "both"
+        ? "الحفظ والمراجعة معًا"
+        : typeKey === "mem"
+        ? "الحفظ"
+        : "المراجعة";
+
+    const msg = fillTemplate(template, {
+      studentName: item.name,
+      recitationType,
+      absenceCount: item.absent,
+      date: formatHijriDate(new Date(), { day: "numeric", month: "long" }),
+    });
+
+    const url = `https://wa.me/${formatted}?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+
+    // نقل الطالب تلقائيًا إلى الأرشيف بعد بدء التواصل عبر واتساب بنجاح مع حفظ لقطة الحالة
+    recordParentContact({
+      studentId: item.id,
+      studentName: item.name,
+      studentPhoto: item.photo,
+      guardianPhone: rawPhone.trim(),
+      type: category,
+      contactDateIso: localDateKey(new Date()),
+      contactDateHijri: formatHijriDate(new Date(), { day: "numeric", month: "long", year: "numeric" }),
+      absenceCountAtContact: item.absent,
+      notHeardBothAtContact: item.notHeardBoth,
+      notHeardMemAtContact: item.notHeardMem,
+      notHeardRevAtContact: item.notHeardRev,
+      statusText: "تم التواصل عبر واتساب",
+    });
+  };
+
   return (
     <div className="space-y-5 anim-fade">
-      <SectionHead
-        title="إحصائيات الطلاب والحلقات"
-        desc="إحصائيات دقيقة وفورية مبنية على السجلات الفعلية للطلاب فقط — مع فصل إحصائيات الحفظ عن المراجعة والترتيب التلقائي حسب الصفحات"
-        icon="chart"
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SectionHead
+          title="إحصائيات الطلاب والحلقات"
+          desc="إحصائيات دقيقة وفورية مبنية على السجلات الفعلية للطلاب فقط — مع فصل إحصائيات الحفظ عن المراجعة والترتيب التلقائي حسب الصفحات"
+          icon="chart"
+        />
+        <button
+          type="button"
+          onClick={() => setShowMessageSettings(true)}
+          className="flex items-center gap-2 rounded-2xl border-2 border-grape-200 bg-white px-4 py-2.5 text-xs font-black text-grape-700 shadow-sm hover:border-grape-400 hover:bg-grape-50 transition active:scale-95"
+          title="تخصيص نص رسائل الواتساب للغائبين والذين لم يسمعوا"
+        >
+          <Icon name="settings" className="h-4 w-4 text-grape-600" />
+          <span>إعدادات رسائل WhatsApp</span>
+        </button>
+      </div>
 
       <div className="rounded-3xl border border-grape-200 bg-white p-4">
         {/* مبدلات الفترة */}
@@ -887,6 +1137,101 @@ export default function StatisticsPage() {
           </div>
         </div>
 
+        {/* 4 بطاقات تفاعلية رئيسية: الغائبون | كلاهما | لم يسمعوا الحفظ | لم يسمعوا المراجعة (العدد مطابق 100% للقائمة) */}
+        <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <button
+            type="button"
+            onClick={() => setDetailsCategory("absent")}
+            className="group rounded-2xl border-2 border-coral-200 bg-white p-4 text-start transition hover:border-coral-400 hover:bg-coral-50/40 hover:shadow-sm"
+            title="اضغط لفتح القائمة الكاملة للطلاب الغائبين"
+          >
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-xs font-black text-coral-700">
+                <Icon name="alert" className="h-4 w-4 shrink-0" />
+                الطلاب الغائبون
+              </span>
+              <span className="rounded-full bg-coral-100 px-2 py-0.5 text-[10px] font-black text-coral-800 group-hover:bg-coral-200 transition">
+                عرض القائمة ↲
+              </span>
+            </div>
+            <p className="mt-2 font-display text-2xl font-black text-coral-700">
+              {ar(absentRanked.length)} <span className="text-xs font-bold text-coral-600">طالب</span>
+            </p>
+            <p className="mt-1 text-[11px] font-bold text-grape-500">
+              إجمالي {ar(total.absent)} حالة غياب مسجلة
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDetailsCategory("both")}
+            className="group rounded-2xl border-2 border-amber-200 bg-white p-4 text-start transition hover:border-amber-400 hover:bg-amber-50/40 hover:shadow-sm"
+            title="اضغط لفتح القائمة الكاملة للطلاب الذين لم يسمعوا الحفظ والمراجعة معًا"
+          >
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-xs font-black text-amber-800">
+                <Icon name="book" className="h-4 w-4 shrink-0" />
+                لم يسمع كلاهما معًا
+              </span>
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-900 group-hover:bg-amber-200 transition">
+                عرض القائمة ↲
+              </span>
+            </div>
+            <p className="mt-2 font-display text-2xl font-black text-amber-800">
+              {ar(notHeardBothRanked.length)} <span className="text-xs font-bold text-amber-700">طالب</span>
+            </p>
+            <p className="mt-1 text-[11px] font-bold text-grape-500">
+              إجمالي {ar(total.notHeardBoth)} يوم لم يُسمّع فيه الاثنين
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDetailsCategory("mem")}
+            className="group rounded-2xl border-2 border-grape-200 bg-white p-4 text-start transition hover:border-grape-400 hover:bg-grape-50/40 hover:shadow-sm"
+            title="اضغط لفتح القائمة الكاملة للطلاب الذين لم يسمعوا الحفظ"
+          >
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-xs font-black text-grape-700">
+                <Icon name="book" className="h-4 w-4 shrink-0" />
+                لم يسمعوا الحفظ
+              </span>
+              <span className="rounded-full bg-grape-100 px-2 py-0.5 text-[10px] font-black text-grape-800 group-hover:bg-grape-200 transition">
+                عرض القائمة ↲
+              </span>
+            </div>
+            <p className="mt-2 font-display text-2xl font-black text-grape-700">
+              {ar(notHeardMemRanked.length)} <span className="text-xs font-bold text-grape-600">طالب</span>
+            </p>
+            <p className="mt-1 text-[11px] font-bold text-grape-500">
+              إجمالي {ar(total.notHeardMem)} حالة عدم تسميع حفظ
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDetailsCategory("rev")}
+            className="group rounded-2xl border-2 border-grape-200 bg-white p-4 text-start transition hover:border-grape-400 hover:bg-grape-50/40 hover:shadow-sm"
+            title="اضغط لفتح القائمة الكاملة للطلاب الذين لم يسمعوا المراجعة"
+          >
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-xs font-black text-grape-700">
+                <Icon name="refresh" className="h-4 w-4 shrink-0" />
+                لم يسمعوا المراجعة
+              </span>
+              <span className="rounded-full bg-grape-100 px-2 py-0.5 text-[10px] font-black text-grape-800 group-hover:bg-grape-200 transition">
+                عرض القائمة ↲
+              </span>
+            </div>
+            <p className="mt-2 font-display text-2xl font-black text-grape-700">
+              {ar(notHeardRevRanked.length)} <span className="text-xs font-bold text-grape-600">طالب</span>
+            </p>
+            <p className="mt-1 text-[11px] font-bold text-grape-500">
+              إجمالي {ar(total.notHeardRev)} حالة عدم تسميع مراجعة
+            </p>
+          </button>
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard icon="users" label="إجمالي الطلاب" value={ar(metrics.length)} tone="grape" />
           <MetricCard icon="check" label="الحضور" value={ar(total.present)} tone="mint" />
@@ -917,12 +1262,17 @@ export default function StatisticsPage() {
         </section>
       )}
 
-      {/* قسم إحصائيات الطلاب الغائبين والطلاب الذين حصلوا على "لم يسمع" مع زر التواصل والأرشيف */}
+      {/* قسم إحصائيات الطلاب الغائبين والطلاب الذين حصلوا على "لم يسمع" مع إمكانية الطي والتوسعة والتواصل عبر واتساب */}
       <section className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-2">
-          {/* 1. قسم الطلاب الغائبون الحالية */}
+          {/* 1. قسم الطلاب الغائبون */}
           <div className="flex flex-col rounded-3xl border border-grape-200 bg-white p-4 sm:p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-2 border-b border-grape-100 pb-3">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => toggleCollapse("absent")}
+              className="flex cursor-pointer select-none items-center justify-between gap-2 border-b border-grape-100 pb-3"
+            >
               <div className="flex items-center gap-3">
                 <span className="grid h-10 w-10 place-items-center rounded-2xl bg-coral-50 text-coral-600">
                   <Icon name="alert" className="h-5 w-5" strokeWidth={2.2} />
@@ -931,176 +1281,40 @@ export default function StatisticsPage() {
                   <h4 className="font-display text-base font-extrabold text-ink flex items-center gap-2">
                     <span>الطلاب الغائبون</span>
                     <span className="rounded-full bg-coral-100 px-2.5 py-0.5 text-xs font-black text-coral-800">
-                      {ar(absentRanked.length)} طالب يحتاج متابعة
+                      {ar(absentRanked.length)} طالب
                     </span>
                   </h4>
                   <p className="text-xs font-bold text-grape-500 mt-0.5">
-                    مرتبون من الأكثر غيابًا إلى الأقل غيابًا (الحالات الحالية النشطة)
+                    مرتبون من الأكثر غيابًا إلى الأقل غيابًا (الحالات النشطة بحاجة لمتابعة)
                   </p>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-3 flex-1">
-              {absentRanked.length > 0 ? (
-                <div className="max-h-[380px] overflow-y-auto space-y-2 pe-1">
-                  {absentRanked.map((item, idx) => {
-                    const stObj = students.find((s) => s.id === item.id);
-                    const trend = stObj ? analyzeStudentTrend(stObj, weeksLog, parentContacts) : null;
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-grape-100 bg-grape-50/30 p-2.5 hover:bg-grape-50/80 transition"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-black text-grape-600 border border-grape-200 shadow-sm shrink-0">
-                            {ar(idx + 1)}
-                          </span>
-                          <Avatar photo={item.photo} name={item.name} size={34} />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="truncate text-sm font-extrabold text-ink">{item.name}</span>
-                              {trend && (
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-[10px] font-black border ${
-                                    trend.tone === "mint"
-                                      ? "bg-mint-50 border-mint-200 text-mint-700"
-                                      : trend.tone === "coral"
-                                      ? "bg-coral-50 border-coral-200 text-coral-600"
-                                      : "bg-grape-50 border-grape-200 text-grape-600"
-                                  }`}
-                                  title={trend.explanation}
-                                >
-                                  {trend.label}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] font-bold text-coral-600">
-                              {item.hasPriorContact ? (
-                                <span>{formatAbsenceCount(item.activeAbsence)} جديدة (إجمالي غيابه: {ar(item.absent)})</span>
-                              ) : (
-                                <span>{formatAbsenceCount(item.activeAbsence)}</span>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            recordParentContact({
-                              studentId: item.id,
-                              studentName: item.name,
-                              studentPhoto: item.photo,
-                              type: "absence",
-                              contactDateIso: localDateKey(new Date()),
-                              contactDateHijri: formatHijriDate(new Date(), { day: "numeric", month: "long", year: "numeric" }),
-                              absenceCountAtContact: item.absent,
-                              statusText: "تم التواصل مع ولي الأمر",
-                            });
-                          }}
-                          className="flex items-center gap-1.5 rounded-xl bg-grape-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-grape-700 transition active:scale-95 shrink-0 ms-auto sm:ms-0"
-                          title="تسجيل التواصل ونقل الحالة إلى أرشيف الغائبين"
-                        >
-                          <Icon name="check" className="h-3.5 w-3.5" />
-                          <span>تم التواصل مع ولي الأمر</span>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex h-36 items-center justify-center rounded-2xl border-2 border-dashed border-grape-100 bg-grape-50/40 p-4 text-center text-xs font-bold text-grape-400">
-                  {searchQuery ? `لا يوجد طالب غائب يطابق «${searchQuery}»` : "لا توجد حالات غياب بحاجة لمتابعة حاليًا (جميع الحالات عولجت بالتواصل أو لا يوجد غياب) 👏"}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 2. قسم الطلاب الذين حصلوا على "لم يسمع" الحالية */}
-          <div className="flex flex-col rounded-3xl border border-grape-200 bg-white p-4 sm:p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grape-100 pb-3">
-              <div className="flex items-center gap-3">
-                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-amber-50 text-amber-600">
-                  <Icon name="book" className="h-5 w-5" strokeWidth={2.2} />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDetailsCategory("absent");
+                  }}
+                  className="rounded-xl border border-coral-200 bg-coral-50/60 px-3 py-1.5 text-xs font-black text-coral-700 hover:bg-coral-100 transition shrink-0"
+                >
+                  فتح التفاصيل ↲
+                </button>
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-grape-50 text-grape-600 transition hover:bg-grape-100">
+                  {collapsed.absent ? "▼" : "▲"}
                 </span>
-                <div>
-                  <h4 className="font-display text-base font-extrabold text-ink flex items-center gap-2">
-                    <span>الطلاب الذين حصلوا على «لم يسمع»</span>
-                  </h4>
-                  <p className="text-xs font-bold text-grape-500 mt-0.5">
-                    مرتبون من الأكثر إلى الأقل (حاضر ولم يُسمّع — حالات بحاجة لمتابعة)
-                  </p>
-                </div>
               </div>
             </div>
 
-            {/* تبويبات الأقسام الثلاثة: كلاهما | حفظ | مراجعة */}
-            <div className="mt-3 flex items-center gap-1.5 rounded-xl bg-grape-100/70 p-1">
-              <button
-                type="button"
-                onClick={() => setNotHeardTab("both")}
-                className={`flex-1 rounded-lg py-1.5 text-xs font-extrabold transition ${
-                  notHeardTab === "both"
-                    ? "bg-grape-600 text-white shadow-sm"
-                    : "text-grape-700 hover:bg-white/60"
-                }`}
-              >
-                كلاهما ({ar(notHeardBothRanked.length)})
-              </button>
-              <button
-                type="button"
-                onClick={() => setNotHeardTab("mem")}
-                className={`flex-1 rounded-lg py-1.5 text-xs font-extrabold transition ${
-                  notHeardTab === "mem"
-                    ? "bg-grape-600 text-white shadow-sm"
-                    : "text-grape-700 hover:bg-white/60"
-                }`}
-              >
-                حفظ ({ar(notHeardMemRanked.length)})
-              </button>
-              <button
-                type="button"
-                onClick={() => setNotHeardTab("rev")}
-                className={`flex-1 rounded-lg py-1.5 text-xs font-extrabold transition ${
-                  notHeardTab === "rev"
-                    ? "bg-grape-600 text-white shadow-sm"
-                    : "text-grape-700 hover:bg-white/60"
-                }`}
-              >
-                مراجعة ({ar(notHeardRevRanked.length)})
-              </button>
-            </div>
-
-            <div className="mt-3 flex-1">
-              {(() => {
-                const currentList =
-                  notHeardTab === "both"
-                    ? notHeardBothRanked
-                    : notHeardTab === "mem"
-                    ? notHeardMemRanked
-                    : notHeardRevRanked;
-
-                const labelSuffix =
-                  notHeardTab === "both"
-                    ? "حفظ ومراجعة"
-                    : notHeardTab === "mem"
-                    ? "حفظ"
-                    : "مراجعة";
-
-                if (currentList.length === 0) {
-                  return (
-                    <div className="flex h-36 items-center justify-center rounded-2xl border-2 border-dashed border-grape-100 bg-grape-50/40 p-4 text-center text-xs font-bold text-grape-400">
-                      لا يوجد طلاب بحاجة لمتابعة في «لم يسمع ({labelSuffix})» لهذه الفترة 🎉
-                    </div>
-                  );
-                }
-
-                return (
+            {!collapsed.absent && (
+              <div className="mt-3 flex-1 anim-fade">
+                {absentRanked.length > 0 ? (
                   <div className="max-h-[380px] overflow-y-auto space-y-2 pe-1">
-                    {currentList.map((item, idx) => {
+                    {absentRanked.map((item, idx) => {
                       const stObj = students.find((s) => s.id === item.id);
                       const trend = stObj ? analyzeStudentTrend(stObj, weeksLog, parentContacts) : null;
+                      const hasPhone = Boolean(stObj?.guardianPhone?.trim());
+
                       return (
                         <div
                           key={item.id}
@@ -1129,47 +1343,241 @@ export default function StatisticsPage() {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[11px] font-bold text-amber-700">
-                                {formatNotHeardCount(item.activeCount)} ({labelSuffix})
-                              </p>
+                              <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                                <span className="text-[11px] font-bold text-coral-600">
+                                  {item.lastContactedCount > 0 ? (
+                                    <span>{formatAbsenceCount(item.activeAbsence)} جديدة (إجمالي غيابه: {ar(item.absent)})</span>
+                                  ) : (
+                                    <span>{formatAbsenceCount(item.activeAbsence)}</span>
+                                  )}
+                                </span>
+                                {hasPhone ? (
+                                  <span className="text-[10px] font-mono text-grape-400">
+                                    📱 {stObj.guardianPhone}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-coral-400">
+                                    (لا يوجد رقم مسجل)
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
 
                           <button
                             type="button"
-                            onClick={() => {
-                              recordParentContact({
-                                studentId: item.id,
-                                studentName: item.name,
-                                studentPhoto: item.photo,
-                                type: "notHeard",
-                                contactDateIso: localDateKey(new Date()),
-                                contactDateHijri: formatHijriDate(new Date(), { day: "numeric", month: "long", year: "numeric" }),
-                                notHeardBothAtContact: item.notHeardBoth,
-                                notHeardMemAtContact: item.notHeardMem,
-                                notHeardRevAtContact: item.notHeardRev,
-                                statusText: "تم التواصل مع ولي الأمر",
-                              });
-                            }}
+                            onClick={() => handleContactWhatsApp(item, "absence")}
                             className="flex items-center gap-1.5 rounded-xl bg-grape-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-grape-700 transition active:scale-95 shrink-0 ms-auto sm:ms-0"
-                            title="تسجيل التواصل ونقل الحالة إلى أرشيف الذين لم يسمعوا"
+                            title="التواصل مع ولي الأمر عبر واتساب ونقل الحالة إلى الأرشيف"
                           >
                             <Icon name="check" className="h-3.5 w-3.5" />
-                            <span>تم التواصل مع ولي الأمر</span>
+                            <span>تواصل مع ولي الأمر</span>
                           </button>
                         </div>
                       );
                     })}
                   </div>
-                );
-              })()}
+                ) : (
+                  <div className="flex h-36 items-center justify-center rounded-2xl border-2 border-dashed border-grape-100 bg-grape-50/40 p-4 text-center text-xs font-bold text-grape-400">
+                    {searchQuery ? `لا يوجد طالب غائب يطابق «${searchQuery}»` : "لا توجد حالات غياب نشطة بحاجة لمتابعة حاليًا (جميع الحالات عولجت بالتواصل أو لا يوجد غياب) 👏"}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 2. قسم الطلاب الذين حصلوا على "لم يسمع" */}
+          <div className="flex flex-col rounded-3xl border border-grape-200 bg-white p-4 sm:p-5 shadow-sm">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => toggleCollapse("notHeard")}
+              className="flex cursor-pointer select-none flex-wrap items-center justify-between gap-2 border-b border-grape-100 pb-3"
+            >
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-amber-50 text-amber-600">
+                  <Icon name="book" className="h-5 w-5" strokeWidth={2.2} />
+                </span>
+                <div>
+                  <h4 className="font-display text-base font-extrabold text-ink flex items-center gap-2">
+                    <span>الطلاب الذين حصلوا على «لم يسمع»</span>
+                  </h4>
+                  <p className="text-xs font-bold text-grape-500 mt-0.5">
+                    مرتبون من الأكثر إلى الأقل (حاضر ولم يُسمّع — حالات بحاجة لمتابعة)
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDetailsCategory(notHeardTab);
+                  }}
+                  className="rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-1.5 text-xs font-black text-amber-800 hover:bg-amber-100 transition shrink-0"
+                >
+                  فتح التفاصيل ↲
+                </button>
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-grape-50 text-grape-600 transition hover:bg-grape-100">
+                  {collapsed.notHeard ? "▼" : "▲"}
+                </span>
+              </div>
             </div>
+
+            {!collapsed.notHeard && (
+              <div className="anim-fade mt-3 flex flex-col flex-1">
+                {/* تبويبات الأقسام الثلاثة: كلاهما | حفظ | مراجعة (الأعداد مطابقة 100% للقوائم) */}
+                <div className="flex items-center gap-1.5 rounded-xl bg-grape-100/70 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setNotHeardTab("both")}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-extrabold transition ${
+                      notHeardTab === "both"
+                        ? "bg-grape-600 text-white shadow-sm"
+                        : "text-grape-700 hover:bg-white/60"
+                    }`}
+                  >
+                    كلاهما ({ar(notHeardBothRanked.length)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNotHeardTab("mem")}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-extrabold transition ${
+                      notHeardTab === "mem"
+                        ? "bg-grape-600 text-white shadow-sm"
+                        : "text-grape-700 hover:bg-white/60"
+                    }`}
+                  >
+                    حفظ ({ar(notHeardMemRanked.length)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNotHeardTab("rev")}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-extrabold transition ${
+                      notHeardTab === "rev"
+                        ? "bg-grape-600 text-white shadow-sm"
+                        : "text-grape-700 hover:bg-white/60"
+                    }`}
+                  >
+                    مراجعة ({ar(notHeardRevRanked.length)})
+                  </button>
+                </div>
+
+                <div className="mt-3 flex-1">
+                  {(() => {
+                    const currentList =
+                      notHeardTab === "both"
+                        ? notHeardBothRanked
+                        : notHeardTab === "mem"
+                        ? notHeardMemRanked
+                        : notHeardRevRanked;
+
+                    const labelSuffix =
+                      notHeardTab === "both"
+                        ? "حفظ ومراجعة معًا في نفس اليوم"
+                        : notHeardTab === "mem"
+                        ? "حفظ"
+                        : "مراجعة";
+
+                    if (currentList.length === 0) {
+                      return (
+                        <div className="flex h-36 items-center justify-center rounded-2xl border-2 border-dashed border-grape-100 bg-grape-50/40 p-4 text-center text-xs font-bold text-grape-400">
+                          لا يوجد طلاب بحاجة لمتابعة في «لم يسمع ({labelSuffix})» لهذه الفترة 🎉
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="max-h-[380px] overflow-y-auto space-y-2 pe-1">
+                        {currentList.map((item, idx) => {
+                          const stObj = students.find((s) => s.id === item.id);
+                          const trend = stObj ? analyzeStudentTrend(stObj, weeksLog, parentContacts) : null;
+                          const hasPhone = Boolean(stObj?.guardianPhone?.trim());
+                          const totalVal =
+                            notHeardTab === "both"
+                              ? item.notHeardBoth
+                              : notHeardTab === "mem"
+                              ? item.notHeardMem
+                              : item.notHeardRev;
+
+                          return (
+                            <div
+                              key={item.id}
+                              className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-grape-100 bg-grape-50/30 p-2.5 hover:bg-grape-50/80 transition"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-black text-grape-600 border border-grape-200 shadow-sm shrink-0">
+                                  {ar(idx + 1)}
+                                </span>
+                                <Avatar photo={item.photo} name={item.name} size={34} />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="truncate text-sm font-extrabold text-ink">{item.name}</span>
+                                    {trend && (
+                                      <span
+                                        className={`rounded-full px-2 py-0.5 text-[10px] font-black border ${
+                                          trend.tone === "mint"
+                                            ? "bg-mint-50 border-mint-200 text-mint-700"
+                                            : trend.tone === "coral"
+                                            ? "bg-coral-50 border-coral-200 text-coral-600"
+                                            : "bg-grape-50 border-grape-200 text-grape-600"
+                                        }`}
+                                        title={trend.explanation}
+                                      >
+                                        {trend.label}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                                    <span className="text-[11px] font-bold text-amber-700">
+                                      {item.lastContactedCount > 0 ? (
+                                        <span>{formatNotHeardCount(item.activeCount)} جديدة (إجمالي: {ar(totalVal)} {labelSuffix})</span>
+                                      ) : (
+                                        <span>{formatNotHeardCount(item.activeCount)} ({labelSuffix})</span>
+                                      )}
+                                    </span>
+                                    {hasPhone ? (
+                                      <span className="text-[10px] font-mono text-grape-400">
+                                        📱 {stObj.guardianPhone}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-coral-400">
+                                        (لا يوجد رقم مسجل)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleContactWhatsApp(item, "notHeard", notHeardTab)}
+                                className="flex items-center gap-1.5 rounded-xl bg-grape-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-grape-700 transition active:scale-95 shrink-0 ms-auto sm:ms-0"
+                                title="التواصل مع ولي الأمر عبر واتساب ونقل الحالة إلى الأرشيف"
+                              >
+                                <Icon name="check" className="h-3.5 w-3.5" />
+                                <span>تواصل مع ولي الأمر</span>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* 3. أقسام الأرشيف: أرشيف الغائبين + أرشيف الذين لم يسمعوا */}
+        {/* 3. أقسام الأرشيف: أرشيف الغائبين + أرشيف الذين لم يسمعوا مع إمكانية الطي والتوسعة وإعادة الطالب للقائمة */}
         <div className="rounded-3xl border border-grape-200 bg-white p-4 sm:p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-grape-100 pb-3">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => toggleCollapse("archive")}
+            className="flex cursor-pointer select-none flex-wrap items-center justify-between gap-3 border-b border-grape-100 pb-3"
+          >
             <div className="flex items-center gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-2xl bg-grape-100 text-grape-700">
                 <Icon name="archive" className="h-5 w-5" strokeWidth={2.2} />
@@ -1187,178 +1595,220 @@ export default function StatisticsPage() {
               </div>
             </div>
 
-            {/* أزرار التبديل بين أرشيف الغائبين وأرشيف لم يسمع */}
-            <div className="flex items-center gap-1.5 rounded-xl bg-grape-100/70 p-1">
-              <button
-                type="button"
-                onClick={() => setArchiveTab("absence")}
-                className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition ${
-                  archiveTab === "absence"
-                    ? "bg-coral-500 text-white shadow-sm"
-                    : "text-grape-700 hover:bg-white/60"
-                }`}
+            <div className="flex items-center gap-3">
+              {/* أزرار التبديل بين أرشيف الغائبين وأرشيف لم يسمع */}
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1.5 rounded-xl bg-grape-100/70 p-1"
               >
-                أرشيف الغائبين ({ar(absenceArchive.length)})
-              </button>
-              <button
-                type="button"
-                onClick={() => setArchiveTab("notHeard")}
-                className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition ${
-                  archiveTab === "notHeard"
-                    ? "bg-amber-500 text-ink shadow-sm"
-                    : "text-grape-700 hover:bg-white/60"
-                }`}
-              >
-                أرشيف الذين لم يسمعوا ({ar(notHeardArchive.length)})
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setArchiveTab("absence")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition ${
+                    archiveTab === "absence"
+                      ? "bg-coral-500 text-white shadow-sm"
+                      : "text-grape-700 hover:bg-white/60"
+                  }`}
+                >
+                  أرشيف الغائبين ({ar(absenceArchive.length)})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setArchiveTab("notHeard")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition ${
+                    archiveTab === "notHeard"
+                      ? "bg-amber-500 text-ink shadow-sm"
+                      : "text-grape-700 hover:bg-white/60"
+                  }`}
+                >
+                  أرشيف الذين لم يسمعوا ({ar(notHeardArchive.length)})
+                </button>
+              </div>
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-grape-50 text-grape-600 transition hover:bg-grape-100">
+                {collapsed.archive ? "▼" : "▲"}
+              </span>
             </div>
           </div>
 
-          <div className="mt-4">
-            {archiveTab === "absence" ? (
-              <div>
-                {absenceArchive.length > 0 ? (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {absenceArchive.map((rec) => {
-                      const stObj = students.find((s) => s.id === rec.studentId || normalizeArabic(s.name) === normalizeArabic(rec.studentName));
-                      const trend = stObj ? analyzeStudentTrend(stObj, weeksLog, parentContacts) : null;
-                      return (
-                        <div
-                          key={rec.id}
-                          className="flex flex-col justify-between rounded-2xl border-2 border-grape-100 bg-grape-50/20 p-3.5 hover:border-grape-200 transition"
-                        >
-                          <div>
-                            <div className="flex items-center justify-between gap-2 border-b border-grape-100/70 pb-2">
-                              <div className="flex items-center gap-2">
-                                <Avatar photo={rec.studentPhoto ?? stObj?.photo ?? null} name={rec.studentName} size={34} />
-                                <div>
-                                  <p className="font-display text-sm font-extrabold text-ink">{rec.studentName}</p>
-                                  <p className="text-[10px] font-bold text-grape-400">تاريخ التواصل: {rec.contactDateHijri}</p>
+          {!collapsed.archive && (
+            <div className="mt-4 anim-fade">
+              {archiveTab === "absence" ? (
+                <div>
+                  {absenceArchive.length > 0 ? (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {absenceArchive.map((rec) => {
+                        const stObj = students.find((s) => s.id === rec.studentId || normalizeArabic(s.name) === normalizeArabic(rec.studentName));
+                        const trend = stObj ? analyzeStudentTrend(stObj, weeksLog, parentContacts) : null;
+                        const phone = rec.guardianPhone || stObj?.guardianPhone;
+
+                        return (
+                          <div
+                            key={rec.id}
+                            className="flex flex-col justify-between rounded-2xl border-2 border-grape-100 bg-grape-50/20 p-3.5 hover:border-grape-200 transition"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2 border-b border-grape-100/70 pb-2">
+                                <div className="flex items-center gap-2">
+                                  <Avatar photo={rec.studentPhoto ?? stObj?.photo} name={rec.studentName} size={34} />
+                                  <div>
+                                    <p className="font-display text-sm font-extrabold text-ink">{rec.studentName}</p>
+                                    <p className="text-[10px] font-bold text-grape-400">تاريخ التواصل: {rec.contactDateHijri}</p>
+                                  </div>
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeParentContact(rec.id)}
+                                  className="text-grape-400 hover:text-coral-500 text-xs font-extrabold px-1"
+                                  title="حذف هذا السجل من الأرشيف"
+                                >
+                                  ✕
+                                </button>
                               </div>
+
+                              <div className="mt-2.5 space-y-1 text-xs">
+                                <p className="font-extrabold text-coral-700">
+                                  الغياب: {ar(rec.absenceCountAtContact ?? 0)} مرات (وقت التواصل)
+                                </p>
+                                {phone && (
+                                  <p className="font-mono text-[11px] text-grape-500">
+                                    📱 {phone}
+                                  </p>
+                                )}
+                                <p className="font-bold text-mint-700 flex items-center gap-1">
+                                  <Icon name="check" className="h-3.5 w-3.5" />
+                                  <span>الحالة: {rec.statusText}</span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 pt-2.5 border-t border-grape-100/80 flex items-center justify-between gap-2">
+                              {trend ? (
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-black border ${
+                                    trend.tone === "mint"
+                                      ? "bg-mint-50 border-mint-200 text-mint-700"
+                                      : trend.tone === "coral"
+                                      ? "bg-coral-50 border-coral-200 text-coral-600"
+                                      : "bg-grape-50 border-grape-200 text-grape-600"
+                                  }`}
+                                  title={trend.explanation}
+                                >
+                                  {trend.label}
+                                </span>
+                              ) : <span />}
+
                               <button
                                 type="button"
                                 onClick={() => removeParentContact(rec.id)}
-                                className="text-grape-400 hover:text-coral-500 text-xs font-extrabold px-1"
-                                title="إلغاء هذا السجل من الأرشيف"
+                                className="flex items-center gap-1 rounded-xl border border-grape-200 bg-white px-2.5 py-1 text-xs font-black text-grape-600 hover:border-grape-400 hover:bg-grape-50 shadow-sm transition active:scale-95"
+                                title="إلغاء أرشفة هذا التواصل وإعادة الطالب للقائمة النشطة"
                               >
-                                ✕
+                                <Icon name="refresh" className="h-3 w-3" />
+                                <span>إعادة إلى القائمة</span>
                               </button>
                             </div>
-
-                            <div className="mt-2.5 space-y-1 text-xs">
-                              <p className="font-extrabold text-coral-700">
-                                الغياب: {ar(rec.absenceCountAtContact ?? 0)} مرات (وقت التواصل)
-                              </p>
-                              <p className="font-bold text-mint-700 flex items-center gap-1">
-                                <Icon name="check" className="h-3.5 w-3.5" />
-                                <span>الحالة: {rec.statusText}</span>
-                              </p>
-                            </div>
                           </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="p-8 text-center text-xs font-bold text-grape-400">
+                      لا توجد حالات مسجلة في أرشيف الغائبين حتى الآن.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  {notHeardArchive.length > 0 ? (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {notHeardArchive.map((rec) => {
+                        const stObj = students.find((s) => s.id === rec.studentId || normalizeArabic(s.name) === normalizeArabic(rec.studentName));
+                        const trend = stObj ? analyzeStudentTrend(stObj, weeksLog, parentContacts) : null;
+                        const phone = rec.guardianPhone || stObj?.guardianPhone;
 
-                          {trend && (
-                            <div className="mt-3 pt-2 border-t border-grape-100/80 flex items-center justify-between">
-                              <span className="text-[11px] font-bold text-grape-500">حالة الطالب الآن:</span>
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-black border ${
-                                  trend.tone === "mint"
-                                    ? "bg-mint-50 border-mint-200 text-mint-700"
-                                    : trend.tone === "coral"
-                                    ? "bg-coral-50 border-coral-200 text-coral-600"
-                                    : "bg-grape-50 border-grape-200 text-grape-600"
-                                }`}
-                                title={trend.explanation}
-                              >
-                                {trend.label}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="p-8 text-center text-xs font-bold text-grape-400">
-                    لا توجد حالات مسجلة في أرشيف الغائبين حتى الآن.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div>
-                {notHeardArchive.length > 0 ? (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {notHeardArchive.map((rec) => {
-                      const stObj = students.find((s) => s.id === rec.studentId || normalizeArabic(s.name) === normalizeArabic(rec.studentName));
-                      const trend = stObj ? analyzeStudentTrend(stObj, weeksLog, parentContacts) : null;
-                      return (
-                        <div
-                          key={rec.id}
-                          className="flex flex-col justify-between rounded-2xl border-2 border-grape-100 bg-grape-50/20 p-3.5 hover:border-grape-200 transition"
-                        >
-                          <div>
-                            <div className="flex items-center justify-between gap-2 border-b border-grape-100/70 pb-2">
-                              <div className="flex items-center gap-2">
-                                <Avatar photo={rec.studentPhoto ?? stObj?.photo ?? null} name={rec.studentName} size={34} />
-                                <div>
-                                  <p className="font-display text-sm font-extrabold text-ink">{rec.studentName}</p>
-                                  <p className="text-[10px] font-bold text-grape-400">تاريخ التواصل: {rec.contactDateHijri}</p>
+                        return (
+                          <div
+                            key={rec.id}
+                            className="flex flex-col justify-between rounded-2xl border-2 border-grape-100 bg-grape-50/20 p-3.5 hover:border-grape-200 transition"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2 border-b border-grape-100/70 pb-2">
+                                <div className="flex items-center gap-2">
+                                  <Avatar photo={rec.studentPhoto ?? stObj?.photo} name={rec.studentName} size={34} />
+                                  <div>
+                                    <p className="font-display text-sm font-extrabold text-ink">{rec.studentName}</p>
+                                    <p className="text-[10px] font-bold text-grape-400">تاريخ التواصل: {rec.contactDateHijri}</p>
+                                  </div>
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeParentContact(rec.id)}
+                                  className="text-grape-400 hover:text-coral-500 text-xs font-extrabold px-1"
+                                  title="حذف هذا السجل من الأرشيف"
+                                >
+                                  ✕
+                                </button>
                               </div>
+
+                              <div className="mt-2.5 space-y-1 text-xs">
+                                <p className="font-bold text-ink">
+                                  لم يسمع الحفظ: <strong className="text-amber-800">{ar(rec.notHeardMemAtContact ?? 0)}</strong> · المراجعة: <strong className="text-amber-800">{ar(rec.notHeardRevAtContact ?? 0)}</strong> · كلاهما: <strong className="text-amber-800">{ar(rec.notHeardBothAtContact ?? 0)}</strong>
+                                </p>
+                                {phone && (
+                                  <p className="font-mono text-[11px] text-grape-500">
+                                    📱 {phone}
+                                  </p>
+                                )}
+                                <p className="font-bold text-mint-700 flex items-center gap-1">
+                                  <Icon name="check" className="h-3.5 w-3.5" />
+                                  <span>الحالة: {rec.statusText}</span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 pt-2.5 border-t border-grape-100/80 flex items-center justify-between gap-2">
+                              {trend ? (
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-black border ${
+                                    trend.tone === "mint"
+                                      ? "bg-mint-50 border-mint-200 text-mint-700"
+                                      : trend.tone === "coral"
+                                      ? "bg-coral-50 border-coral-200 text-coral-600"
+                                      : "bg-grape-50 border-grape-200 text-grape-600"
+                                  }`}
+                                  title={trend.explanation}
+                                >
+                                  {trend.label}
+                                </span>
+                              ) : <span />}
+
                               <button
                                 type="button"
                                 onClick={() => removeParentContact(rec.id)}
-                                className="text-grape-400 hover:text-coral-500 text-xs font-extrabold px-1"
-                                title="إلغاء هذا السجل من الأرشيف"
+                                className="flex items-center gap-1 rounded-xl border border-grape-200 bg-white px-2.5 py-1 text-xs font-black text-grape-600 hover:border-grape-400 hover:bg-grape-50 shadow-sm transition active:scale-95"
+                                title="إلغاء أرشفة هذا التواصل وإعادة الطالب للقائمة النشطة"
                               >
-                                ✕
+                                <Icon name="refresh" className="h-3 w-3" />
+                                <span>إعادة إلى القائمة</span>
                               </button>
                             </div>
-
-                            <div className="mt-2.5 space-y-1 text-xs">
-                              <p className="font-bold text-ink">
-                                لم يسمع الحفظ: <strong className="text-amber-800">{ar(rec.notHeardMemAtContact ?? 0)}</strong> · المراجعة: <strong className="text-amber-800">{ar(rec.notHeardRevAtContact ?? 0)}</strong> · كلاهما: <strong className="text-amber-800">{ar(rec.notHeardBothAtContact ?? 0)}</strong>
-                              </p>
-                              <p className="font-bold text-mint-700 flex items-center gap-1">
-                                <Icon name="check" className="h-3.5 w-3.5" />
-                                <span>الحالة: {rec.statusText}</span>
-                              </p>
-                            </div>
                           </div>
-
-                          {trend && (
-                            <div className="mt-3 pt-2 border-t border-grape-100/80 flex items-center justify-between">
-                              <span className="text-[11px] font-bold text-grape-500">حالة الطالب الآن:</span>
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-black border ${
-                                  trend.tone === "mint"
-                                    ? "bg-mint-50 border-mint-200 text-mint-700"
-                                    : trend.tone === "coral"
-                                    ? "bg-coral-50 border-coral-200 text-coral-600"
-                                    : "bg-grape-50 border-grape-200 text-grape-600"
-                                }`}
-                                title={trend.explanation}
-                              >
-                                {trend.label}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="p-8 text-center text-xs font-bold text-grape-400">
-                    لا توجد حالات مسجلة في أرشيف الذين لم يسمعوا حتى الآن.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="p-8 text-center text-xs font-bold text-grape-400">
+                      لا توجد حالات مسجلة في أرشيف الذين لم يسمعوا حتى الآن.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
-{/* شريط التبديل بين عرض الحفظ والمراجعة */}
+      {/* شريط التبديل بين عرض الحفظ والمراجعة */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <div className="flex items-center gap-1.5 rounded-2xl bg-grape-100/70 p-1">
           <button
@@ -1578,6 +2028,270 @@ export default function StatisticsPage() {
             </p>
           )}
         </section>
+      )}
+
+      {/* نافذة التفاصيل الشاملة المنبثقة Modal عند فتح قائمة أي بطاقة إحصائية */}
+      {activeCategoryData && (
+        <Modal open onClose={() => { setDetailsCategory(null); setModalSearch(""); }} wide>
+          <div className="p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-grape-100 pb-4">
+              <div className="flex items-center gap-3">
+                <span className={`grid h-12 w-12 place-items-center rounded-2xl ${
+                  activeCategoryData.tone === "coral" ? "bg-coral-50 text-coral-600" : activeCategoryData.tone === "amber" ? "bg-amber-50 text-amber-600" : "bg-grape-100 text-grape-700"
+                }`}>
+                  <Icon name={activeCategoryData.icon} className="h-6 w-6" strokeWidth={2.2} />
+                </span>
+                <div>
+                  <h3 className="font-display text-xl font-extrabold text-ink flex items-center gap-2">
+                    <span>{activeCategoryData.title}</span>
+                    <span className={`rounded-full px-3 py-0.5 text-xs font-black ${
+                      activeCategoryData.tone === "coral" ? "bg-coral-100 text-coral-800" : activeCategoryData.tone === "amber" ? "bg-amber-100 text-amber-900" : "bg-grape-100 text-grape-800"
+                    }`}>
+                      {modalSearch.trim() ? `عرض ${ar(filteredModalList.length)} من أصل ${ar(activeCategoryData.list.length)} طالب` : `${ar(activeCategoryData.list.length)} طالب`}
+                    </span>
+                  </h3>
+                  <p className="text-xs font-bold text-grape-500 mt-1">
+                    البيانات مستخرجة بدقة 100% من السجلات الأصلية الفعلية للفترة المحددة ({currentHalaqaName})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setDetailsCategory(null); setModalSearch(""); }}
+                className="rounded-full p-2 text-grape-400 hover:bg-grape-100 hover:text-ink transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* حقل البحث داخل النافذة */}
+            <div className="relative">
+              <input
+                type="text"
+                value={modalSearch}
+                onChange={(e) => setModalSearch(e.target.value)}
+                placeholder="تصفية الطلاب في هذه القائمة بالاسم..."
+                className="field-control w-full pe-8"
+              />
+              {modalSearch && (
+                <button
+                  type="button"
+                  onClick={() => setModalSearch("")}
+                  className="absolute inset-y-0 end-2 flex items-center text-xs font-extrabold text-grape-400 hover:text-coral-500"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* قائمة الطلاب في النافذة المنبثقة (مطابقة 100% لنفس مصفوفة البطاقة) */}
+            <div className="max-h-[460px] overflow-y-auto space-y-2.5 pe-1">
+              {filteredModalList.length > 0 ? (
+                filteredModalList.map((item: any, idx: number) => {
+                  const stObj = students.find((s) => s.id === item.id);
+                  const trend = stObj ? analyzeStudentTrend(stObj, weeksLog, parentContacts) : null;
+                  const hasPhone = Boolean(stObj?.guardianPhone?.trim());
+                  const halaqaName = halaqas.find((h) => h.id === item.halaqaId)?.name;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-grape-100 bg-grape-50/30 p-3 hover:bg-grape-50/80 transition"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs font-black text-grape-600 border border-grape-200 shadow-sm shrink-0">
+                          {ar(idx + 1)}
+                        </span>
+                        <Avatar photo={item.photo} name={item.name} size={38} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-base font-extrabold text-ink">{item.name}</span>
+                            {halaqaName && (
+                              <span className="rounded-full bg-grape-100 px-2 py-0.5 text-[10px] font-bold text-grape-700">
+                                {halaqaName}
+                              </span>
+                            )}
+                            {trend && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-black border ${
+                                  trend.tone === "mint"
+                                    ? "bg-mint-50 border-mint-200 text-mint-700"
+                                    : trend.tone === "coral"
+                                    ? "bg-coral-50 border-coral-200 text-coral-600"
+                                    : "bg-grape-50 border-grape-200 text-grape-600"
+                                }`}
+                                title={trend.explanation}
+                              >
+                                {trend.label}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <span className={`text-xs font-black ${
+                              activeCategoryData.tone === "coral" ? "text-coral-600" : activeCategoryData.tone === "amber" ? "text-amber-800" : "text-grape-700"
+                            }`}>
+                              {activeCategoryData.formatCount(item)}
+                            </span>
+                            {hasPhone ? (
+                              <span className="text-[11px] font-mono text-grape-500">
+                                📱 {stObj.guardianPhone}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-coral-400">
+                                (لا يوجد رقم ولي أمر)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleContactWhatsApp(item, activeCategoryData.contactType, detailsCategory !== "absent" ? (detailsCategory as any) : undefined)}
+                        className="flex items-center gap-1.5 rounded-xl bg-grape-600 px-3.5 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-grape-700 transition active:scale-95 shrink-0 ms-auto sm:ms-0"
+                      >
+                        <Icon name="check" className="h-4 w-4" />
+                        <span>تواصل مع ولي الأمر</span>
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="p-8 text-center text-sm font-bold text-grape-400">
+                  {modalSearch ? `لا يوجد طالب يطابق «${modalSearch}» في هذه القائمة.` : "لا توجد حالات بحاجة لمتابعة في هذه الفئة."}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-grape-100 pt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => { setDetailsCategory(null); setModalSearch(""); }}
+                className="rounded-xl bg-grape-100 px-5 py-2 text-xs font-extrabold text-grape-700 hover:bg-grape-200 transition"
+              >
+                إغلاق النافذة
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* نافذة إعدادات رسائل الواتساب */}
+      {showMessageSettings && (
+        <Modal open onClose={() => setShowMessageSettings(false)} wide>
+          <div className="p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-grape-100 pb-3">
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-grape-100 text-grape-700">
+                  <Icon name="settings" className="h-5 w-5" strokeWidth={2.2} />
+                </span>
+                <div>
+                  <h3 className="font-display text-lg font-extrabold text-ink">إعدادات رسائل التواصل عبر WhatsApp</h3>
+                  <p className="text-xs font-bold text-grape-500">تخصيص نص الرسائل التلقائية لأولياء الأمور مع دعم المتغيرات</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMessageSettings(false)}
+                className="rounded-full p-2 text-grape-400 hover:bg-grape-100 hover:text-ink transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-grape-200 bg-grape-50/40 p-3.5 text-xs font-bold text-grape-600">
+              <p className="font-extrabold text-grape-800 mb-1">المتغيرات التلقائية المتاحة داخل نص الرسالة:</p>
+              <p className="leading-6">
+                <code className="rounded bg-white px-1.5 py-0.5 border border-grape-200 text-grape-800">{"{اسم الطالب}"}</code> اسم الطالب &bull;{" "}
+                <code className="rounded bg-white px-1.5 py-0.5 border border-grape-200 text-grape-800">{"{نوع التسميع}"}</code> حفظ / مراجعة / الحفظ والمراجعة &bull;{" "}
+                <code className="rounded bg-white px-1.5 py-0.5 border border-grape-200 text-grape-800">{"{عدد الغيابات}"}</code> عدد مرات الغياب &bull;{" "}
+                <code className="rounded bg-white px-1.5 py-0.5 border border-grape-200 text-grape-800">{"{التاريخ}"}</code> تاريخ اليوم الهجري
+              </p>
+            </div>
+
+            {/* 1. رسالة الغائبين */}
+            <div className="space-y-2 rounded-2xl border-2 border-coral-100 bg-white p-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-extrabold text-coral-700 flex items-center gap-2">
+                  <Icon name="alert" className="h-4 w-4" />
+                  <span>رسالة التواصل مع أولياء أمور الغائبين</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetContactMessage("absence");
+                    setAbsenceTemplateInput(DEFAULT_ABSENCE_MESSAGE);
+                  }}
+                  className="text-xs font-bold text-grape-500 hover:text-coral-600 underline"
+                >
+                  استعادة النص الافتراضي
+                </button>
+              </div>
+              <textarea
+                rows={4}
+                value={absenceTemplateInput}
+                onChange={(e) => setAbsenceTemplateInput(e.target.value)}
+                className="field-control w-full text-sm leading-relaxed"
+                placeholder="اكتب نص رسالة الغائبين هنا..."
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setContactMessage("absence", absenceTemplateInput)}
+                  className="rounded-xl bg-coral-500 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-coral-600 transition"
+                >
+                  حفظ رسالة الغائبين
+                </button>
+              </div>
+            </div>
+
+            {/* 2. رسالة الذين لم يسمعوا */}
+            <div className="space-y-2 rounded-2xl border-2 border-amber-100 bg-white p-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-extrabold text-amber-800 flex items-center gap-2">
+                  <Icon name="book" className="h-4 w-4" />
+                  <span>رسالة التواصل مع أولياء أمور الذين لم يسمعوا</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetContactMessage("notHeard");
+                    setNotHeardTemplateInput(DEFAULT_NOT_HEARD_MESSAGE);
+                  }}
+                  className="text-xs font-bold text-grape-500 hover:text-amber-800 underline"
+                >
+                  استعادة النص الافتراضي
+                </button>
+              </div>
+              <textarea
+                rows={4}
+                value={notHeardTemplateInput}
+                onChange={(e) => setNotHeardTemplateInput(e.target.value)}
+                className="field-control w-full text-sm leading-relaxed"
+                placeholder="اكتب نص رسالة الذين لم يسمعوا هنا..."
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setContactMessage("notHeard", notHeardTemplateInput)}
+                  className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-extrabold text-ink shadow-sm hover:bg-amber-600 transition"
+                >
+                  حفظ رسالة لم يسمعوا
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end border-t border-grape-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowMessageSettings(false)}
+                className="rounded-xl bg-grape-100 px-5 py-2 text-xs font-extrabold text-grape-700 hover:bg-grape-200 transition"
+              >
+                تم وإغلاق
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
