@@ -146,6 +146,7 @@ export default function PastWeeks() {
   };
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
   const shown = draft ?? current;
 
   const unlock = () => {
@@ -203,7 +204,7 @@ export default function PastWeeks() {
               <button
                 key={log.week}
                 type="button"
-                onClick={() => { setWeek(log.week); setDraft(null); }}
+                onClick={() => { setWeek(log.week); setDraft(null); setStudentSearch(""); }}
                 className={`w-full rounded-2xl border-2 p-3 text-start transition ${
                   shown?.week === log.week ? "border-grape-600 bg-grape-600 text-white shadow" : "border-grape-100 bg-white hover:border-grape-300"
                 }`}
@@ -294,16 +295,49 @@ export default function PastWeeks() {
               </div>
             )}
 
-            <div className="mt-5 space-y-3">
-              {shown.records ? shown.records.map((record) => draft ? (
-                <StudentEditor
-                  key={record.id}
-                  record={record}
-                  weekStartDateIso={shown.weekStartDateIso}
-                  update={(next) => setDraft((log) => log ? { ...log, records: log.records?.map((r) => r.id === record.id ? next : r) } : log)}
-                  remove={() => setDraft((log) => log ? { ...log, records: log.records?.filter((r) => r.id !== record.id) } : log)}
+            {/* خانة بحث عن الطالب بالاسم داخل هذا الأسبوع المحدد فقط */}
+            <div className="mt-4">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={studentSearch}
+                  onChange={(e) => setStudentSearch(e.target.value)}
+                  placeholder={`🔍 بحث عن طالب بالاسم في ${shown.name || `الأسبوع ${ar(shown.week)}`}...`}
+                  className="field-control w-full pe-9 text-xs"
                 />
-              ) : (
+                {studentSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setStudentSearch("")}
+                    className="absolute inset-y-0 end-2.5 flex items-center text-xs font-extrabold text-grape-400 hover:text-coral-500"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {shown.records ? (
+                (() => {
+                  const q = normalizeSearch(studentSearch);
+                  const list = q ? shown.records.filter((r) => normalizeSearch(r.name).includes(q)) : shown.records;
+                  if (list.length === 0) {
+                    return (
+                      <div className="rounded-2xl border-2 border-dashed border-grape-200 bg-white p-8 text-center text-xs font-bold text-grape-400">
+                        لا يوجد طالب يطابق البحث «{studentSearch}» في هذا الأسبوع.
+                      </div>
+                    );
+                  }
+                  return list.map((record) => draft ? (
+                    <StudentEditor
+                      key={record.id}
+                      record={record}
+                      weekStartDateIso={shown.weekStartDateIso}
+                      update={(next) => setDraft((log) => log ? { ...log, records: log.records?.map((r) => r.id === record.id ? next : r) } : log)}
+                      remove={() => setDraft((log) => log ? { ...log, records: log.records?.filter((r) => r.id !== record.id) } : log)}
+                    />
+                  ) : (
                 <article key={record.id} className="rounded-2xl border-2 border-grape-100 bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grape-100 pb-2.5">
                     <div className="flex items-center gap-3">
@@ -368,7 +402,21 @@ export default function PastWeeks() {
                     })}
                   </div>
                 </article>
-              )) : (shown.students ?? shown.top).map((entry) => (
+                  ));
+                })()
+              ) : (
+                (() => {
+                  const rawEntries = shown.students ?? shown.top ?? [];
+                  const q = normalizeSearch(studentSearch);
+                  const list = q ? rawEntries.filter((e) => normalizeSearch(e.name).includes(q)) : rawEntries;
+                  if (list.length === 0) {
+                    return (
+                      <div className="rounded-2xl border-2 border-dashed border-grape-200 bg-white p-8 text-center text-xs font-bold text-grape-400">
+                        لا يوجد طالب يطابق البحث «{studentSearch}» في هذا الأسبوع.
+                      </div>
+                    );
+                  }
+                  return list.map((entry) => (
                 <article key={entry.id} className="flex items-center gap-3 rounded-2xl bg-grape-50 p-3">
                   <Avatar photo={entry.photo} name={entry.name} size={42} />
                   <div>
@@ -376,7 +424,9 @@ export default function PastWeeks() {
                     <p className="text-xs font-bold text-grape-500">{ar(entry.weekXp)} نقطة أسبوعية</p>
                   </div>
                 </article>
-              ))}
+                  ));
+                })()
+              )}
             </div>
             {!shown.records && <p className="mt-4 rounded-xl bg-gold-50 p-3 text-xs font-bold text-gold-700">هذا سجل قديم لا يحتوي لقطة يومية كاملة؛ تُعرض معلوماته المحفوظة فقط دون اختراع بيانات.</p>}
           </section>
