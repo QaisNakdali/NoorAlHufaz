@@ -751,7 +751,34 @@ export function calculateStudentTotals(
 }
 
 /* ---------- الواجهات ---------- */
-export type Tab = "register" | "lessons" | "store" | "deliveries" | "board" | "ceremony" | "past" | "term" | "stats";
+/** سجل طلب شراء من المتجر */
+export type PurchaseOrder = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  itemId: string;
+  itemName: string;
+  itemKind: "cosmetic" | "physical";
+  itemImage?: string | null;
+  itemIcon?: string;
+  price: number;
+  purchasedAt: string;
+  status: "pending" | "delivered";
+  deliveredAt?: string;
+};
+
+/** سجل جلسة نشاط ولي الأمر في البوابة */
+export type ParentAccessLog = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  enteredAt: string;
+  lastActiveAt: string;
+  enteredStore: boolean;
+  purchased: boolean;
+};
+
+export type Tab = "register" | "lessons" | "store" | "deliveries" | "board" | "ceremony" | "past" | "term" | "stats" | "parentActivity";
 export type Mode = "teacher" | "student";
 
 /* ========== دوال مساعدة لسجل الحفظ والتحليلات ========== */

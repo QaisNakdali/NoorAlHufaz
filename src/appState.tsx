@@ -48,6 +48,9 @@ import {
   type Mode,
   type ShopItem,
   type ParentContactRecord,
+  type PurchaseOrder,
+  type ParentAccessLog,
+  generateParentToken,
   type Student,
   type RewardSettings,
   type RewardKey,
@@ -116,6 +119,9 @@ type State = {
     absence: string;
     notHeard: string;
   };
+  parentStoreOpen: boolean;
+  orders: PurchaseOrder[];
+  parentLogs: ParentAccessLog[];
 };
 
 type Ctx = State & {
@@ -178,6 +184,14 @@ type Ctx = State & {
   contactMessages: { absence: string; notHeard: string };
   setContactMessage: (type: "absence" | "notHeard", message: string) => void;
   resetContactMessage: (type: "absence" | "notHeard") => void;
+  parentStoreOpen: boolean;
+  toggleParentStore: (open?: boolean) => void;
+  orders: PurchaseOrder[];
+  deliverOrder: (orderId: string) => void;
+  undeliverOrder: (orderId: string) => void;
+  parentLogs: ParentAccessLog[];
+  logParentAccess: (studentId: string, enteredStore?: boolean, purchased?: boolean) => void;
+  checkoutParentCart: (studentId: string, items: { itemId: string; qty: number }[]) => { success: boolean; error?: string };
 
   grantAward: (id: string, title: string, coins?: number, xp?: number, uniqueKey?: string) => void;
   setCeremonyPick: (key: keyof CeremonyPicks, id: string | null) => void;
@@ -215,7 +229,7 @@ function normStudent(s: Student): Student {
   return {
     ...s,
     guardianPhone: typeof s.guardianPhone === "string" ? s.guardianPhone.trim() : undefined,
-    parentAccessToken: typeof s.parentAccessToken === "string" && s.parentAccessToken.trim() ? s.parentAccessToken.trim() : undefined,
+    parentAccessToken: typeof s.parentAccessToken === "string" && s.parentAccessToken.trim() ? s.parentAccessToken.trim() : generateParentToken(),
     days: out,
     recitationRatings: (() => {
       const ratings = emptyRecitationRatings();
@@ -435,6 +449,9 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
       absence: typeof p.contactMessages?.absence === "string" && p.contactMessages.absence.trim() ? p.contactMessages.absence : DEFAULT_ABSENCE_MESSAGE,
       notHeard: typeof p.contactMessages?.notHeard === "string" && p.contactMessages.notHeard.trim() ? p.contactMessages.notHeard : DEFAULT_NOT_HEARD_MESSAGE,
     },
+    parentStoreOpen: p.parentStoreOpen !== false,
+    orders: Array.isArray(p.orders) ? (p.orders as PurchaseOrder[]) : [],
+    parentLogs: Array.isArray(p.parentLogs) ? (p.parentLogs as ParentAccessLog[]) : [],
   };
 }
 
@@ -624,6 +641,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<ShopItem[]>(init.products);
   const [heartPrice, setHeartPriceState] = useState(init.heartPrice);
   const [parentContacts, setParentContacts] = useState<ParentContactRecord[]>(init.parentContacts ?? []);
+  const [parentStoreOpen, setParentStoreOpen] = useState(init.parentStoreOpen !== false);
+  const [orders, setOrders] = useState<PurchaseOrder[]>(init.orders ?? []);
+  const [parentLogs, setParentLogs] = useState<ParentAccessLog[]>(init.parentLogs ?? []);
   const [contactMessages, setContactMessages] = useState<{ absence: string; notHeard: string }>(() => ({
     absence: init.contactMessages?.absence || DEFAULT_ABSENCE_MESSAGE,
     notHeard: init.contactMessages?.notHeard || DEFAULT_NOT_HEARD_MESSAGE,
@@ -678,6 +698,190 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setParentContacts((prev) => prev.filter((r) => r.id !== id));
     toast("success", "تم حذف سجل التواصل من الأرشيف");
   }, [toast]);
+
+  /* ===== بوابة ومتجر أولياء الأمور ===== */
+  const toggleParentStore = useCallback((open?: boolean) => {
+    setParentStoreOpen((prev) => (typeof open === "boolean" ? open : !prev));
+  }, []);
+
+  const deliverOrder = useCallback((orderId: string) => {
+    let targetStudentId = "";
+    let targetItemId = "";
+    setOrders((os) =>
+      os.map((o) => {
+        if (o.id === orderId && o.status !== "delivered") {
+          targetStudentId = o.studentId;
+          targetItemId = o.itemId;
+          return { ...o, status: "delivered", deliveredAt: new Date().toISOString() };
+        }
+        return o;
+      })
+    );
+    if (targetStudentId && targetItemId) {
+      setStudents((ss) =>
+        ss.map((s) => {
+          if (s.id !== targetStudentId) return s;
+          const bag = [...(s.bag ?? [])];
+          const idx = bag.findIndex((b) => b.itemId === targetItemId && b.receivedQty < b.qty);
+          if (idx >= 0) bag[idx] = { ...bag[idx], receivedQty: bag[idx].receivedQty + 1 };
+          return { ...s, bag };
+        })
+      );
+      toast("success", "تم تأكيد تسليم الجائزة للطالب بنجاح");
+    }
+  }, [toast]);
+
+  const undeliverOrder = useCallback((orderId: string) => {
+    let targetStudentId = "";
+    let targetItemId = "";
+    setOrders((os) =>
+      os.map((o) => {
+        if (o.id === orderId && o.status === "delivered") {
+          targetStudentId = o.studentId;
+          targetItemId = o.itemId;
+          const { deliveredAt, ...rest } = o;
+          return { ...rest, status: "pending" };
+        }
+        return o;
+      })
+    );
+    if (targetStudentId && targetItemId) {
+      setStudents((ss) =>
+        ss.map((s) => {
+          if (s.id !== targetStudentId) return s;
+          const bag = [...(s.bag ?? [])];
+          const idx = bag.findIndex((b) => b.itemId === targetItemId && b.receivedQty > 0);
+          if (idx >= 0) bag[idx] = { ...bag[idx], receivedQty: Math.max(0, bag[idx].receivedQty - 1) };
+          return { ...s, bag };
+        })
+      );
+      toast("info", "تم التراجع عن تسليم الجائزة");
+    }
+  }, [toast]);
+
+  const logParentAccess = useCallback((studentId: string, enteredStore?: boolean, purchased?: boolean) => {
+    const st = students.find((s) => s.id === studentId);
+    if (!st) return;
+    const now = new Date().toISOString();
+    setParentLogs((prev) => {
+      const copy = [...prev];
+      const recentIdx = copy.findIndex((l) => l.studentId === studentId && (Date.now() - new Date(l.lastActiveAt).getTime() < 30 * 60 * 1000));
+      if (recentIdx >= 0) {
+        copy[recentIdx] = {
+          ...copy[recentIdx],
+          lastActiveAt: now,
+          enteredStore: copy[recentIdx].enteredStore || !!enteredStore,
+          purchased: copy[recentIdx].purchased || !!purchased,
+        };
+        return copy;
+      }
+      return [
+        {
+          id: uid(),
+          studentId: st.id,
+          studentName: st.name,
+          enteredAt: now,
+          lastActiveAt: now,
+          enteredStore: !!enteredStore,
+          purchased: !!purchased,
+        },
+        ...copy.slice(0, 99),
+      ];
+    });
+  }, [students]);
+
+  const checkoutParentCart = useCallback((studentId: string, items: { itemId: string; qty: number }[]) => {
+    if (!parentStoreOpen) {
+      return { success: false, error: "المتجر مغلق حاليًا من قِبل إدارة الحلقة" };
+    }
+    const st = students.find((s) => s.id === studentId);
+    if (!st) return { success: false, error: "لم يتم العثور على الطالب" };
+
+    if (!items || items.length === 0) return { success: false, error: "السلة فارغة" };
+
+    let totalCost = 0;
+    const lvl = levelInfo(st.xp).level;
+    const resolvedItems: { item: ShopItem; qty: number }[] = [];
+
+    for (const it of items) {
+      const product = products.find((p) => p.id === it.itemId);
+      if (!product) return { success: false, error: `المنتج غير متوفر` };
+      if (lvl < product.minLevel) return { success: false, error: `المنتج «${product.name}» يتطلب المستوى ${product.minLevel}` };
+      if (typeof product.stock === "number" && product.stock < it.qty) {
+        return { success: false, error: `الكمية المتوفرة من «${product.name}» لا تكفي` };
+      }
+      const isCosmetic = product.kind === "cosmetic";
+      const ownedQty = isCosmetic ? (st.inventory.includes(product.id) ? 1 : 0) : bagQty(st, product.id);
+      if (isCosmetic && ownedQty > 0) return { success: false, error: `الطالب يملك «${product.name}» بالفعل` };
+      if (!isCosmetic && !product.repeatable && ownedQty > 0) return { success: false, error: `تم شراء «${product.name}» مسبقًا` };
+
+      totalCost += product.price * it.qty;
+      resolvedItems.push({ item: product, qty: it.qty });
+    }
+
+    if (st.coins < totalCost) {
+      return { success: false, error: `رصيد العملات غير كافٍ. المطلوب: ${totalCost}، المتوفر: ${st.coins}` };
+    }
+
+    const now = new Date().toISOString();
+    const newOrders: PurchaseOrder[] = [];
+
+    setProducts((ps) =>
+      ps.map((p) => {
+        const found = resolvedItems.find((r) => r.item.id === p.id);
+        if (found && typeof p.stock === "number") {
+          return { ...p, stock: Math.max(0, p.stock - found.qty) };
+        }
+        return p;
+      })
+    );
+
+    setStudents((ss) =>
+      ss.map((s) => {
+        if (s.id !== studentId) return s;
+        let next: Student = { ...s, coinsSpent: (s.coinsSpent ?? 0) + totalCost, coins: Math.max(0, s.coins - totalCost) };
+        const bag = [...(s.bag ?? [])];
+        const inv = [...(s.inventory ?? [])];
+
+        for (const r of resolvedItems) {
+          const isCosmetic = r.item.kind === "cosmetic";
+          newOrders.push({
+            id: uid(),
+            studentId: s.id,
+            studentName: s.name,
+            itemId: r.item.id,
+            itemName: r.item.name,
+            itemKind: isCosmetic ? "cosmetic" : "physical",
+            itemImage: r.item.image ?? null,
+            itemIcon: r.item.icon,
+            price: r.item.price * r.qty,
+            purchasedAt: now,
+            status: "pending",
+          });
+
+          if (isCosmetic) {
+            if (!inv.includes(r.item.id)) inv.push(r.item.id);
+            next = equipOn(next, r.item);
+          } else {
+            const bIdx = bag.findIndex((b) => b.itemId === r.item.id);
+            if (bIdx >= 0) bag[bIdx] = { ...bag[bIdx], qty: bag[bIdx].qty + r.qty };
+            else bag.push({ itemId: r.item.id, qty: r.qty, receivedQty: 0 });
+          }
+        }
+        next.inventory = inv;
+        next.bag = bag;
+        return next;
+      })
+    );
+
+    setOrders((os) => [...newOrders, ...os]);
+    logParentAccess(studentId, true, true);
+
+    sfx.coin();
+    setTimeout(() => sfx.sparkle(), 250);
+    toast("success", `تمت عملية الشراء بنجاح! خصم ${totalCost} عملة`);
+    return { success: true };
+  }, [parentStoreOpen, students, products, logParentAccess, toast]);
 
   /* ===== المزامنة السحابية ===== */
   const cloudEnabled = isCloudEnabled();
@@ -2177,6 +2381,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     contactMessages,
     setContactMessage,
     resetContactMessage,
+    parentStoreOpen,
+    toggleParentStore,
+    orders,
+    deliverOrder,
+    undeliverOrder,
+    parentLogs,
+    logParentAccess,
+    checkoutParentCart,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

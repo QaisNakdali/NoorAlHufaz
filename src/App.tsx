@@ -16,6 +16,7 @@ import StudentView from "./components/StudentView";
 import TermFinale from "./components/TermFinale";
 import StatisticsPage from "./components/Statistics";
 import ParentPortal from "./components/ParentPortal";
+import ParentActivity from "./components/ParentActivity";
 import { Coin, HeartIcon, Icon } from "./components/ui";
 
 
@@ -28,6 +29,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "stats", label: "الإحصائيات", icon: "chart" },
   { id: "ceremony", label: "الحفل", icon: "sparkle" },
   { id: "past", label: "الأسابيع الماضية", icon: "calendar" },
+  { id: "parentActivity", label: "نشاط أولياء الأمور", icon: "users" },
   { id: "term", label: "ختام الترم", icon: "flag" },
 ];
 
@@ -255,6 +257,8 @@ function Shell() {
           <StatisticsPage />
         ) : tab === "term" ? (
           <TermFinale />
+        ) : tab === "parentActivity" ? (
+          <ParentActivity />
         ) : tab === "past" ? (
           <PastWeeks />
         ) : (
