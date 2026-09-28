@@ -16,6 +16,7 @@ import {
   xpForLevel,
   type DayPart,
   type RecitationRating,
+  generateParentToken,
   type Student,
 } from "../core";
 import { distributionForHalaqa } from "../halaqaRotation";
@@ -231,6 +232,83 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
               </div>
             </div>
             <p className="mt-2 text-xs text-grape-700/60">من يفقد كل قلوبه يستمر بجمع العملات فقط حتى يشتري قلبًا ({ar(heartPrice)} عملة) أو تمنحه قلبًا من هنا.</p>
+          </div>
+
+          {/* قسم بوابة ولي الأمر */}
+          <div className="rounded-2xl border-2 border-grape-200 bg-white p-4 sm:col-span-2 space-y-2.5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grape-100 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-grape-600 text-white text-xs">
+                  🔗
+                </span>
+                <p className="font-display text-sm font-extrabold text-ink">بوابة ولي الأمر (متابعة حصرية)</p>
+              </div>
+              {s.parentAccessToken && (
+                <span className="rounded-full bg-mint-50 border border-mint-200 px-2 py-0.5 text-[10px] font-black text-mint-700">
+                  الرابط مفعّل ومحصن ✓
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs font-bold text-grape-500 leading-relaxed">
+              رابط مخصص وآمن برمز وصول فريد يتيح لولي الأمر متابعة حفظ ابنه ومراجعته وحضوره دون أي صلاحية للدخول للموقع أو رؤية الطلاب الآخرين.
+            </p>
+
+            {s.parentAccessToken ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    dir="ltr"
+                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/parent/${s.parentAccessToken}`}
+                    className="field-control flex-1 text-xs font-mono select-all bg-grape-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = `${window.location.origin}/parent/${s.parentAccessToken}`;
+                      navigator.clipboard.writeText(url);
+                      toast("success", "تم نسخ رابط ولي الأمر بنجاح!");
+                    }}
+                    className="rounded-xl bg-grape-600 px-3.5 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-grape-700 transition active:scale-95 shrink-0"
+                  >
+                    نسخ الرابط
+                  </button>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("هل أنت متأكد من إعادة إنشاء الرابط؟ سيتوقف الرابط القديم فورًا ولن يستطيع ولي الأمر استخدامه.")) {
+                        const newToken = generateParentToken();
+                        updateStudentProfile(s.id, { parentAccessToken: newToken });
+                        toast("success", "تم تجديد رمز الوصول ورابط ولي الأمر بنجاح");
+                      }
+                    }}
+                    className="text-xs font-bold text-coral-600 hover:text-coral-700 underline"
+                  >
+                    إعادة إنشاء الرابط (إبطال القديم)
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <span className="text-xs font-bold text-grape-400">لم يتم إنشاء رابط متابعة لهذا الطالب بعد.</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newToken = generateParentToken();
+                    updateStudentProfile(s.id, { parentAccessToken: newToken });
+                    toast("success", "تم إنشاء رابط بوابة ولي الأمر بنجاح!");
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-grape-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-grape-700 transition active:scale-95"
+                >
+                  <Icon name="plus" className="h-4 w-4" />
+                  <span>إنشاء رابط ولي الأمر</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
