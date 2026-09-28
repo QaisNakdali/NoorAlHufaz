@@ -24,6 +24,8 @@ import { addCalendarDays, dateForCurrentWeekDay, dateFromLocalKey, formatHijriDa
 import { compressImage } from "../photos";
 import { sfx } from "../sound";
 import Avatar from "./Avatar";
+import { normalizeNumericDraft } from "../numericInput";
+import NumericInput from "./NumericInput";
 import { BigBtn, Coin, heartFade, HeartsRow, Icon, LevelBadge, Modal, SectionHead } from "./ui";
 
 /* ألوان كل خانة من خانات اليوم عند تسجيلها */
@@ -128,8 +130,8 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
               <label className="text-xs font-bold text-grape-600">الاسم<input value={name} onChange={(e) => setName(e.target.value)} className="field-control mt-1 w-full" /></label>
               <label className="text-xs font-bold text-grape-600">الحلقة<select value={halaqaId ?? ""} onChange={(e) => setHalaqaId(e.target.value || null)} className="field-control mt-1 w-full"><option value="">بلا حلقة</option>{halaqas.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}</select></label>
-              <label className="text-xs font-bold text-grape-600">العملات<input type="number" min="0" value={coins} onChange={(e) => setCoins(Number(e.target.value))} className="field-control mt-1 w-full" /></label>
-              <label className="text-xs font-bold text-grape-600">المستوى<input type="number" min="1" value={studentLevel} onChange={(e) => setStudentLevel(Number(e.target.value))} className="field-control mt-1 w-full" /></label>
+              <label className="text-xs font-bold text-grape-600">العملات<NumericInput min={0} value={coins} onValueChange={setCoins} className="field-control mt-1 w-full" /></label>
+              <label className="text-xs font-bold text-grape-600">المستوى<NumericInput min={1} value={studentLevel} onValueChange={setStudentLevel} className="field-control mt-1 w-full" /></label>
               <label className="text-xs font-bold text-grape-600">القلوب<select value={hearts} onChange={(e) => setHearts(Number(e.target.value))} className="field-control mt-1 w-full">{[0,1,2,3].map((v) => <option key={v} value={v}>{ar(v)}</option>)}</select></label>
                 <label className="text-xs font-bold text-grape-600 sm:col-span-3">رقم ولي الأمر (اختياري — للتواصل عبر واتساب)<input type="tel" dir="ltr" value={guardianPhone} onChange={(e) => setGuardianPhone(e.target.value)} placeholder="مثال: 0501234567 أو +966501234567" className="field-control mt-1 w-full text-start font-mono" /></label>
             </div>
@@ -191,7 +193,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
                   max={s.xp}
                   placeholder="عدد النقاط المراد إنقاصها..."
                   value={deductInput}
-                  onChange={(e) => setDeductInput(e.target.value)}
+                  onChange={(e) => setDeductInput(normalizeNumericDraft(e.target.value))}
                   className="field-control h-9 flex-1 text-center font-bold"
                 />
                 <button
@@ -694,16 +696,16 @@ function RegisterRow({
                     <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-grape-700"><Icon name="book" className="h-4 w-4" />الحفظ الجديد</div>
                     <div className="grid gap-2 grid-cols-[minmax(0,1fr)_88px_78px]">
                       <input disabled={absent} aria-label={`سورة الحفظ ${d.label}`} value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder={absent ? "غائب" : "اسم السورة"} className="field-control disabled:cursor-not-allowed disabled:opacity-50" />
-                      <input disabled={absent} aria-label={`عدد آيات الحفظ ${d.label}`} type="number" min="0" value={ward.memorizationVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationVerses: Number(e.target.value) })} placeholder="الآيات" className="field-control text-center disabled:cursor-not-allowed disabled:opacity-50" />
-                      <input disabled={absent} aria-label={`عدد أسطر الحفظ ${d.label}`} type="number" min="0" step="0.5" value={ward.memorizationLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationLines: Number(e.target.value) })} placeholder="الأسطر" className="field-control text-center font-extrabold text-grape-700 disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput disabled={absent} aria-label={`عدد آيات الحفظ ${d.label}`} min={0} value={ward.memorizationVerses || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, memorizationVerses: value })} placeholder="الآيات" className="field-control text-center disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput disabled={absent} aria-label={`عدد أسطر الحفظ ${d.label}`} min={0} step={0.5} value={ward.memorizationLines || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, memorizationLines: value })} placeholder="الأسطر" className="field-control text-center font-extrabold text-grape-700 disabled:cursor-not-allowed disabled:opacity-50" />
                     </div>
                   </div>
                   <div className="rounded-xl bg-amber-50 p-2.5">
                     <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-amber-700"><Icon name="refresh" className="h-4 w-4" />المراجعة</div>
                     <div className="grid gap-2 grid-cols-[minmax(0,1fr)_88px_78px]">
                       <input disabled={absent} aria-label={`سورة المراجعة ${d.label}`} value={ward.review} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder={absent ? "غائب" : "اسم السورة أو السور"} className="field-control border-amber-200 disabled:cursor-not-allowed disabled:opacity-50" />
-                      <input disabled={absent} aria-label={`عدد آيات المراجعة ${d.label}`} type="number" min="0" value={ward.reviewVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewVerses: Number(e.target.value) })} placeholder="الآيات" className="field-control border-amber-200 text-center disabled:cursor-not-allowed disabled:opacity-50" />
-                      <input disabled={absent} aria-label={`عدد أسطر المراجعة ${d.label}`} type="number" min="0" step="0.5" value={ward.reviewLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewLines: Number(e.target.value) })} placeholder="الأسطر" className="field-control border-amber-200 text-center font-extrabold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput disabled={absent} aria-label={`عدد آيات المراجعة ${d.label}`} min={0} value={ward.reviewVerses || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, reviewVerses: value })} placeholder="الآيات" className="field-control border-amber-200 text-center disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput disabled={absent} aria-label={`عدد أسطر المراجعة ${d.label}`} min={0} step={0.5} value={ward.reviewLines || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, reviewLines: value })} placeholder="الأسطر" className="field-control border-amber-200 text-center font-extrabold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50" />
                     </div>
                   </div>
                 </div>

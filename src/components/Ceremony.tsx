@@ -16,6 +16,7 @@ import {
 import { sfx } from "../sound";
 import Avatar from "./Avatar";
 import CosmeticThumb from "./CosmeticThumb";
+import NumericInput from "./NumericInput";
 import { BigBtn, Coin, heartFade, Icon, SectionHead } from "./ui";
 
 /* اقتراح للجوائز الفردية من الكشف */
@@ -144,7 +145,7 @@ export default function CeremonyPanel() {
             const setting = rewardSettings[key];
             return <label key={key} className={`rounded-2xl border-2 p-3 transition ${setting.enabled ? "border-grape-300 bg-grape-50" : "border-grape-100 bg-slate-50 opacity-70"}`}>
               <span className="flex items-center justify-between gap-2"><span className="font-display text-sm font-extrabold text-ink">{label}</span><span className="flex items-center gap-2">{key === "champions" && <button type="button" onClick={(event) => { event.preventDefault(); setChampionSettingsOpen((open) => !open); }} className="rounded-lg bg-white px-2 py-1 text-[11px] font-extrabold text-grape-600">⚙️ إعدادات</button>}<input type="checkbox" checked={setting.enabled} onChange={(e) => setRewardSetting(key, { enabled: e.target.checked })} className="h-5 w-5 accent-violet-600" /></span></span>
-              <span className="mt-2 flex items-center gap-2 text-xs font-bold text-grape-500">{key === "trip" ? "لكل طالب مستحق" : "لكل فائز"}<input type="number" min="0" step="1" disabled={!setting.enabled || (key === "trip" && !tripOn)} value={setting.coins} onChange={(e) => setRewardSetting(key, { coins: Number(e.target.value) })} title={key === "trip" && !tripOn ? "فعّل الرحلة أولًا لتعديل سعرها" : undefined} className="field-control h-9 min-w-0 flex-1 text-center disabled:cursor-not-allowed disabled:bg-slate-100" /></span>
+              <span className="mt-2 flex items-center gap-2 text-xs font-bold text-grape-500">{key === "trip" ? "لكل طالب مستحق" : "لكل فائز"}<NumericInput min={0} step={1} disabled={!setting.enabled || (key === "trip" && !tripOn)} value={setting.coins} onValueChange={(value) => setRewardSetting(key, { coins: value })} title={key === "trip" && !tripOn ? "فعّل الرحلة أولًا لتعديل سعرها" : undefined} className="field-control h-9 min-w-0 flex-1 text-center disabled:cursor-not-allowed disabled:bg-slate-100" /></span>
               {key === "champions" && championSettingsOpen && <span className="mt-2 block text-xs font-bold text-grape-500">طريقة احتساب المستوى<select value={setting.ratingMode === "excellent" ? "excellent" : "mixed"} onChange={(e) => setRewardSetting("champions", { ratingMode: e.target.value === "excellent" ? "excellent" : "mixed" })} className="field-control mt-1 h-9 w-full"><option value="excellent">ممتاز</option><option value="mixed">مختلط (ممتاز + جيد جدًا)</option></select><span className="mt-1 block text-[11px] text-grape-400">لا يوجد خيار جيد جدًا فقط.</span></span>}
               {key === "trip" && !tripOn && <span className="mt-1 block text-[11px] font-bold text-grape-400">فعّل الرحلة لتعديل السعر</span>}
             </label>;

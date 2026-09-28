@@ -6,6 +6,8 @@ import { compressImage } from "../photos";
 import { sfx } from "../sound";
 import Avatar from "./Avatar";
 import CosmeticThumb from "./CosmeticThumb";
+import { normalizeNumericDraft } from "../numericInput";
+import NumericInput from "./NumericInput";
 import { BigBtn, Coin, heartFade, HeartsRow, Icon, Modal, SectionHead } from "./ui";
 import WeeklyAwards from "./WeeklyAwards";
 
@@ -431,15 +433,15 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
         <div className="mt-4 grid grid-cols-3 gap-3">
           <div>
             <label className="mb-1 block text-xs font-extrabold text-grape-700">السعر (عملات)</label>
-            <input type="number" min={1} value={price} onChange={(e) => setPrice(Number(e.target.value) || 1)} className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
+            <NumericInput min={1} value={price} onValueChange={setPrice} className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-extrabold text-grape-700">يُفتح في المستوى</label>
-            <input type="number" min={1} value={minLevel} onChange={(e) => setMinLevel(Number(e.target.value) || 1)} className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
+            <NumericInput min={1} value={minLevel} onValueChange={setMinLevel} className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-extrabold text-grape-700">الكمية المتوفرة</label>
-            <input type="number" min={0} value={stockStr} onChange={(e) => setStockStr(e.target.value)} placeholder="غير محدودة" className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
+            <input type="number" min={0} value={stockStr} onChange={(e) => setStockStr(normalizeNumericDraft(e.target.value))} placeholder="غير محدودة" className="w-full rounded-xl border-2 border-grape-200 bg-grape-50 px-3.5 py-2 font-display font-bold text-ink outline-none transition focus:border-grape-500 focus:bg-white" />
           </div>
         </div>
         <p className="mt-2 text-xs font-bold leading-5 text-grape-700/60">
@@ -576,7 +578,7 @@ export default function StoreTab() {
             <label className="mt-3 block text-xs font-bold text-grape-600">
               سعر القلب الواحد
               <div className="mt-1 flex items-center gap-2">
-                <input className="field-control w-32" type="number" min="0" step="1" value={heartPriceDraft} onChange={(e) => setHeartPriceDraft(Math.max(0, Number(e.target.value) || 0))} />
+                <NumericInput className="field-control w-32" min={0} step={1} value={heartPriceDraft} onValueChange={setHeartPriceDraft} />
                 <span className="font-extrabold text-grape-500">عملة</span>
               </div>
             </label>

@@ -3,6 +3,7 @@ import { useApp } from "../appState";
 import { addCalendarDays, formatHijriDate, formatTeachingWeek } from "../hijriDate";
 import { ar, DAYS, emptyRecitationRatings, emptyWeeklyWard, emptyWeekDays, uid, type DailyWard, type DayKey, type DayPart, type WeekLog, type WeekStudentRecord } from "../core";
 import Avatar from "./Avatar";
+import NumericInput from "./NumericInput";
 import { Icon, Modal, SectionHead } from "./ui";
 
 const copy = <T,>(value: T): T => structuredClone(value);
@@ -62,16 +63,16 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
                 <span className="text-[11px] font-extrabold text-grape-700">ورد الحفظ:</span>
                 <div className="mt-1 grid grid-cols-3 gap-1.5">
                   <input disabled={absent} placeholder="السورة" className="field-control text-xs" value={ward.memorization} onChange={(e) => updateWardField(day.key, "memorization", e.target.value)} />
-                  <input disabled={absent} type="number" min="0" placeholder="الآيات" className="field-control text-xs text-center" value={ward.memorizationVerses || ""} onChange={(e) => updateWardField(day.key, "memorizationVerses", Number(e.target.value))} />
-                  <input disabled={absent} type="number" min="0" step="0.5" placeholder="الأسطر" className="field-control text-xs text-center" value={ward.memorizationLines || ""} onChange={(e) => updateWardField(day.key, "memorizationLines", Number(e.target.value))} />
+                  <NumericInput disabled={absent} min={0} placeholder="الآيات" className="field-control text-xs text-center" value={ward.memorizationVerses || 0} onValueChange={(value) => updateWardField(day.key, "memorizationVerses", value)} />
+                  <NumericInput disabled={absent} min={0} step={0.5} placeholder="الأسطر" className="field-control text-xs text-center" value={ward.memorizationLines || 0} onValueChange={(value) => updateWardField(day.key, "memorizationLines", value)} />
                 </div>
               </div>
               <div className="rounded-lg bg-white p-2 border border-amber-200/60">
                 <span className="text-[11px] font-extrabold text-amber-800">ورد المراجعة:</span>
                 <div className="mt-1 grid grid-cols-3 gap-1.5">
                   <input disabled={absent} placeholder="السورة" className="field-control text-xs border-amber-200" value={ward.review} onChange={(e) => updateWardField(day.key, "review", e.target.value)} />
-                  <input disabled={absent} type="number" min="0" placeholder="الآيات" className="field-control text-xs border-amber-200 text-center" value={ward.reviewVerses || ""} onChange={(e) => updateWardField(day.key, "reviewVerses", Number(e.target.value))} />
-                  <input disabled={absent} type="number" min="0" step="0.5" placeholder="الأسطر" className="field-control text-xs border-amber-200 text-center" value={ward.reviewLines || ""} onChange={(e) => updateWardField(day.key, "reviewLines", Number(e.target.value))} />
+                  <NumericInput disabled={absent} min={0} placeholder="الآيات" className="field-control text-xs border-amber-200 text-center" value={ward.reviewVerses || 0} onValueChange={(value) => updateWardField(day.key, "reviewVerses", value)} />
+                  <NumericInput disabled={absent} min={0} step={0.5} placeholder="الأسطر" className="field-control text-xs border-amber-200 text-center" value={ward.reviewLines || 0} onValueChange={(value) => updateWardField(day.key, "reviewLines", value)} />
                 </div>
               </div>
             </div>
