@@ -1,4 +1,4 @@
-import { DAYS, estimatedLinesFromVerses, levelInfo, type DayKey, type RecitationPart, type Student, type WeekLog, type WeekLogEntry } from "./core";
+import { DAYS, estimatedLinesFromVerses, levelInfo, type DayKey, type ParentContactRecord, type RecitationPart, type Student, type WeekLog, type WeekLogEntry } from "./core";
 import { pagesForAyahRange, parseQuranRange } from "./quranPages";
 
 export type WorkMeasure = {
@@ -463,8 +463,6 @@ export function buildRegisterInsight(student: Student, weeksLog: WeekLog[]): Reg
   return { attendance, memorization, review, advice };
 }
 
-
-import type { ParentContactRecord } from "./core";
 
 export type StudentTrendResult = {
   label: "تحسن بعد التواصل" | "يتحسن" | "مستقر" | "يتراجع" | "بحاجة إلى متابعة" | "منتظم";

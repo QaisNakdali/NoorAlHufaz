@@ -601,19 +601,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [heartPrice, setHeartPriceState] = useState(init.heartPrice);
   const [parentContacts, setParentContacts] = useState<ParentContactRecord[]>(init.parentContacts ?? []);
 
-  const recordParentContact = useCallback((rec: Omit<ParentContactRecord, "id">) => {
-    const newRec: ParentContactRecord = {
-      ...rec,
-      id: uid(),
-    };
-    setParentContacts((prev) => [newRec, ...prev]);
-    toast("success", `تم تسجيل التواصل مع ولي أمر ${rec.studentName} بنجاح`);
-  }, [toast]);
 
-  const removeParentContact = useCallback((id: string) => {
-    setParentContacts((prev) => prev.filter((r) => r.id !== id));
-    toast("success", "تم حذف سجل التواصل من الأرشيف");
-  }, [toast]);
   const [showNewProducts, setShowNewProducts] = useState(init.showNewProducts);
   const [ceremonyProductIds, setCeremonyProductIds] = useState<string[]>(init.ceremonyProductIds);
   const [tripOn, setTripOn] = useState(init.tripOn);
@@ -632,6 +620,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const t = window.setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== id)), 3200);
     timers.current.push(t);
   }, []);
+
+  const recordParentContact = useCallback((rec: Omit<ParentContactRecord, "id">) => {
+    const newRec: ParentContactRecord = {
+      ...rec,
+      id: uid(),
+    };
+    setParentContacts((prev) => [newRec, ...prev]);
+    toast("success", `تم تسجيل التواصل مع ولي أمر ${rec.studentName} بنجاح`);
+  }, [toast]);
+
+  const removeParentContact = useCallback((id: string) => {
+    setParentContacts((prev) => prev.filter((r) => r.id !== id));
+    toast("success", "تم حذف سجل التواصل من الأرشيف");
+  }, [toast]);
 
   /* ===== المزامنة السحابية ===== */
   const cloudEnabled = isCloudEnabled();
