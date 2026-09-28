@@ -344,14 +344,14 @@ export default function PastWeeks() {
                       <Avatar photo={record.photo} name={record.name} size={42} />
                       <div>
                         <p className="font-display font-extrabold text-base text-ink">{record.name} {record.isTesting && <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] text-white">اختبار</span>}</p>
-                        <p className="text-xs font-bold text-grape-500">حضور {ar(DAYS.filter((d) => record.days[d.key].a).length)} · غياب {ar(DAYS.filter((d) => record.days[d.key].absent).length)} · حفظ {ar(DAYS.filter((d) => record.days[d.key].h).length)} · مراجعة {ar(DAYS.filter((d) => record.days[d.key].r).length)}</p>
+                        <p className="text-xs font-bold text-grape-500">حضور {ar(DAYS.filter((d) => record.days?.[d.key]?.a).length)} · غياب {ar(DAYS.filter((d) => record.days?.[d.key]?.absent).length)} · حفظ {ar(DAYS.filter((d) => record.days?.[d.key]?.h).length)} · مراجعة {ar(DAYS.filter((d) => record.days?.[d.key]?.r).length)}</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     {DAYS.map((d) => {
-                      const entry = record.days[d.key];
+                      const entry = record.days?.[d.key];
                       const ward = record.ward?.[d.key];
                       const isAbsent = entry?.absent;
                       const hasH = entry?.h || Number(ward?.memorizationLines) > 0 || Number(ward?.memorizationVerses) > 0 || !!ward?.memorization?.trim();
