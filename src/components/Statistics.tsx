@@ -1230,7 +1230,7 @@ export default function StatisticsPage() {
                           <div>
                             <div className="flex items-center justify-between gap-2 border-b border-grape-100/70 pb-2">
                               <div className="flex items-center gap-2">
-                                <Avatar photo={rec.studentPhoto ?? stObj?.photo} name={rec.studentName} size={34} />
+                                <Avatar photo={rec.studentPhoto ?? stObj?.photo ?? null} name={rec.studentName} size={34} />
                                 <div>
                                   <p className="font-display text-sm font-extrabold text-ink">{rec.studentName}</p>
                                   <p className="text-[10px] font-bold text-grape-400">تاريخ التواصل: {rec.contactDateHijri}</p>
@@ -1299,7 +1299,7 @@ export default function StatisticsPage() {
                           <div>
                             <div className="flex items-center justify-between gap-2 border-b border-grape-100/70 pb-2">
                               <div className="flex items-center gap-2">
-                                <Avatar photo={rec.studentPhoto ?? stObj?.photo} name={rec.studentName} size={34} />
+                                <Avatar photo={rec.studentPhoto ?? stObj?.photo ?? null} name={rec.studentName} size={34} />
                                 <div>
                                   <p className="font-display text-sm font-extrabold text-ink">{rec.studentName}</p>
                                   <p className="text-[10px] font-bold text-grape-400">تاريخ التواصل: {rec.contactDateHijri}</p>

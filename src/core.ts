@@ -37,7 +37,7 @@ export type ItemKind = "cosmetic" | "external";
 /** خانة الخاصية — كل خانة تُلبس عنصرًا واحدًا في الوقت نفسه */
 export type CosmeticSlot = "frame" | "crown" | "glow" | "cardbg";
 
-export type AwardRec = { id: string; title: string; week: number; coins?: number };
+export type AwardRec = { id: string; title: string; week: number; coins?: number; xp?: number };
 export type HalaqaTeacher = { id: string; name: string; createdAt: number };
 /**
  * إعدادات الحلقة متزامنة ضمن app_state. الحقول الجديدة اختيارية لتبقى كل
@@ -573,6 +573,8 @@ export type WeekLogEntry = {
   /** مؤشرات تحليلية اختيارية؛ غيابها في الأرشيف القديم لا يغيّر السجل. */
   memorizationDays?: number;
   reviewDays?: number;
+  memorizationSessions?: number;
+  reviewSessions?: number;
   memorizationExpectedDays?: number;
   reviewExpectedDays?: number;
   memorizationExpectedPages?: number;

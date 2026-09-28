@@ -487,7 +487,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
 
 /* ===== تبويب المتجر (المعلم) ===== */
 export default function StoreTab() {
-  const { sorted, products, removeProduct, heartPrice, setHeartPrice } = useApp();
+  const { sorted, products, saveProduct, removeProduct, heartPrice, setHeartPrice } = useApp();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ShopProduct | null>(null);
   const [buyerId, setBuyerId] = useState<string | null>(null);
