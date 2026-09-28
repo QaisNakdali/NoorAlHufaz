@@ -1,5 +1,5 @@
 /* الأنواع والبيانات والمنطق الأساسي للمنصة */
-import { addCalendarDays, currentHijriMonthBounds, dateFromLocalKey, localDateKey } from "./hijriDate";
+import { addCalendarDays, currentHijriMonthBounds, dateFromLocalKey, localDateKey } from "./hijriDate.ts";
 
 /* ---------- أدوات ---------- */
 export const ar = (n: number | string): string =>
@@ -7,10 +7,16 @@ export const ar = (n: number | string): string =>
 
 export function generateParentToken(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  let token = "";
-  for (let i = 0; i < 24; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  const bytes = new Uint8Array(24);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(bytes);
+  } else {
+    // توافق مع البيئات القديمة فقط؛ المتصفحات المدعومة تستخدم CSPRNG أعلاه.
+    const seed = `${Date.now()}-${uid()}`;
+    for (let i = 0; i < bytes.length; i++) bytes[i] = seed.charCodeAt(i % seed.length) + i * 31;
   }
+  let token = "";
+  for (const byte of bytes) token += chars.charAt(byte % chars.length);
   return token;
 }
 
@@ -46,7 +52,7 @@ export type ItemKind = "cosmetic" | "external";
 /** خانة الخاصية — كل خانة تُلبس عنصرًا واحدًا في الوقت نفسه */
 export type CosmeticSlot = "frame" | "crown" | "glow" | "cardbg";
 
-export type AwardRec = { id: string; title: string; week: number; coins?: number };
+export type AwardRec = { id: string; title: string; week: number; coins?: number; xp?: number };
 export type HalaqaTeacher = { id: string; name: string; createdAt: number };
 /**
  * إعدادات الحلقة متزامنة ضمن app_state. الحقول الجديدة اختيارية لتبقى كل
@@ -587,6 +593,9 @@ export type WeekLogEntry = {
   /** مؤشرات تحليلية اختيارية؛ غيابها في الأرشيف القديم لا يغيّر السجل. */
   memorizationDays?: number;
   reviewDays?: number;
+  /** أسماء توافقية لبعض شاشات الإحصاء؛ الأرشيف القديم يستخدم *Days. */
+  memorizationSessions?: number;
+  reviewSessions?: number;
   memorizationExpectedDays?: number;
   reviewExpectedDays?: number;
   memorizationExpectedPages?: number;

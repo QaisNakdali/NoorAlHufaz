@@ -80,6 +80,8 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
   const [deductInput, setDeductInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  if (!s) return null;
+
   const confirmDeduct = (amount: number) => {
     const clean = Math.min(s.xp, Math.max(1, Math.floor(amount)));
     if (clean <= 0) return;
@@ -89,7 +91,6 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
       setDeductInput("");
     }
   };
-  if (!s) return null;
   const { level } = levelInfo(s.xp);
   const saveProfile = () => {
     updateStudentProfile(s.id, { name, photo, coins, hearts, xp: studentLevel !== level ? xpForLevel(Math.max(1, studentLevel)) : undefined, halaqaId, guardianPhone: guardianPhone.trim() || undefined });
@@ -323,7 +324,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
 
 /* ===== صف طالب في الكشف ===== */
 function StudentDetailsModal({ student, onClose }: { student: Student; onClose: () => void }) {
-  const { weeksLog } = useApp();
+  const { weeksLog, orders = [], products = [] } = useApp();
   const analysis = useMemo(() => buildRegisterInsight(student, weeksLog), [student, weeksLog]);
   const month = hijriMonthKey(new Date());
   const monthLogs = weeksLog.filter((log) => log.savedAtIso && hijriMonthKey(new Date(log.savedAtIso)) === month);
@@ -376,7 +377,7 @@ function RegisterRow({
   onManage: () => void;
   onDetails: () => void;
 }) {
-  const { markDay, markAbsent, updateWard, toggleDailyRecitation, toggleDailyAbsent, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso, parentContacts = [] } = useApp();
+  const { markDay, markAbsent, updateWard, toggleDailyRecitation, toggleDailyAbsent, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso, parentContacts = [], orders = [], products = [] } = useApp();
   const studentTrend = useMemo(() => analyzeStudentTrend(s, weeksLog, parentContacts), [s, weeksLog, parentContacts]);
   const currentDayKey = getWeekDayKey(todayKey, weekStartDateIso);
   const isAbsentToday = s.dailyAbsentDate === todayKey || (s.days[currentDayKey]?.absent === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date));
