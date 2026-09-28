@@ -78,6 +78,8 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
   const [deductInput, setDeductInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  if (!s) return null;
+
   const confirmDeduct = (amount: number) => {
     const clean = Math.min(s.xp, Math.max(1, Math.floor(amount)));
     if (clean <= 0) return;
@@ -87,7 +89,6 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
       setDeductInput("");
     }
   };
-  if (!s) return null;
   const { level } = levelInfo(s.xp);
   const saveProfile = () => {
     updateStudentProfile(s.id, { name, photo, coins, hearts, xp: studentLevel !== level ? xpForLevel(Math.max(1, studentLevel)) : undefined, halaqaId });

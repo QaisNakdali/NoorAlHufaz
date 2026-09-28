@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
 import { addCalendarDays, formatHijriDate, formatTeachingWeek } from "../hijriDate";
-import { ar, DAYS, emptyRecitationRatings, emptyWeeklyWard, emptyWeekDays, uid, type DayKey, type DayPart, type WeekLog, type WeekStudentRecord } from "../core";
+import { ar, DAYS, emptyRecitationRatings, emptyWeeklyWard, emptyWeekDays, uid, type DailyWard, type DayKey, type DayPart, type WeekLog, type WeekStudentRecord } from "../core";
 import Avatar from "./Avatar";
 import { Icon, Modal, SectionHead } from "./ui";
 
@@ -11,7 +11,7 @@ const normalizeSearch = (value: string): string => {
   const arDigits = "٠١٢٣٤٥٦٧٨٩";
   let s = value;
   for (let i = 0; i < arDigits.length; i++) {
-    s = s.replaceAll(arDigits[i], String(i));
+    s = s.split(arDigits[i]).join(String(i));
   }
   return s
     .replace(/[ًٌٍَُِّْـ]/g, "")

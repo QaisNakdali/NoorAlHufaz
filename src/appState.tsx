@@ -56,6 +56,7 @@ import {
   type TripDay,
   type WeekDays,
   type WeekLog,
+  type WeekStudentRecord,
 } from "./core";
 import { buildTrackSnapshot, measureStudentWork } from "./analytics";
 import { localDateKey } from "./halaqaRotation";
@@ -1819,6 +1820,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         reviewDays: rev.sessions,
         isTesting: r.isTesting === true,
         halaqaId: r.halaqaId ?? null,
+        frame: null,
+        crown: null,
       };
     }) : (next.students ?? []);
 
