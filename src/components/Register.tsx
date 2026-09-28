@@ -1,7 +1,7 @@
 /* كشف الحلقة — مرتب أبجديًا: حضور + تسميع حفظ + تسميع مراجعة لكل يوم */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../appState";
-import { buildRegisterInsight, type TrackTrend } from "../analytics";
+import { buildRegisterInsight, analyzeStudentTrend, type TrackTrend } from "../analytics";
 import {
   ar,
   ATTEND_COINS,
@@ -296,7 +296,8 @@ function RegisterRow({
   onManage: () => void;
   onDetails: () => void;
 }) {
-  const { markDay, markAbsent, updateWard, toggleDailyRecitation, toggleDailyAbsent, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso } = useApp();
+  const { markDay, markAbsent, updateWard, toggleDailyRecitation, toggleDailyAbsent, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso, parentContacts = [] } = useApp();
+  const studentTrend = useMemo(() => analyzeStudentTrend(s, weeksLog, parentContacts), [s, weeksLog, parentContacts]);
   const currentDayKey = getWeekDayKey(todayKey, weekStartDateIso);
   const isAbsentToday = s.dailyAbsentDate === todayKey || (s.days[currentDayKey]?.absent === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date));
   const isRecitedToday = s.dailyRecitedDate === todayKey;
@@ -341,6 +342,20 @@ function RegisterRow({
                 <button type="button" onClick={onDetails} className="truncate text-right font-display text-base font-extrabold leading-tight text-ink hover:text-grape-600 hover:underline">
                   {s.name}
                 </button>
+                {studentTrend && (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-black border shrink-0 ${
+                      studentTrend.tone === "mint"
+                        ? "bg-mint-50 border-mint-200 text-mint-700"
+                        : studentTrend.tone === "coral"
+                        ? "bg-coral-50 border-coral-200 text-coral-600"
+                        : "bg-grape-50 border-grape-200 text-grape-600"
+                    }`}
+                    title={studentTrend.explanation}
+                  >
+                    {studentTrend.label}
+                  </span>
+                )}
                 {s.isTesting && <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-extrabold text-white">اختبار</span>}
                 <LevelBadge level={level} className="px-2! py-0! text-[11px]! shadow-none!" />
                 <span className="rounded-full bg-grape-100 px-2 py-0.5 text-[11px] font-bold text-grape-500">
@@ -421,6 +436,20 @@ function RegisterRow({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={onDetails} className="truncate text-right font-display text-lg font-extrabold leading-tight text-ink underline-offset-4 hover:text-grape-600 hover:underline sm:text-xl">{s.name}</button>
+                {studentTrend && (
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-black border shrink-0 ${
+                      studentTrend.tone === "mint"
+                        ? "bg-mint-50 border-mint-200 text-mint-700"
+                        : studentTrend.tone === "coral"
+                        ? "bg-coral-50 border-coral-200 text-coral-600"
+                        : "bg-grape-50 border-grape-200 text-grape-600"
+                    }`}
+                    title={studentTrend.explanation}
+                  >
+                    {studentTrend.label}
+                  </span>
+                )}
                 {s.isTesting && <span className="shrink-0 rounded-full bg-sky-600 px-2.5 py-1 text-xs font-extrabold text-white">اختبار</span>}
                 <LevelBadge level={level} className="shrink-0 px-2.5! py-0.5! text-xs! shadow-none!" />
                 <span className="shrink-0 rounded-full bg-grape-100 px-2 py-0.5 text-xs font-extrabold text-grape-500">{halaqas.find((h) => h.id === s.halaqaId)?.name ?? "بلا حلقة"}</span>
