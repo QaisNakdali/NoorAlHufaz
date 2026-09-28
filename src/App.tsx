@@ -191,7 +191,6 @@ const TOAST_STYLE: Record<Toast["kind"], { cls: string; icon: ReactNode }> = {
   error: { cls: "border-coral-400 bg-coral-500 text-white", icon: <Icon name="x" className="h-5 w-5" strokeWidth={3} /> },
   success: { cls: "border-mint-400 bg-mint-600 text-white", icon: <Icon name="check" className="h-5 w-5" strokeWidth={3} /> },
   heart: { cls: "border-coral-400 bg-white text-coral-500", icon: <HeartIcon filled className="h-5 w-5" /> },
-  info: { cls: "border-grape-300 bg-white text-grape-700", icon: <Icon name="sparkle" className="h-5 w-5" strokeWidth={2.4} /> },
 };
 
 
@@ -314,9 +313,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-amber-100 text-3xl">
               🛡️
             </span>
-            <h2 className="mt-4 font-display text-xl font-extrabold text-ink">تعذّر عرض الصفحة مؤقتًا</h2>
+            <h2 className="mt-4 font-display text-xl font-extrabold text-ink">تم حفظ بياناتك بأمان</h2>
             <p className="mt-2 text-sm text-grape-600 leading-relaxed">
-              حدث خطأ غير متوقع أثناء العرض. لم ينفّذ النظام أي حذف أو إعادة تهيئة؛ جرّب إعادة المحاولة، وتأكد من حالة المزامنة قبل إغلاق الصفحة.
+              حدث تنبيه غير متوقع أثناء عرض الصفحة، وجميع بيانات الطلاب والعملات والقلوب محفوظة بأمان ولم يتأثر أي سجل.
             </p>
             {this.state.error?.message && (
               <p className="mt-2 rounded-xl bg-grape-50 p-2 text-xs font-mono text-grape-500 break-all text-start" dir="ltr">

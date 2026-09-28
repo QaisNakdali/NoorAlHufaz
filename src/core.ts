@@ -1,5 +1,5 @@
 /* الأنواع والبيانات والمنطق الأساسي للمنصة */
-import { addCalendarDays, currentHijriMonthBounds, dateFromLocalKey, localDateKey } from "./hijriDate.ts";
+import { addCalendarDays, currentHijriMonthBounds, dateFromLocalKey, localDateKey } from "./hijriDate";
 
 /* ---------- أدوات ---------- */
 export const ar = (n: number | string): string =>
@@ -7,16 +7,10 @@ export const ar = (n: number | string): string =>
 
 export function generateParentToken(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  const bytes = new Uint8Array(24);
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    crypto.getRandomValues(bytes);
-  } else {
-    // توافق مع البيئات القديمة فقط؛ المتصفحات المدعومة تستخدم CSPRNG أعلاه.
-    const seed = `${Date.now()}-${uid()}`;
-    for (let i = 0; i < bytes.length; i++) bytes[i] = seed.charCodeAt(i % seed.length) + i * 31;
-  }
   let token = "";
-  for (const byte of bytes) token += chars.charAt(byte % chars.length);
+  for (let i = 0; i < 24; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
   return token;
 }
 
@@ -52,7 +46,7 @@ export type ItemKind = "cosmetic" | "external";
 /** خانة الخاصية — كل خانة تُلبس عنصرًا واحدًا في الوقت نفسه */
 export type CosmeticSlot = "frame" | "crown" | "glow" | "cardbg";
 
-export type AwardRec = { id: string; title: string; week: number; coins?: number; xp?: number };
+export type AwardRec = { id: string; title: string; week: number; coins?: number };
 export type HalaqaTeacher = { id: string; name: string; createdAt: number };
 /**
  * إعدادات الحلقة متزامنة ضمن app_state. الحقول الجديدة اختيارية لتبقى كل
@@ -593,9 +587,6 @@ export type WeekLogEntry = {
   /** مؤشرات تحليلية اختيارية؛ غيابها في الأرشيف القديم لا يغيّر السجل. */
   memorizationDays?: number;
   reviewDays?: number;
-  /** أسماء توافقية لبعض شاشات الإحصاء؛ الأرشيف القديم يستخدم *Days. */
-  memorizationSessions?: number;
-  reviewSessions?: number;
   memorizationExpectedDays?: number;
   reviewExpectedDays?: number;
   memorizationExpectedPages?: number;
@@ -622,8 +613,12 @@ export type WeekLog = {
   savedAt: string;
   /** تاريخ قابل للحساب للإحصائيات الجديدة؛ السجلات القديمة تبقى كما هي. */
   savedAtIso?: string;
-  /** بداية أسبوع الكشف (الأحد) كمفتاح تقني؛ العرض للمستخدم هجري دائمًا. */
+  /** بداية أسبوع الكشف (الأحد) كمفتاح تقني مستقل عن معرف الأسبوع. */
   weekStartDateIso?: string;
+  /** نهاية أسبوع الكشف (الأربعاء) */
+  weekEndDateIso?: string;
+  displayStartDate?: string;
+  displayEndDate?: string;
   top: WeekLogEntry[];
   /** لقطة آمنة لكل الطلاب من هذا الأسبوع؛ top يبقى للتوافق مع الأرشيف القديم. */
   students?: WeekLogEntry[];
@@ -1013,4 +1008,28 @@ export function seedStudents(): Student[] {
     mk("عمر", 140, 30, 0b011011011011),
     mk("سارة", 70, 20, 0b010010010010),
   ];
+}
+/**
+ * الحصول على التسمية المعتمدة للأسبوع وفق التاريخ الفعلي
+ * مثال: "الأحد ٢٨ سبتمبر – الأربعاء ١ أكتوبر"
+ * مع الحفاظ التام على weekId داخلياً دون المساس بالبيانات
+ */
+export function getWeekDisplayName(weekNum: number, startDateIso?: string, customName?: string): string {
+  if (customName && customName.trim() && !customName.startsWith("الأسبوع ")) {
+    return customName.trim();
+  }
+  if (startDateIso) {
+    const start = dateFromLocalKey(startDateIso);
+    if (start && !Number.isNaN(start.getTime())) {
+      const end = addCalendarDays(start, 3);
+      const fmtDay = (d: Date) => {
+        const weekday = new Intl.DateTimeFormat("ar", { weekday: "long" }).format(d);
+        const day = ar(d.getDate());
+        const month = new Intl.DateTimeFormat("ar", { month: "long" }).format(d);
+        return `${weekday} ${day} ${month}`;
+      };
+      return `${fmtDay(start)} – ${fmtDay(end)}`;
+    }
+  }
+  return `الأسبوع ${ar(weekNum)}`;
 }
