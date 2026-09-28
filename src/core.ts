@@ -214,6 +214,23 @@ export type MemorizationRecord = {
   createdAt: number;        // timestamp للإضافة
 };
 
+export type ParentContactType = "absence" | "notHeard";
+
+export type ParentContactRecord = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentPhoto?: string | null;
+  type: ParentContactType;
+  contactDateIso: string;
+  contactDateHijri: string;
+  absenceCountAtContact?: number;
+  notHeardMemAtContact?: number;
+  notHeardRevAtContact?: number;
+  notHeardBothAtContact?: number;
+  statusText: string;
+};
+
 export type Student = {
   id: string;
   name: string;

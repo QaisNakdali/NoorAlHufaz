@@ -462,3 +462,125 @@ export function buildRegisterInsight(student: Student, weeksLog: WeekLog[]): Reg
 
   return { attendance, memorization, review, advice };
 }
+
+
+import type { ParentContactRecord } from "./core";
+
+export type StudentTrendResult = {
+  label: "تحسن بعد التواصل" | "يتحسن" | "مستقر" | "يتراجع" | "بحاجة إلى متابعة" | "منتظم";
+  tone: "mint" | "coral" | "gold" | "grape";
+  explanation: string;
+};
+
+export function analyzeStudentTrend(
+  student: Student,
+  weeksLog: WeekLog[] = [],
+  parentContacts: ParentContactRecord[] = []
+): StudentTrendResult {
+  const normTarget = student.name
+    .replace(/[ًٌٍَُِّْـ]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .trim()
+    .toLowerCase();
+
+  const contacts = parentContacts
+    .filter((c) => c.studentId === student.id || c.studentName.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget)
+    .sort((a, b) => b.contactDateIso.localeCompare(a.contactDateIso));
+
+  const currPresent = DAYS.filter((d) => !!student.days?.[d.key]?.a && !student.days?.[d.key]?.absent).length;
+  const currAbsent = DAYS.filter((d) => student.days?.[d.key]?.absent === true).length;
+
+  // 1. إذا كان هناك تواصل سابق مسجل
+  if (contacts.length > 0) {
+    // الطالب حضر بشكل مستمر وبلا غياب في الأيام اللاحقة
+    if (currPresent >= 2 && currAbsent === 0) {
+      return {
+        label: "تحسن بعد التواصل",
+        tone: "mint",
+        explanation: "تحسن بالفعل وأصبح أكثر انتظامًا في الحضور بعد التواصل مع ولي الأمر",
+      };
+    }
+    // الطالب ما زال يغيب بعد التواصل
+    if (currAbsent >= 2) {
+      return {
+        label: "بحاجة إلى متابعة",
+        tone: "coral",
+        explanation: "تكرر الغياب مجددًا بعد التواصل مع ولي الأمر ويتطلب متابعة مستمرة",
+      };
+    }
+  }
+
+  // 2. تحليل السجلات عبر الأسابيع التاريخية
+  const chronologicalWeeks = [...weeksLog]
+    .filter((w) => w && w.week != null)
+    .sort((a, b) => Number(a.week) - Number(b.week));
+
+  const weekHist: { present: number; absent: number }[] = [];
+  for (const w of chronologicalWeeks) {
+    const record = w.records?.find((r) => r.id === student.id || r.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
+    const entry = (w.students ?? w.top)?.find((e) => e.id === student.id || e.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
+    if (record && record.days) {
+      const p = DAYS.filter((d) => !!record.days?.[d.key]?.a && !record.days?.[d.key]?.absent).length;
+      const ab = DAYS.filter((d) => record.days?.[d.key]?.absent === true).length;
+      weekHist.push({ present: p, absent: ab });
+    } else if (entry) {
+      weekHist.push({ present: entry.attendanceDays ?? 0, absent: entry.absenceDays ?? 0 });
+    }
+  }
+
+  if (currPresent > 0 || currAbsent > 0) {
+    weekHist.push({ present: currPresent, absent: currAbsent });
+  }
+
+  if (weekHist.length >= 2) {
+    const mid = Math.floor(weekHist.length / 2);
+    const earlier = weekHist.slice(0, mid);
+    const recent = weekHist.slice(mid);
+
+    const earlierAbsent = earlier.reduce((acc, w) => acc + w.absent, 0);
+    const recentAbsent = recent.reduce((acc, w) => acc + w.absent, 0);
+    const recentPresent = recent.reduce((acc, w) => acc + w.present, 0);
+
+    // تحسن مدعوم بالبيانات عبر عدة فترات
+    if (earlierAbsent >= 2 && recentAbsent === 0 && recentPresent >= 2) {
+      return {
+        label: "يتحسن",
+        tone: "mint",
+        explanation: "تحسن ملحوظ وانخفاض واضح في الغياب مقارنة بالفترات السابقة",
+      };
+    }
+
+    // تراجع في الحضور
+    if (earlierAbsent <= 1 && recentAbsent >= 2) {
+      return {
+        label: "يتراجع",
+        tone: "coral",
+        explanation: "تراجع في معدل الحضور وزيادة في الغيابات بالفترة الأخيرة",
+      };
+    }
+  }
+
+  if (currAbsent >= 3) {
+    return {
+      label: "بحاجة إلى متابعة",
+      tone: "coral",
+      explanation: "تكرار ملحوظ في الغياب يستدعي المتابعة المباشرة",
+    };
+  }
+
+  if (currPresent >= 3 && currAbsent === 0) {
+    return {
+      label: "مستقر",
+      tone: "mint",
+      explanation: "حضور منتظم وأداء مستقر بدون انقطاع",
+    };
+  }
+
+  return {
+    label: "مستقر",
+    tone: "grape",
+    explanation: "سجل الحضور في المستوى الطبيعي والمستقر",
+  };
+}

@@ -47,6 +47,7 @@ import {
   type DailyWard,
   type Mode,
   type ShopItem,
+  type ParentContactRecord,
   type Student,
   type RewardSettings,
   type RewardKey,
@@ -101,6 +102,7 @@ type State = {
   tripDay: TripDay | null;
   tripAttendees: string[];
   rewardSettings: RewardSettings;
+  parentContacts: ParentContactRecord[];
 };
 
 type Ctx = State & {
@@ -157,6 +159,9 @@ type Ctx = State & {
   saveProduct: (p: ShopItem) => void;
   removeProduct: (id: string) => void;
   restockProduct: (id: string, amount: number) => void;
+  parentContacts: ParentContactRecord[];
+  recordParentContact: (record: Omit<ParentContactRecord, "id">) => void;
+  removeParentContact: (id: string) => void;
 
   grantAward: (id: string, title: string, coins?: number, xp?: number, uniqueKey?: string) => void;
   setCeremonyPick: (key: keyof CeremonyPicks, id: string | null) => void;
@@ -405,6 +410,7 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
     heartPrice: typeof p.heartPrice === "number" && Number.isFinite(p.heartPrice)
       ? Math.max(0, Math.round(p.heartPrice))
       : DEFAULT_HEART_PRICE,
+    parentContacts: Array.isArray(p.parentContacts) ? (p.parentContacts as ParentContactRecord[]) : [],
   };
 }
 
@@ -593,6 +599,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [ceremonyPicks, setCeremonyPicks] = useState<CeremonyPicks>(init.ceremonyPicks);
   const [products, setProducts] = useState<ShopItem[]>(init.products);
   const [heartPrice, setHeartPriceState] = useState(init.heartPrice);
+  const [parentContacts, setParentContacts] = useState<ParentContactRecord[]>(init.parentContacts ?? []);
+
+  const recordParentContact = useCallback((rec: Omit<ParentContactRecord, "id">) => {
+    const newRec: ParentContactRecord = {
+      ...rec,
+      id: uid(),
+    };
+    setParentContacts((prev) => [newRec, ...prev]);
+    toast("success", `تم تسجيل التواصل مع ولي أمر ${rec.studentName} بنجاح`);
+  }, [toast]);
+
+  const removeParentContact = useCallback((id: string) => {
+    setParentContacts((prev) => prev.filter((r) => r.id !== id));
+    toast("success", "تم حذف سجل التواصل من الأرشيف");
+  }, [toast]);
   const [showNewProducts, setShowNewProducts] = useState(init.showNewProducts);
   const [ceremonyProductIds, setCeremonyProductIds] = useState<string[]>(init.ceremonyProductIds);
   const [tripOn, setTripOn] = useState(init.tripOn);
@@ -804,6 +825,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       tripDay,
       tripAttendees,
       rewardSettings,
+      parentContacts,
     };
 
     // النسخة السحابية: تُحذف الصور إن طُلب ذلك للتقليل من الحجم
@@ -2099,6 +2121,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     closeCeremony,
     cloud,
     syncNow,
+    parentContacts,
+    recordParentContact,
+    removeParentContact,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
