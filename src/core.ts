@@ -239,6 +239,9 @@ export type Student = {
   /** أعلى مستوى استلم الطالب مكافأته بالفعل لمنع تكرار مكافأة المستوى */
   highestRewardedLevel?: number;
   memorizationRecords?: MemorizationRecord[]; // سجل الحفظ التفصيلي (جديد)
+  manualXpAdjust?: number;
+  manualCoinsAdjust?: number;
+  coinsSpent?: number;
 };
 
 export type ShopItem = {
@@ -585,6 +588,120 @@ export type WeekLog = {
   rewardSettings?: RewardSettings;
   tripAttendeeIds?: string[];
 };
+
+export const normalizeArabic = (text: string): string => {
+  return (text ?? "")
+    .replace(/[ًٌٍَُِّْـ]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .trim()
+    .toLowerCase();
+};
+
+/**
+ * حساب حتمي ومطلق لنقاط وعملات ومستوى الطالب من السجلات الفعلية:
+ * السجلات الفعلية في الأسابيع الحالية والماضية -> استخراج الأنشطة -> تحديد الإجمالي الصحيح بدقة 100%.
+ */
+export function calculateStudentTotals(
+  student: Student,
+  weeksLog: WeekLog[] = [],
+  currentWeek: number = 1,
+  products?: ShopItem[],
+  heartPrice: number = DEFAULT_HEART_PRICE
+): {
+  xp: number;
+  weekXp: number;
+  coins: number;
+  weekCoins: number;
+  level: number;
+  highestRewardedLevel: number;
+} {
+  // 1. الأسبوع الحالي: محسوب مباشرة من بطاقة الأيام الحالية
+  const weekXp = weekXpOf(student.days);
+  const weekCoins = weekCoinsOf(student.days);
+
+  // 2. الأسابيع السابقة المؤرشفة في weeksLog
+  let pastXp = 0;
+  let pastCoins = 0;
+  const normName = normalizeArabic(student.name);
+
+  // حماية من تكرار الأسابيع
+  const uniqueWeeks = new Map<number, WeekLog>();
+  for (const log of weeksLog) {
+    if (log && log.week != null && Number(log.week) !== Number(currentWeek)) {
+      uniqueWeeks.set(Number(log.week), log);
+    }
+  }
+
+  for (const log of uniqueWeeks.values()) {
+    let matchedRecord: WeekStudentRecord | undefined;
+    if (Array.isArray(log.records) && log.records.length > 0) {
+      matchedRecord = log.records.find((r) => r.id === student.id || normalizeArabic(r.name) === normName);
+    }
+    if (matchedRecord && matchedRecord.days) {
+      pastXp += weekXpOf(matchedRecord.days);
+      pastCoins += weekCoinsOf(matchedRecord.days);
+    } else {
+      const entry = (log.students ?? log.top)?.find((e) => e.id === student.id || normalizeArabic(e.name) === normName);
+      if (entry) {
+        pastXp += typeof entry.weekXp === "number" ? entry.weekXp : 0;
+        pastCoins += typeof (entry as any).weekCoins === "number" ? (entry as any).weekCoins : 0;
+      }
+    }
+  }
+
+  // 3. الجوائز المستحقة والمسجلة
+  let awardsCoins = 0;
+  let awardsXp = 0;
+  if (Array.isArray(student.awards)) {
+    for (const a of student.awards) {
+      awardsCoins += Math.max(0, a.coins ?? 0);
+      awardsXp += Math.max(0, a.xp ?? 0);
+    }
+  }
+
+  // 4. إجمالي النقاط
+  const manualXp = typeof student.manualXpAdjust === "number" ? student.manualXpAdjust : 0;
+  const totalXp = Math.max(0, pastXp + weekXp + awardsXp + manualXp);
+
+  // 5. المستوى = دالة رياضية حتمية ناتجة عن إجمالي النقاط
+  const lvlInfo = levelInfo(totalXp);
+  const level = lvlInfo.level;
+
+  // 6. مكافأة ارتقاء المستوى (+5 لكل مستوى أعلى من المستوى 1)
+  const levelRewardCoins = Math.max(0, level - 1) * LEVEL_COIN_REWARD;
+
+  // 7. العملات المصروفة
+  let spent = typeof student.coinsSpent === "number" ? student.coinsSpent : 0;
+  if (spent <= 0 && products && products.length > 0) {
+    if (Array.isArray(student.inventory)) {
+      for (const itemId of student.inventory) {
+        const item = findItem(products, itemId);
+        if (item) spent += item.price;
+      }
+    }
+    if (Array.isArray(student.bag)) {
+      for (const b of student.bag) {
+        const item = findItem(products, b.itemId);
+        if (item) spent += (b.qty ?? 1) * item.price;
+      }
+    }
+  }
+
+  // 8. إجمالي العملات
+  const manualCoins = typeof student.manualCoinsAdjust === "number" ? student.manualCoinsAdjust : 0;
+  const totalCoins = Math.max(0, pastCoins + weekCoins + awardsCoins + levelRewardCoins + manualCoins - spent);
+
+  return {
+    xp: totalXp,
+    weekXp,
+    coins: totalCoins,
+    weekCoins,
+    level,
+    highestRewardedLevel: level,
+  };
+}
 
 /* ---------- الواجهات ---------- */
 export type Tab = "register" | "lessons" | "store" | "deliveries" | "board" | "ceremony" | "past" | "term" | "stats";

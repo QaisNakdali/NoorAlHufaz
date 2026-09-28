@@ -1,4 +1,196 @@
-/* الحالة المركزية للمنصة مع الحفظ في localStorage */
+const buyItem = useCallback(
+    (id: string, itemId: string) => {
+      const item = findItem(products, itemId);
+      const st = students.find((s) => s.id === id);
+      if (!item || !st) return;
+      if (st.hearts <= 0) {
+        toast("heart", `قلوب ${st.name} نفدت — عليه شراء قلب جديد أولًا ليعود للشراء`);
+        sfx.error();
+        return;
+      }
+      const lvl = levelInfo(st.xp).level;
+      const isCosmetic = item.kind === "cosmetic";
+      const ownedQty = isCosmetic ? (st.inventory.includes(itemId) ? 1 : 0) : bagQty(st, itemId);
+
+      if (isCosmetic && ownedQty > 0) {
+        toast("error", "أنت تملك هذا العنصر بالفعل");
+        return;
+      }
+      if (lvl < item.minLevel) {
+        toast("error", `هذا العنصر يتطلب المستوى ${ar(item.minLevel)}`);
+        return;
+      }
+      if (st.coins < item.price) {
+        toast("error", `عملاتك لا تكفي (${ar(st.coins)} من ${ar(item.price)})`);
+        return;
+      }
+      if (item.stock != null && item.stock <= 0) {
+        toast("error", "نفدت كمية هذا المنتج لدى المعلم حاليًا");
+        return;
+      }
+
+      setStudents((ss) =>
+        ss.map((s) => {
+          if (s.id !== id) return s;
+          const nextBag = isCosmetic
+            ? s.bag
+            : (() => {
+                const existing = s.bag.find((b) => b.itemId === itemId);
+                if (existing) {
+                  return s.bag.map((b) => b.itemId === itemId ? { ...b, qty: b.qty + 1 } : b);
+                }
+                return [...s.bag, { itemId, qty: 1, receivedQty: 0 }];
+              })();
+          const nextInventory = isCosmetic ? [...s.inventory, itemId] : s.inventory;
+          const updated: Student = {
+            ...s,
+            inventory: nextInventory,
+            bag: nextBag,
+            coinsSpent: (s.coinsSpent ?? 0) + item.price,
+          };
+          const totals = calculateStudentTotals(updated, weeksLog, week, products, heartPrice);
+          return {
+            ...updated,
+            xp: totals.xp,
+            weekXp: totals.weekXp,
+            coins: totals.coins,
+            weekCoins: totals.weekCoins,
+            highestRewardedLevel: totals.highestRewardedLevel,
+          };
+        })
+      );
+      if (item.stock != null) {
+        setProducts((items) => items.map((p) => p.id === itemId ? { ...p, stock: Math.max(0, (p.stock ?? 1) - 1) } : p));
+      }
+      sfx.coin();
+      const t = window.setTimeout(() => sfx.sparkle(), 180);
+      timers.current.push(t);
+      toast("success", `تم شراء ${item.name} بنجاح`);
+    },
+    [heartPrice, products, students, toast, week, weeksLog]
+  );const buyHeart = useCallback(
+    (id: string) => {
+      const st = students.find((s) => s.id === id);
+      if (!st) return;
+      if (st.hearts >= MAX_HEARTS) {
+        toast("error", "قلوبك مكتملة بالفعل");
+        sfx.error();
+        return;
+      }
+      if (st.coins < heartPrice) {
+        toast("error", `عملاتك لا تكفي — تحتاج ${ar(heartPrice)}`);
+        sfx.error();
+        return;
+      }
+      setStudents((ss) =>
+        ss.map((s) => {
+          if (s.id !== id) return s;
+          const updated: Student = {
+            ...s,
+            hearts: Math.min(MAX_HEARTS, s.hearts + 1),
+            coinsSpent: (s.coinsSpent ?? 0) + heartPrice,
+          };
+          const totals = calculateStudentTotals(updated, weeksLog, week, products, heartPrice);
+          return {
+            ...updated,
+            xp: totals.xp,
+            weekXp: totals.weekXp,
+            coins: totals.coins,
+            weekCoins: totals.weekCoins,
+            highestRewardedLevel: totals.highestRewardedLevel,
+          };
+        })
+      );
+      sfx.coin();
+      const t = window.setTimeout(() => sfx.sparkle(), 180);
+      timers.current.push(t);
+      toast("heart", `اشترى ${st.name} قلبًا جديدًا وعاد لنقاط المستوى`);
+    },
+    [heartPrice, products, students, toast, week, weeksLog]
+  );const addCoins = useCallback(
+    (id: string, amount: number) => {
+      const cleanAmount = Math.floor(amount);
+      if (cleanAmount === 0) return;
+      setStudents((ss) =>
+        ss.map((s) => {
+          if (s.id !== id) return s;
+          const updated: Student = {
+            ...s,
+            manualCoinsAdjust: (s.manualCoinsAdjust ?? 0) + cleanAmount,
+          };
+          const totals = calculateStudentTotals(updated, weeksLog, week, products, heartPrice);
+          return {
+            ...updated,
+            xp: totals.xp,
+            weekXp: totals.weekXp,
+            coins: totals.coins,
+            weekCoins: totals.weekCoins,
+            highestRewardedLevel: totals.highestRewardedLevel,
+          };
+        })
+      );
+      if (cleanAmount > 0) {
+        sfx.coin();
+        toast("coin", `+${ar(cleanAmount)} عملة ذهبية`);
+      }
+    },
+    [heartPrice, products, toast, week, weeksLog]
+  );const addXp = useCallback(
+    (id: string, amount: number) => {
+      const cleanAmount = Math.max(0, Math.floor(amount));
+      if (cleanAmount <= 0) return;
+      setStudents((ss) =>
+        ss.map((s) => {
+          if (s.id !== id) return s;
+          const updated: Student = {
+            ...s,
+            manualXpAdjust: (s.manualXpAdjust ?? 0) + cleanAmount,
+          };
+          const totals = calculateStudentTotals(updated, weeksLog, week, products, heartPrice);
+          return {
+            ...updated,
+            xp: totals.xp,
+            weekXp: totals.weekXp,
+            coins: totals.coins,
+            weekCoins: totals.weekCoins,
+            highestRewardedLevel: totals.highestRewardedLevel,
+          };
+        })
+      );
+      sfx.pop();
+      toast("xp", `+${ar(cleanAmount)} نقطة خبرة`);
+    },
+    [heartPrice, products, toast, week, weeksLog]
+  );
+
+  /** إنقاص نقاط الطالب يدويًا */
+  const deductXp = useCallback(
+    (id: string, amount: number) => {
+      const cleanAmount = Math.max(0, Math.floor(amount));
+      if (cleanAmount <= 0) return;
+      setStudents((ss) =>
+        ss.map((s) => {
+          if (s.id !== id) return s;
+          const updated: Student = {
+            ...s,
+            manualXpAdjust: (s.manualXpAdjust ?? 0) - cleanAmount,
+          };
+          const totals = calculateStudentTotals(updated, weeksLog, week, products, heartPrice);
+          return {
+            ...updated,
+            xp: totals.xp,
+            weekXp: totals.weekXp,
+            coins: totals.coins,
+            weekCoins: totals.weekCoins,
+            highestRewardedLevel: totals.highestRewardedLevel,
+          };
+        })
+      );
+      sfx.pop();
+      toast("xp", `تم إنقاص ${ar(cleanAmount)} نقاط`);
+    },
+    [heartPrice, products, toast, week, weeksLog]
+  );/* الحالة المركزية للمنصة مع الحفظ في localStorage */
 import {
   createContext,
   useCallback,
@@ -25,8 +217,10 @@ import {
   equipOn,
   findItem,
   DEFAULT_HEART_PRICE,
+  calculateStudentTotals,
   getWeekDayKey,
   levelInfo,
+  normalizeArabic,
   LEVEL_COIN_REWARD,
   MAX_HEARTS,
   seedStudents,
@@ -250,6 +444,9 @@ function normStudent(s: Student): Student {
     highestRewardedLevel: typeof s.highestRewardedLevel === "number" ? s.highestRewardedLevel : levelInfo(typeof s.xp === "number" ? Math.max(0, s.xp) : 0).level,
     dailyRecitedDate: typeof s.dailyRecitedDate === "string" ? s.dailyRecitedDate : null,
     dailyAbsentDate: typeof s.dailyAbsentDate === "string" ? s.dailyAbsentDate : null,
+    manualXpAdjust: typeof s.manualXpAdjust === "number" ? s.manualXpAdjust : 0,
+    manualCoinsAdjust: typeof s.manualCoinsAdjust === "number" ? s.manualCoinsAdjust : 0,
+    coinsSpent: typeof s.coinsSpent === "number" ? s.coinsSpent : undefined,
   };
 }
 
@@ -311,7 +508,23 @@ function normWeekLog(log: any): WeekLog {
 /** تطبيع حزمة البيانات المحفوظة — تُستخدم للحفظ المحلي وللقادم من السحابة معًا */
 function stateFromPartial(p: Partial<State> | null | undefined): State {
   if (!p || typeof p !== "object") p = {};
-  const students = Array.isArray(p.students) ? (p.students as Student[]).map(normStudent) : seedStudents();
+  const currentWeekNum = typeof p.week === "number" ? p.week : 1;
+  const currentWeeksLog = Array.isArray(p.weeksLog) ? (p.weeksLog as WeekLog[]).map(normWeekLog) : [];
+  const currentProducts = Array.isArray(p.products) && p.products.length ? (p.products as ShopItem[]) : DEFAULT_SHOP_ITEMS;
+  const currentHeartPrice = typeof p.heartPrice === "number" && Number.isFinite(p.heartPrice) ? Math.max(0, Math.round(p.heartPrice)) : DEFAULT_HEART_PRICE;
+
+  const rawStudents = Array.isArray(p.students) ? (p.students as Student[]).map(normStudent) : seedStudents();
+  const students = rawStudents.map((s) => {
+    const totals = calculateStudentTotals(s, currentWeeksLog, currentWeekNum, currentProducts, currentHeartPrice);
+    return {
+      ...s,
+      xp: totals.xp,
+      weekXp: totals.weekXp,
+      coins: totals.coins,
+      weekCoins: totals.weekCoins,
+      highestRewardedLevel: totals.highestRewardedLevel,
+    };
+  });
   return {
     students,
     halaqas: Array.isArray(p.halaqas)
@@ -1134,9 +1347,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return ss;
         }
 
-        const noHearts = target.hearts <= 0;
-        const xpDelta = turningOn && !noHearts ? def.xp : turningOn ? 0 : -Math.min(def.xp, target.xp);
-        const coinDelta = turningOn ? def.coins : -def.coins;
+        const prevLevel = levelInfo(target.xp).level;
 
         const nextList = ss.map((s) => {
           if (s.id !== id) return s;
@@ -1149,26 +1360,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             },
           } : s.recitationRatings;
 
-          const newXp = Math.max(0, s.xp + xpDelta);
-          const newLvl = levelInfo(newXp).level;
-          const highestRewarded = s.highestRewardedLevel ?? levelInfo(s.xp).level;
-          let levelCoins = 0;
-          let nextHighest = highestRewarded;
-
-          // مكافأة ارتقاء المستوى: تُمنح عند الصعود (+5 عملات لكل مستوى)
-          if (turningOn && newLvl > highestRewarded) {
-            const levelsUp = newLvl - highestRewarded;
-            levelCoins = levelsUp * LEVEL_COIN_REWARD;
-            nextHighest = newLvl;
-            leveledName = s.name;
-            leveledTo = newLvl;
-          } else if (!turningOn && newLvl < highestRewarded) {
-            // إلغاء أثر الارتقاء الذي حدث بسبب هذا التقييم عند التراجع عنه
-            const levelsDown = highestRewarded - newLvl;
-            levelCoins = -levelsDown * LEVEL_COIN_REWARD;
-            nextHighest = newLvl;
-          }
-
           const dayLabel = DAYS.find((d) => d.key === day)?.label ?? "";
           const ward = s.ward?.[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
           const lastHeard = turningOn && (part === "h" || part === "r")
@@ -1179,22 +1370,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
               }
             : s.lastHeard;
 
-          return {
+          const studentUpdated: Student = {
             ...s,
             days,
             recitationRatings,
             lastHeard,
-            xp: newXp,
-            highestRewardedLevel: nextHighest,
-            weekXp: weekXpOf(days),
-            weekCoins: weekCoinsOf(days),
-            coins: Math.max(0, s.coins + coinDelta + levelCoins),
+          };
+
+          const totals = calculateStudentTotals(studentUpdated, weeksLog, week, products, heartPrice);
+
+          if (totals.level > prevLevel) {
+            leveledName = s.name;
+            leveledTo = totals.level;
+          }
+
+          return {
+            ...studentUpdated,
+            xp: totals.xp,
+            weekXp: totals.weekXp,
+            coins: totals.coins,
+            weekCoins: totals.weekCoins,
+            highestRewardedLevel: totals.highestRewardedLevel,
           };
         });
 
         if (turningOn) {
           shouldPlayPop = true;
-          if (noHearts) {
+          if (target.hearts <= 0) {
             msgKind = "coin";
             msgText = `${target.name}: +${def.coins} عملات (مستواه متوقف حتى يشتري قلبًا)`;
           } else {
@@ -1203,7 +1405,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         } else {
           msgKind = "coin";
-          msgText = `${target.name}: أُلغي تسجيل ${def.label === "حضور" ? "الحضور" : "تسميع " + def.label} (-${def.coins} عملات)`;
+          msgText = `${target.name}: أُلغي تسجيل ${def.label === "حضور" ? "الحضور" : "تسميع " + def.label}`;
         }
 
         return nextList;
@@ -1219,7 +1421,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         timers.current.push(t);
       }
     },
-    [toast]
+    [heartPrice, products, toast, week, weeksLog]
   );
 
   /** الغياب حالة وصفية مستقلة ولا يضيف أو يخصم نقاطًا أو عملات. */
@@ -1249,17 +1451,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
           r: turningOn ? false : s.days[day].r,
         },
       };
-      return {
+      const studentUpdated: Student = {
         ...s,
         days: updatedDays,
         dailyAbsentDate: dayDate === today ? (turningOn ? today : null) : s.dailyAbsentDate,
         dailyRecitedDate: dayDate === today && turningOn && s.dailyRecitedDate === today ? null : s.dailyRecitedDate,
-        weekXp: weekXpOf(updatedDays),
-        weekCoins: weekCoinsOf(updatedDays),
+      };
+      const totals = calculateStudentTotals(studentUpdated, weeksLog, week, products, heartPrice);
+      return {
+        ...studentUpdated,
+        xp: totals.xp,
+        weekXp: totals.weekXp,
+        coins: totals.coins,
+        weekCoins: totals.weekCoins,
+        highestRewardedLevel: totals.highestRewardedLevel,
       };
     }));
     toast(turningOn ? "success" : "xp", turningOn ? `سُجّل ${st.name} غائبًا ليوم ${DAYS.find((d) => d.key === day)?.label}` : `أُلغي غياب ${st.name} ليوم ${DAYS.find((d) => d.key === day)?.label}`);
-  }, [students, toast, weekStartDateIso]);
+  }, [heartPrice, products, students, toast, week, weekStartDateIso, weeksLog]);
 
   const updateWard = useCallback((id: string, day: DayKey, ward: DailyWard) => {
     setStudents((ss) => ss.map((s) => s.id === id
@@ -1312,16 +1521,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
       };
 
-      return {
+      const studentUpdated: Student = {
         ...s,
         dailyAbsentDate: turningOn ? today : null,
         dailyRecitedDate: turningOn && s.dailyRecitedDate === today ? null : s.dailyRecitedDate,
         days: updatedDays,
-        weekXp: weekXpOf(updatedDays),
-        weekCoins: weekCoinsOf(updatedDays),
+      };
+      const totals = calculateStudentTotals(studentUpdated, weeksLog, week, products, heartPrice);
+      return {
+        ...studentUpdated,
+        xp: totals.xp,
+        weekXp: totals.weekXp,
+        coins: totals.coins,
+        weekCoins: totals.weekCoins,
+        highestRewardedLevel: totals.highestRewardedLevel,
       };
     }));
-  }, [weekStartDateIso]);
+  }, [heartPrice, products, week, weekStartDateIso, weeksLog]);
 
   /* ===== الخبرة والعملات اليدوية ===== */
   const addXp = useCallback(
@@ -1781,9 +1997,71 @@ export function AppProvider({ children }: { children: ReactNode }) {
       top: [...updatedEntries].sort((a, b) => (b.weekXp ?? 0) - (a.weekXp ?? 0) || (b.xp ?? 0) - (a.xp ?? 0)).slice(0, 10),
     };
 
-    setWeeksLog((logs) => logs.map((log) => log.week === targetWeek ? updatedLog : log));
-    toast("success", "تم حفظ تعديلات الأسبوع وتحديث الإحصائيات");
-  }, [toast]);
+    const nextWeeksLog = weeksLog.map((log) => log.week === targetWeek ? updatedLog : log);
+    setWeeksLog(nextWeeksLog);
+
+    // تحديث وإعادة احتساب نقاط وعملات جميع الطلاب النشطين استنادًا إلى سجلات الأسبوع المعدل
+    setStudents((ss) => {
+      let updatedStudents = ss.map((s) => {
+        const totals = calculateStudentTotals(s, nextWeeksLog, week, products, heartPrice);
+        return {
+          ...s,
+          xp: totals.xp,
+          weekXp: totals.weekXp,
+          coins: totals.coins,
+          weekCoins: totals.weekCoins,
+          highestRewardedLevel: totals.highestRewardedLevel,
+        };
+      });
+
+      // إذا أُضيف طالب في الأسبوع السابق ولم يكن موجودًا بعد في كشف الطلاب العام، يُضاف تلقائيًا
+      if (next.records) {
+        for (const r of next.records) {
+          const exists = updatedStudents.some((s) => s.id === r.id || normalizeArabic(s.name) === normalizeArabic(r.name));
+          if (!exists && r.name && r.name !== "طالب أضيف إلى السجل") {
+            const newSt: Student = {
+              id: r.id.startsWith("archive-") ? uid() : r.id,
+              name: r.name,
+              photo: r.photo,
+              halaqaId: r.halaqaId ?? null,
+              hearts: MAX_HEARTS,
+              heartsLostWeek: 0,
+              xp: 0,
+              weekXp: 0,
+              weekCoins: 0,
+              coins: 0,
+              highestRewardedLevel: 1,
+              isTesting: r.isTesting === true,
+              createdAt: Date.now(),
+              days: emptyWeekDays(),
+              ward: emptyWeeklyWard(),
+              inventory: [],
+              bag: [],
+              frame: null,
+              crown: null,
+              glow: null,
+              cardBg: null,
+              awards: [],
+              memorizationRecords: [],
+            };
+            const totals = calculateStudentTotals(newSt, nextWeeksLog, week, products, heartPrice);
+            updatedStudents.push({
+              ...newSt,
+              xp: totals.xp,
+              weekXp: totals.weekXp,
+              coins: totals.coins,
+              weekCoins: totals.weekCoins,
+              highestRewardedLevel: totals.highestRewardedLevel,
+            });
+          }
+        }
+      }
+
+      return updatedStudents;
+    });
+
+    toast("success", "تم حفظ تعديلات الأسبوع وتحديث نقاط وعملات الطلاب");
+  }, [heartPrice, products, toast, week, weeksLog]);
 
   /* ===== الرحلة الأسبوعية ===== */
   const setTrip = useCallback((on: boolean, day?: TripDay | null) => {
