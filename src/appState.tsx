@@ -136,7 +136,7 @@ type Ctx = State & {
   setHeartPrice: (price: number) => void;
 
   addStudent: (name: string, photo: string | null, halaqaId?: string | null, guardianPhone?: string) => void;
-  updateStudentProfile: (id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null; guardianPhone?: string }) => void;
+  updateStudentProfile: (id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null; guardianPhone?: string; parentAccessToken?: string | null }) => void;
   toggleStudentTesting: (id: string) => void;
   removeStudent: (id: string) => void;
   addHalaqa: (name: string, teacherNames?: string[]) => void;
@@ -215,6 +215,7 @@ function normStudent(s: Student): Student {
   return {
     ...s,
     guardianPhone: typeof s.guardianPhone === "string" ? s.guardianPhone.trim() : undefined,
+    parentAccessToken: typeof s.parentAccessToken === "string" && s.parentAccessToken.trim() ? s.parentAccessToken.trim() : undefined,
     days: out,
     recitationRatings: (() => {
       const ratings = emptyRecitationRatings();
@@ -311,6 +312,7 @@ function normWeekRecord(r: any): WeekStudentRecord {
     name: String(r?.name ?? ""),
     photo: r?.photo ?? null,
     guardianPhone: typeof r?.guardianPhone === "string" ? r.guardianPhone.trim() : undefined,
+    parentAccessToken: typeof r?.parentAccessToken === "string" && r.parentAccessToken.trim() ? r.parentAccessToken.trim() : undefined,
     halaqaId: typeof r?.halaqaId === "string" ? r.halaqaId : null,
     isTesting: r?.isTesting === true,
     days,
@@ -1000,10 +1002,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [toast]
   );
 
-  const updateStudentProfile = useCallback((id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null; guardianPhone?: string }) => {
+  const updateStudentProfile = useCallback((id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null; guardianPhone?: string; parentAccessToken?: string | null }) => {
     setStudents((ss) => ss.map((s) => s.id === id ? {
       ...s,
       ...(changes.guardianPhone !== undefined ? { guardianPhone: changes.guardianPhone.trim() || undefined } : {}),
+      ...(changes.parentAccessToken !== undefined ? { parentAccessToken: changes.parentAccessToken ? changes.parentAccessToken.trim() : undefined } : {}),
       ...(changes.name !== undefined ? { name: changes.name.trim() || s.name } : {}),
       ...(changes.photo !== undefined ? { photo: changes.photo } : {}),
       ...(changes.coins !== undefined ? { coins: Math.max(0, Math.floor(changes.coins)) } : {}),
@@ -2030,7 +2033,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .slice(0, 10)
         ,
       awards,
-      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, guardianPhone: s.guardianPhone, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins, dailyRecitedDate: s.dailyRecitedDate ?? null, dailyAbsentDate: s.dailyAbsentDate ?? null })),
+      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, guardianPhone: s.guardianPhone, parentAccessToken: s.parentAccessToken, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins, dailyRecitedDate: s.dailyRecitedDate ?? null, dailyAbsentDate: s.dailyAbsentDate ?? null })),
       ceremonyPicks: structuredClone(ceremonyPicks),
       rewardSettings: structuredClone(rewardSettings),
       tripAttendeeIds: [...tripAttendees],

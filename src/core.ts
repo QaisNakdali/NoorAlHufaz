@@ -5,6 +5,15 @@ import { addCalendarDays, currentHijriMonthBounds, dateFromLocalKey, localDateKe
 export const ar = (n: number | string): string =>
   String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
 
+export function generateParentToken(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  let token = "";
+  for (let i = 0; i < 24; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
 export const uid = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -238,6 +247,8 @@ export type Student = {
   photo: string | null;
   /** رقم ولي الأمر للتواصل عبر واتساب (اختياري) */
   guardianPhone?: string;
+  /** رمز وصول فريد وآمن لبوابة ولي الأمر (قراءة فقط) */
+  parentAccessToken?: string;
   /** حلقة واحدة فقط. null يحافظ على الطلاب القدامى بلا تعيين إجباري. */
   halaqaId?: string | null;
   hearts: number;
@@ -589,7 +600,7 @@ export type WeekLogEntry = {
 };
 
 export type WeekStudentRecord = {
-  id: string; name: string; photo: string | null; guardianPhone?: string; halaqaId?: string | null; isTesting?: boolean;
+  id: string; name: string; photo: string | null; guardianPhone?: string; parentAccessToken?: string; halaqaId?: string | null; isTesting?: boolean;
   days: WeekDays; recitationRatings: RecitationRatings; ward: WeeklyWard;
   hearts: number; heartsLostWeek: number; xp: number; coins: number;
   dailyRecitedDate?: string | null;
