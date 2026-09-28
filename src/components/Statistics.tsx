@@ -26,6 +26,9 @@ type StudentMetrics = {
   reviewLines: number;
   memorizationPages: number;
   reviewPages: number;
+  notHeardMem: number;
+  notHeardRev: number;
+  notHeardBoth: number;
   rank?: number;
 };
 
@@ -44,6 +47,9 @@ const emptyMetrics = (student: Pick<Student, "id" | "name" | "photo" | "halaqaId
   reviewLines: 0,
   memorizationPages: 0,
   reviewPages: 0,
+  notHeardMem: 0,
+  notHeardRev: 0,
+  notHeardBoth: 0,
 });
 
 const n = (value: number) => ar(roundUpToQuarter(value));
@@ -60,7 +66,59 @@ const add = (a: StudentMetrics, b: StudentMetrics): StudentMetrics => ({
   reviewLines: a.reviewLines + b.reviewLines,
   memorizationPages: a.memorizationPages + b.memorizationPages,
   reviewPages: a.reviewPages + b.reviewPages,
+  notHeardMem: (a.notHeardMem ?? 0) + (b.notHeardMem ?? 0),
+  notHeardRev: (a.notHeardRev ?? 0) + (b.notHeardRev ?? 0),
+  notHeardBoth: (a.notHeardBoth ?? 0) + (b.notHeardBoth ?? 0),
 });
+
+
+function checkDayRecitation(
+  state?: { a?: boolean; h?: boolean; r?: boolean; absent?: boolean } | null,
+  ward?: { memorization?: string; review?: string; memorizationLines?: number; reviewLines?: number; memorizationVerses?: number; reviewVerses?: number } | null,
+  ratings?: { h?: any; r?: any } | null
+): {
+  isAbsent: boolean;
+  isPresent: boolean;
+  notHeardMem: boolean;
+  notHeardRev: boolean;
+  notHeardBoth: boolean;
+} {
+  if (!state) {
+    return { isAbsent: false, isPresent: false, notHeardMem: false, notHeardRev: false, notHeardBoth: false };
+  }
+  if (state.absent) {
+    return { isAbsent: true, isPresent: false, notHeardMem: false, notHeardRev: false, notHeardBoth: false };
+  }
+  if (!state.a) {
+    return { isAbsent: false, isPresent: false, notHeardMem: false, notHeardRev: false, notHeardBoth: false };
+  }
+  const hasMem = !!state.h || !!ratings?.h || Number(ward?.memorizationLines) > 0 || Number(ward?.memorizationVerses) > 0 || !!ward?.memorization?.trim();
+  const hasRev = !!state.r || !!ratings?.r || Number(ward?.reviewLines) > 0 || Number(ward?.reviewVerses) > 0 || !!ward?.review?.trim();
+  if (hasMem && hasRev) {
+    return { isAbsent: false, isPresent: true, notHeardMem: false, notHeardRev: false, notHeardBoth: false };
+  }
+  if (!hasMem && hasRev) {
+    return { isAbsent: false, isPresent: true, notHeardMem: true, notHeardRev: false, notHeardBoth: false };
+  }
+  if (hasMem && !hasRev) {
+    return { isAbsent: false, isPresent: true, notHeardMem: false, notHeardRev: true, notHeardBoth: false };
+  }
+  return { isAbsent: false, isPresent: true, notHeardMem: false, notHeardRev: false, notHeardBoth: true };
+}
+
+function formatAbsenceCount(count: number): string {
+  if (count === 1) return "غياب واحد";
+  if (count === 2) return "غيابان";
+  if (count >= 3 && count <= 10) return `${ar(count)} غيابات`;
+  return `${ar(count)} غياب`;
+}
+
+function formatNotHeardCount(count: number): string {
+  if (count === 1) return "مرة واحدة";
+  if (count === 2) return "مرتان";
+  if (count >= 3 && count <= 10) return `${ar(count)} مرات`;
+  return `${ar(count)} مرة`;
+}
 
 const normalizeArabic = (text: string): string => {
   return text
@@ -88,11 +146,21 @@ function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
     result.reviewLines = rev.lines;
     result.memorizationPages = mem.pages;
     result.reviewPages = rev.pages;
+    for (const d of DAYS) {
+      const st = record.days?.[d.key];
+      const wd = record.ward?.[d.key];
+      const rt = record.recitationRatings?.[d.key];
+      const res = checkDayRecitation(st, wd, rt);
+      if (res.notHeardMem) result.notHeardMem += 1;
+      if (res.notHeardRev) result.notHeardRev += 1;
+      if (res.notHeardBoth) result.notHeardBoth += 1;
+    }
     return result;
   }
   const state = record.days?.[day] ?? { a: false, h: false, r: false };
   const ward = record.ward?.[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
-  if (state.a) result.present += 1;
+  const ratings = record.recitationRatings?.[day];
+  if (state.a && !state.absent) result.present += 1;
   if (state.absent) result.absent += 1;
   if ((state.h || Number(ward.memorizationLines) > 0 || Number(ward.memorizationVerses) > 0 || !!ward.memorization?.trim()) && !state.absent) {
     result.memorizationSessions = 1;
@@ -106,6 +174,10 @@ function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
     result.reviewLines = ward.reviewLines || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0);
     result.reviewPages = pagesForWardDay(mockStudent, day, "review").pages;
   }
+  const res = checkDayRecitation(state, ward, ratings);
+  if (res.notHeardMem) result.notHeardMem = 1;
+  if (res.notHeardRev) result.notHeardRev = 1;
+  if (res.notHeardBoth) result.notHeardBoth = 1;
   return result;
 }
 
@@ -171,6 +243,9 @@ function fromStudentHijriMonth(student: Student, monthKey: string, weekStartDate
     result.reviewLines += single.reviewLines;
     result.memorizationPages += single.memorizationPages;
     result.reviewPages += single.reviewPages;
+    result.notHeardMem += single.notHeardMem;
+    result.notHeardRev += single.notHeardRev;
+    result.notHeardBoth += single.notHeardBoth;
   }
   return result;
 }
@@ -198,6 +273,9 @@ function fromEntry(entry: WeekLogEntry): StudentMetrics {
     reviewLines: revLines,
     memorizationPages: memPages,
     reviewPages: revPages,
+    notHeardMem: 0,
+    notHeardRev: 0,
+    notHeardBoth: 0,
   };
 }
 
@@ -235,6 +313,9 @@ function logMetrics(log: WeekLog, allStudents?: Student[]): StudentMetrics[] {
       existing.reviewSessions = Math.max(existing.reviewSessions, entryMetrics.reviewSessions);
       existing.present = Math.max(existing.present, entryMetrics.present);
       existing.absent = Math.max(existing.absent, entryMetrics.absent);
+      existing.notHeardMem = Math.max(existing.notHeardMem, entryMetrics.notHeardMem);
+      existing.notHeardRev = Math.max(existing.notHeardRev, entryMetrics.notHeardRev);
+      existing.notHeardBoth = Math.max(existing.notHeardBoth, entryMetrics.notHeardBoth);
     } else {
       map.set(entry.id, entryMetrics);
     }
@@ -290,6 +371,7 @@ export default function StatisticsPage() {
   const [day, setDay] = useState<DayKey>("sun");
   const [selectedWeek, setSelectedWeek] = useState("current");
   const [statsView, setStatsView] = useState<StatsView>("both");
+  const [notHeardTab, setNotHeardTab] = useState<"both" | "mem" | "rev">("both");
 
   // استبعاد أي تكرار محتمل في أرقام الأسابيع لحماية الحسابات من التكرار
   const uniqueLogs = useMemo(() => {
@@ -459,6 +541,50 @@ export default function StatisticsPage() {
     return sorted.map((item, idx) => ({ ...item, rank: idx + 1 }));
   }, [rawMetrics]);
 
+  // ترتيب الطلاب الغائبين من الأكثر غيابًا إلى الأقل غيابًا
+  const absentRanked = useMemo(() => {
+    return [...metrics]
+      .filter((s) => s.absent > 0)
+      .sort((a, b) => {
+        const diff = b.absent - a.absent;
+        if (diff !== 0) return diff;
+        return a.name.localeCompare(b.name, "ar");
+      });
+  }, [metrics]);
+
+  // الطلاب الذين حصلوا على "لم يسمع — حفظ" مرتبين من الأكثر إلى الأقل
+  const notHeardMemRanked = useMemo(() => {
+    return [...metrics]
+      .filter((s) => s.notHeardMem > 0)
+      .sort((a, b) => {
+        const diff = b.notHeardMem - a.notHeardMem;
+        if (diff !== 0) return diff;
+        return a.name.localeCompare(b.name, "ar");
+      });
+  }, [metrics]);
+
+  // الطلاب الذين حصلوا على "لم يسمع — مراجعة" مرتبين من الأكثر إلى الأقل
+  const notHeardRevRanked = useMemo(() => {
+    return [...metrics]
+      .filter((s) => s.notHeardRev > 0)
+      .sort((a, b) => {
+        const diff = b.notHeardRev - a.notHeardRev;
+        if (diff !== 0) return diff;
+        return a.name.localeCompare(b.name, "ar");
+      });
+  }, [metrics]);
+
+  // الطلاب الذين حصلوا على "لم يسمع — كلاهما" مرتبين من الأكثر إلى الأقل
+  const notHeardBothRanked = useMemo(() => {
+    return [...metrics]
+      .filter((s) => s.notHeardBoth > 0)
+      .sort((a, b) => {
+        const diff = b.notHeardBoth - a.notHeardBoth;
+        if (diff !== 0) return diff;
+        return a.name.localeCompare(b.name, "ar");
+      });
+  }, [metrics]);
+
   // تصفية نتائج الحفظ حسب الطالب المحدد أو نص البحث مع الاحتفاظ بالترتيب الأصلي
   const sortedMemorization = useMemo(() => {
     let list = memorizationRanked;
@@ -510,6 +636,9 @@ export default function StatisticsPage() {
       reviewLines: 0,
       memorizationPages: 0,
       reviewPages: 0,
+      notHeardMem: 0,
+      notHeardRev: 0,
+      notHeardBoth: 0,
     });
   }, [metrics]);
 
@@ -740,6 +869,172 @@ export default function StatisticsPage() {
           </p>
         </section>
       )}
+
+      {/* قسم إحصائيات الطلاب الغائبين والطلاب الذين حصلوا على "لم يسمع" */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        {/* 1. قسم الطلاب الغائبون */}
+        <div className="flex flex-col rounded-3xl border border-grape-200 bg-white p-4 sm:p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-2 border-b border-grape-100 pb-3">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-2xl bg-coral-50 text-coral-600">
+                <Icon name="alert" className="h-5 w-5" strokeWidth={2.2} />
+              </span>
+              <div>
+                <h4 className="font-display text-base font-extrabold text-ink flex items-center gap-2">
+                  <span>الطلاب الغائبون</span>
+                  <span className="rounded-full bg-coral-100 px-2.5 py-0.5 text-xs font-black text-coral-800">
+                    {ar(absentRanked.length)} طالب
+                  </span>
+                </h4>
+                <p className="text-xs font-bold text-grape-500 mt-0.5">
+                  مرتبون من الأكثر غيابًا إلى الأقل غيابًا
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 flex-1">
+            {absentRanked.length > 0 ? (
+              <div className="max-h-[360px] overflow-y-auto space-y-2 pe-1">
+                {absentRanked.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-grape-100 bg-grape-50/30 p-2.5 hover:bg-grape-50/80 transition"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-black text-grape-600 border border-grape-200 shadow-sm shrink-0">
+                        {ar(idx + 1)}
+                      </span>
+                      <Avatar photo={item.photo} name={item.name} size={34} />
+                      <span className="text-sm font-extrabold text-ink">{item.name}</span>
+                    </div>
+                    <span className="rounded-xl border border-coral-200/70 bg-coral-50 px-3 py-1 text-xs font-black text-coral-700 shrink-0">
+                      {formatAbsenceCount(item.absent)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-36 items-center justify-center rounded-2xl border-2 border-dashed border-grape-100 bg-grape-50/40 p-4 text-center text-xs font-bold text-grape-400">
+                لا توجد حالات غياب مسجلة لهذه الفترة 👏
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 2. قسم الطلاب الذين حصلوا على "لم يسمع" */}
+        <div className="flex flex-col rounded-3xl border border-grape-200 bg-white p-4 sm:p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grape-100 pb-3">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-2xl bg-amber-50 text-amber-600">
+                <Icon name="book" className="h-5 w-5" strokeWidth={2.2} />
+              </span>
+              <div>
+                <h4 className="font-display text-base font-extrabold text-ink flex items-center gap-2">
+                  <span>الطلاب الذين حصلوا على «لم يسمع»</span>
+                </h4>
+                <p className="text-xs font-bold text-grape-500 mt-0.5">
+                  مرتبون من الأكثر إلى الأقل (حاضر ولم يُسمّع)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* تبويبات الأقسام الثلاثة: كلاهما | حفظ | مراجعة */}
+          <div className="mt-3 flex items-center gap-1.5 rounded-xl bg-grape-100/70 p-1">
+            <button
+              type="button"
+              onClick={() => setNotHeardTab("both")}
+              className={`flex-1 rounded-lg py-1.5 text-xs font-extrabold transition ${
+                notHeardTab === "both"
+                  ? "bg-grape-600 text-white shadow-sm"
+                  : "text-grape-700 hover:bg-white/60"
+              }`}
+            >
+              كلاهما ({ar(notHeardBothRanked.length)})
+            </button>
+            <button
+              type="button"
+              onClick={() => setNotHeardTab("mem")}
+              className={`flex-1 rounded-lg py-1.5 text-xs font-extrabold transition ${
+                notHeardTab === "mem"
+                  ? "bg-grape-600 text-white shadow-sm"
+                  : "text-grape-700 hover:bg-white/60"
+              }`}
+            >
+              حفظ ({ar(notHeardMemRanked.length)})
+            </button>
+            <button
+              type="button"
+              onClick={() => setNotHeardTab("rev")}
+              className={`flex-1 rounded-lg py-1.5 text-xs font-extrabold transition ${
+                notHeardTab === "rev"
+                  ? "bg-grape-600 text-white shadow-sm"
+                  : "text-grape-700 hover:bg-white/60"
+              }`}
+            >
+              مراجعة ({ar(notHeardRevRanked.length)})
+            </button>
+          </div>
+
+          <div className="mt-3 flex-1">
+            {(() => {
+              const currentList =
+                notHeardTab === "both"
+                  ? notHeardBothRanked
+                  : notHeardTab === "mem"
+                  ? notHeardMemRanked
+                  : notHeardRevRanked;
+
+              const labelSuffix =
+                notHeardTab === "both"
+                  ? "حفظ ومراجعة"
+                  : notHeardTab === "mem"
+                  ? "حفظ"
+                  : "مراجعة";
+
+              if (currentList.length === 0) {
+                return (
+                  <div className="flex h-36 items-center justify-center rounded-2xl border-2 border-dashed border-grape-100 bg-grape-50/40 p-4 text-center text-xs font-bold text-grape-400">
+                    لا يوجد طلاب حصلوا على «لم يسمع ({labelSuffix})» في هذه الفترة 🎉
+                  </div>
+                );
+              }
+
+              return (
+                <div className="max-h-[360px] overflow-y-auto space-y-2 pe-1">
+                  {currentList.map((item, idx) => {
+                    const count =
+                      notHeardTab === "both"
+                        ? item.notHeardBoth
+                        : notHeardTab === "mem"
+                        ? item.notHeardMem
+                        : item.notHeardRev;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-grape-100 bg-grape-50/30 p-2.5 hover:bg-grape-50/80 transition"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-black text-grape-600 border border-grape-200 shadow-sm shrink-0">
+                            {ar(idx + 1)}
+                          </span>
+                          <Avatar photo={item.photo} name={item.name} size={34} />
+                          <span className="text-sm font-extrabold text-ink">{item.name}</span>
+                        </div>
+                        <span className="rounded-xl border border-amber-200/80 bg-amber-50 px-3 py-1 text-xs font-black text-amber-800 shrink-0">
+                          {formatNotHeardCount(count)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      </section>
 
       {/* شريط التبديل بين عرض الحفظ والمراجعة */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
