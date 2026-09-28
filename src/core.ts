@@ -169,25 +169,31 @@ export const estimatedLinesFromVerses = (verses: number): number =>
   Math.max(0, Math.round((Number(verses) || 0) * 1.45));
 
 /** نقاط الأسبوع = مجموع نقاط كل الخانات المسجلة */
-export function weekXpOf(days: WeekDays): number {
+export function weekXpOf(days?: WeekDays | null): number {
+  if (!days || typeof days !== "object") return 0;
   let total = 0;
   for (const d of DAYS) {
     const e = days[d.key];
-    if (e.a) total += ATTEND_XP;
-    if (e.h) total += RECITE_XP;
-    if (e.r) total += RECITE_XP;
+    if (e && !e.absent) {
+      if (e.a) total += ATTEND_XP;
+      if (e.h) total += RECITE_XP;
+      if (e.r) total += RECITE_XP;
+    }
   }
   return total;
 }
 
 /** عملات الأسبوع = مجموع عملات كل الخانات المسجلة */
-export function weekCoinsOf(days: WeekDays): number {
+export function weekCoinsOf(days?: WeekDays | null): number {
+  if (!days || typeof days !== "object") return 0;
   let total = 0;
   for (const d of DAYS) {
     const e = days[d.key];
-    if (e.a) total += ATTEND_COINS;
-    if (e.h) total += RECITE_COINS;
-    if (e.r) total += RECITE_COINS;
+    if (e && !e.absent) {
+      if (e.a) total += ATTEND_COINS;
+      if (e.h) total += RECITE_COINS;
+      if (e.r) total += RECITE_COINS;
+    }
   }
   return total;
 }
@@ -617,33 +623,41 @@ export function calculateStudentTotals(
   level: number;
   highestRewardedLevel: number;
 } {
-  // 1. الأسبوع الحالي: محسوب مباشرة من بطاقة الأيام الحالية
-  const weekXp = weekXpOf(student.days);
-  const weekCoins = weekCoinsOf(student.days);
+  if (!student) {
+    return { xp: 0, weekXp: 0, coins: 0, weekCoins: 0, level: 1, highestRewardedLevel: 1 };
+  }
+
+  // 1. الأسبوع الحالي: محسوب بأمان تام من days
+  const days = student.days ?? emptyWeekDays();
+  const weekXp = weekXpOf(days);
+  const weekCoins = weekCoinsOf(days);
 
   // 2. الأسابيع السابقة المؤرشفة في weeksLog
   let pastXp = 0;
   let pastCoins = 0;
-  const normName = normalizeArabic(student.name);
+  const normName = normalizeArabic(student.name ?? "");
 
-  // حماية من تكرار الأسابيع
   const uniqueWeeks = new Map<number, WeekLog>();
-  for (const log of weeksLog) {
-    if (log && log.week != null && Number(log.week) !== Number(currentWeek)) {
-      uniqueWeeks.set(Number(log.week), log);
+  if (Array.isArray(weeksLog)) {
+    for (const log of weeksLog) {
+      if (log && log.week != null && Number(log.week) !== Number(currentWeek)) {
+        uniqueWeeks.set(Number(log.week), log);
+      }
     }
   }
 
   for (const log of uniqueWeeks.values()) {
+    if (!log) continue;
     let matchedRecord: WeekStudentRecord | undefined;
     if (Array.isArray(log.records) && log.records.length > 0) {
-      matchedRecord = log.records.find((r) => r.id === student.id || normalizeArabic(r.name) === normName);
+      matchedRecord = log.records.find((r) => r && (r.id === student.id || (r.name && normalizeArabic(r.name) === normName)));
     }
     if (matchedRecord && matchedRecord.days) {
       pastXp += weekXpOf(matchedRecord.days);
       pastCoins += weekCoinsOf(matchedRecord.days);
     } else {
-      const entry = (log.students ?? log.top)?.find((e) => e.id === student.id || normalizeArabic(e.name) === normName);
+      const entryList = Array.isArray(log.students) ? log.students : Array.isArray(log.top) ? log.top : [];
+      const entry = entryList.find((e) => e && (e.id === student.id || (e.name && normalizeArabic(e.name) === normName)));
       if (entry) {
         pastXp += typeof entry.weekXp === "number" ? entry.weekXp : 0;
         pastCoins += typeof (entry as any).weekCoins === "number" ? (entry as any).weekCoins : 0;
@@ -656,6 +670,7 @@ export function calculateStudentTotals(
   let awardsXp = 0;
   if (Array.isArray(student.awards)) {
     for (const a of student.awards) {
+      if (!a) continue;
       awardsCoins += Math.max(0, a.coins ?? 0);
       awardsXp += Math.max(0, a.xp ?? 0);
     }
@@ -674,17 +689,18 @@ export function calculateStudentTotals(
 
   // 7. العملات المصروفة
   let spent = typeof student.coinsSpent === "number" ? student.coinsSpent : 0;
-  if (spent <= 0 && products && products.length > 0) {
+  if (spent <= 0 && Array.isArray(products) && products.length > 0) {
     if (Array.isArray(student.inventory)) {
       for (const itemId of student.inventory) {
         const item = findItem(products, itemId);
-        if (item) spent += item.price;
+        if (item && typeof item.price === "number") spent += item.price;
       }
     }
     if (Array.isArray(student.bag)) {
       for (const b of student.bag) {
+        if (!b) continue;
         const item = findItem(products, b.itemId);
-        if (item) spent += (b.qty ?? 1) * item.price;
+        if (item && typeof item.price === "number") spent += (b.qty ?? 1) * item.price;
       }
     }
   }
