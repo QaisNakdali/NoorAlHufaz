@@ -56,7 +56,6 @@ import {
   type TripDay,
   type WeekDays,
   type WeekLog,
-  type WeekStudentRecord,
 } from "./core";
 import { buildTrackSnapshot, measureStudentWork } from "./analytics";
 import { localDateKey } from "./halaqaRotation";
@@ -73,6 +72,15 @@ import {
 
 export type ToastKind = "xp" | "coin" | "level" | "award" | "error" | "success" | "heart";
 export type Toast = { id: number; kind: ToastKind; msg: string };
+
+export const DEFAULT_ABSENCE_MESSAGE = `السلام عليكم ورحمة الله وبركاته،
+نود التواصل معكم بخصوص غياب الطالب {اسم الطالب} عن الحلقة.
+نأمل الاطمئنان عليه ومعرفة سبب الغياب، شاكرين لكم تعاونكم.`;
+
+export const DEFAULT_NOT_HEARD_MESSAGE = `السلام عليكم ورحمة الله وبركاته،
+نود التواصل معكم بخصوص تسميع الطالب {اسم الطالب} اليوم، حيث لم يتم تسميع {نوع التسميع}.
+نأمل متابعة الطالب وتشجيعه على الاستعداد للحلقة القادمة، بارك الله فيكم.`;
+
 
 /* حالة المزامنة السحابية كما تظهر في الشريط العلوي */
 export type CloudInfo = {
@@ -104,6 +112,10 @@ type State = {
   tripAttendees: string[];
   rewardSettings: RewardSettings;
   parentContacts: ParentContactRecord[];
+  contactMessages?: {
+    absence: string;
+    notHeard: string;
+  };
 };
 
 type Ctx = State & {
@@ -123,8 +135,8 @@ type Ctx = State & {
   clearCeremonyReward: (reward: PerHalaqaRewardKey, halaqaId?: string) => void;
   setHeartPrice: (price: number) => void;
 
-  addStudent: (name: string, photo: string | null, halaqaId?: string | null) => void;
-  updateStudentProfile: (id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null }) => void;
+  addStudent: (name: string, photo: string | null, halaqaId?: string | null, guardianPhone?: string) => void;
+  updateStudentProfile: (id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null; guardianPhone?: string }) => void;
   toggleStudentTesting: (id: string) => void;
   removeStudent: (id: string) => void;
   addHalaqa: (name: string, teacherNames?: string[]) => void;
@@ -163,6 +175,9 @@ type Ctx = State & {
   parentContacts: ParentContactRecord[];
   recordParentContact: (record: Omit<ParentContactRecord, "id">) => void;
   removeParentContact: (id: string) => void;
+  contactMessages: { absence: string; notHeard: string };
+  setContactMessage: (type: "absence" | "notHeard", message: string) => void;
+  resetContactMessage: (type: "absence" | "notHeard") => void;
 
   grantAward: (id: string, title: string, coins?: number, xp?: number, uniqueKey?: string) => void;
   setCeremonyPick: (key: keyof CeremonyPicks, id: string | null) => void;
@@ -199,6 +214,7 @@ function normStudent(s: Student): Student {
   }
   return {
     ...s,
+    guardianPhone: typeof s.guardianPhone === "string" ? s.guardianPhone.trim() : undefined,
     days: out,
     recitationRatings: (() => {
       const ratings = emptyRecitationRatings();
@@ -294,6 +310,7 @@ function normWeekRecord(r: any): WeekStudentRecord {
     id: String(r?.id ?? ""),
     name: String(r?.name ?? ""),
     photo: r?.photo ?? null,
+    guardianPhone: typeof r?.guardianPhone === "string" ? r.guardianPhone.trim() : undefined,
     halaqaId: typeof r?.halaqaId === "string" ? r.halaqaId : null,
     isTesting: r?.isTesting === true,
     days,
@@ -412,6 +429,10 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
       ? Math.max(0, Math.round(p.heartPrice))
       : DEFAULT_HEART_PRICE,
     parentContacts: Array.isArray(p.parentContacts) ? (p.parentContacts as ParentContactRecord[]) : [],
+    contactMessages: {
+      absence: typeof p.contactMessages?.absence === "string" && p.contactMessages.absence.trim() ? p.contactMessages.absence : DEFAULT_ABSENCE_MESSAGE,
+      notHeard: typeof p.contactMessages?.notHeard === "string" && p.contactMessages.notHeard.trim() ? p.contactMessages.notHeard : DEFAULT_NOT_HEARD_MESSAGE,
+    },
   };
 }
 
@@ -601,6 +622,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<ShopItem[]>(init.products);
   const [heartPrice, setHeartPriceState] = useState(init.heartPrice);
   const [parentContacts, setParentContacts] = useState<ParentContactRecord[]>(init.parentContacts ?? []);
+  const [contactMessages, setContactMessages] = useState<{ absence: string; notHeard: string }>(() => ({
+    absence: init.contactMessages?.absence || DEFAULT_ABSENCE_MESSAGE,
+    notHeard: init.contactMessages?.notHeard || DEFAULT_NOT_HEARD_MESSAGE,
+  }));
 
 
   const [showNewProducts, setShowNewProducts] = useState(init.showNewProducts);
@@ -621,6 +646,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const t = window.setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== id)), 3200);
     timers.current.push(t);
   }, []);
+
+  const setContactMessage = useCallback((type: "absence" | "notHeard", message: string) => {
+    setContactMessages((prev) => ({
+      ...prev,
+      [type]: message,
+    }));
+    toast("success", "تم حفظ نص الرسالة بنجاح");
+  }, [toast]);
+
+  const resetContactMessage = useCallback((type: "absence" | "notHeard") => {
+    setContactMessages((prev) => ({
+      ...prev,
+      [type]: type === "absence" ? DEFAULT_ABSENCE_MESSAGE : DEFAULT_NOT_HEARD_MESSAGE,
+    }));
+    toast("info", "تمت استعادة الرسالة الافتراضية");
+  }, [toast]);
 
   const recordParentContact = useCallback((rec: Omit<ParentContactRecord, "id">) => {
     const newRec: ParentContactRecord = {
@@ -829,6 +870,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       tripAttendees,
       rewardSettings,
       parentContacts,
+      contactMessages,
     };
 
     // النسخة السحابية: تُحذف الصور إن طُلب ذلك للتقليل من الحجم
@@ -922,13 +964,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ===== الطلاب ===== */
   const addStudent = useCallback(
-    (name: string, photo: string | null, halaqaId: string | null = null) => {
+    (name: string, photo: string | null, halaqaId: string | null = null, guardianPhone?: string) => {
       setStudents((ss) => [
         ...ss,
         {
           id: uid(),
           name,
           photo,
+          guardianPhone: typeof guardianPhone === "string" ? guardianPhone.trim() || undefined : undefined,
           halaqaId,
           hearts: MAX_HEARTS,
           heartsLostWeek: 0,
@@ -957,9 +1000,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [toast]
   );
 
-  const updateStudentProfile = useCallback((id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null }) => {
+  const updateStudentProfile = useCallback((id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null; guardianPhone?: string }) => {
     setStudents((ss) => ss.map((s) => s.id === id ? {
       ...s,
+      ...(changes.guardianPhone !== undefined ? { guardianPhone: changes.guardianPhone.trim() || undefined } : {}),
       ...(changes.name !== undefined ? { name: changes.name.trim() || s.name } : {}),
       ...(changes.photo !== undefined ? { photo: changes.photo } : {}),
       ...(changes.coins !== undefined ? { coins: Math.max(0, Math.floor(changes.coins)) } : {}),
@@ -1820,8 +1864,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         reviewDays: rev.sessions,
         isTesting: r.isTesting === true,
         halaqaId: r.halaqaId ?? null,
-        frame: null,
-        crown: null,
       };
     }) : (next.students ?? []);
 
@@ -1988,7 +2030,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .slice(0, 10)
         ,
       awards,
-      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins, dailyRecitedDate: s.dailyRecitedDate ?? null, dailyAbsentDate: s.dailyAbsentDate ?? null })),
+      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, guardianPhone: s.guardianPhone, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins, dailyRecitedDate: s.dailyRecitedDate ?? null, dailyAbsentDate: s.dailyAbsentDate ?? null })),
       ceremonyPicks: structuredClone(ceremonyPicks),
       rewardSettings: structuredClone(rewardSettings),
       tripAttendeeIds: [...tripAttendees],
@@ -2129,6 +2171,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     parentContacts,
     recordParentContact,
     removeParentContact,
+    contactMessages,
+    setContactMessage,
+    resetContactMessage,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

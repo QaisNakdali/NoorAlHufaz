@@ -37,7 +37,7 @@ export type ItemKind = "cosmetic" | "external";
 /** خانة الخاصية — كل خانة تُلبس عنصرًا واحدًا في الوقت نفسه */
 export type CosmeticSlot = "frame" | "crown" | "glow" | "cardbg";
 
-export type AwardRec = { id: string; title: string; week: number; coins?: number; xp?: number };
+export type AwardRec = { id: string; title: string; week: number; coins?: number };
 export type HalaqaTeacher = { id: string; name: string; createdAt: number };
 /**
  * إعدادات الحلقة متزامنة ضمن app_state. الحقول الجديدة اختيارية لتبقى كل
@@ -221,6 +221,7 @@ export type ParentContactRecord = {
   studentId: string;
   studentName: string;
   studentPhoto?: string | null;
+  guardianPhone?: string;
   type: ParentContactType;
   contactDateIso: string;
   contactDateHijri: string;
@@ -235,6 +236,8 @@ export type Student = {
   id: string;
   name: string;
   photo: string | null;
+  /** رقم ولي الأمر للتواصل عبر واتساب (اختياري) */
+  guardianPhone?: string;
   /** حلقة واحدة فقط. null يحافظ على الطلاب القدامى بلا تعيين إجباري. */
   halaqaId?: string | null;
   hearts: number;
@@ -573,8 +576,6 @@ export type WeekLogEntry = {
   /** مؤشرات تحليلية اختيارية؛ غيابها في الأرشيف القديم لا يغيّر السجل. */
   memorizationDays?: number;
   reviewDays?: number;
-  memorizationSessions?: number;
-  reviewSessions?: number;
   memorizationExpectedDays?: number;
   reviewExpectedDays?: number;
   memorizationExpectedPages?: number;
@@ -588,7 +589,7 @@ export type WeekLogEntry = {
 };
 
 export type WeekStudentRecord = {
-  id: string; name: string; photo: string | null; halaqaId?: string | null; isTesting?: boolean;
+  id: string; name: string; photo: string | null; guardianPhone?: string; halaqaId?: string | null; isTesting?: boolean;
   days: WeekDays; recitationRatings: RecitationRatings; ward: WeeklyWard;
   hearts: number; heartsLostWeek: number; xp: number; coins: number;
   dailyRecitedDate?: string | null;

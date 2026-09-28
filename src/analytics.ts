@@ -103,14 +103,9 @@ export function measureStudentWork(student: Student, kind: "memorization" | "rev
   const part = kind === "memorization" ? "h" : "r";
   const completed = DAYS.filter((d) => {
     const entry = student.days?.[d.key];
-    const ward = student.ward?.[d.key];
-    if (!entry || entry.absent) return false;
-    if (entry[part]) return true;
-    if (kind === "memorization") {
-      return Number(ward?.memorizationLines) > 0 || Number(ward?.memorizationVerses) > 0 || !!ward?.memorization?.trim();
-    } else {
-      return Number(ward?.reviewLines) > 0 || Number(ward?.reviewVerses) > 0 || !!ward?.review?.trim();
-    }
+    if (!entry || entry.absent || !entry.a) return false;
+    const hasRating = student.recitationRatings?.[d.key]?.[part] === "excellent" || student.recitationRatings?.[d.key]?.[part] === "very-good";
+    return Boolean(entry[part] || hasRating);
   });
   const verses = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationVerses : student.ward?.[d.key]?.reviewVerses) || 0), 0);
   const enteredLines = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationLines : student.ward?.[d.key]?.reviewLines) || 0), 0);
@@ -129,7 +124,7 @@ export function measureStudentWork(student: Student, kind: "memorization" | "rev
 }
 
 export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAnalysis {
-  const attendanceDays = DAYS.filter((d) => !!student.days?.[d.key]?.a).length;
+  const attendanceDays = DAYS.filter((d) => !!student.days?.[d.key]?.a && !student.days?.[d.key]?.absent).length;
   const absenceDays = DAYS.filter((d) => student.days?.[d.key]?.absent === true).length;
   const memorization = measureStudentWork(student, "memorization");
   const review = measureStudentWork(student, "review");
@@ -316,7 +311,7 @@ function consecutiveMisses(student: Student, kind: LearningTrack): number {
 
 /** مصدر موحّد للحضور: الغياب الصريح فقط، واليوم غير المحدد يبقى «غير مسجل». */
 export function analyzeAttendance(student: Student, weeksLog: WeekLog[]): AttendanceAnalysis {
-  const presentDays = DAYS.filter((day) => student.days[day.key].a).length;
+  const presentDays = DAYS.filter((day) => !!student.days[day.key]?.a && !student.days[day.key]?.absent).length;
   const absentDays = DAYS.filter((day) => student.days[day.key].absent === true).length;
   const evaluatedDays = presentDays + absentDays;
   const attendanceRate = evaluatedDays > 0 ? round((presentDays / evaluatedDays) * 100, 1) : null;
