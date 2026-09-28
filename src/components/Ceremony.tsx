@@ -100,7 +100,7 @@ export default function CeremonyPanel() {
   const championRatingMode = rewardSettings.champions.ratingMode === "excellent" ? "excellent" : "mixed";
   const eligibleChampions = students.filter((student) => isChampionEligible(student, tripOn, tripAttendees, championRatingMode));
   const activeChampions = eligibleChampions.filter((student) => !championExcluded.has(student.id));
-  const availableProducts = products.filter((product) => product.showInCeremony !== false);
+  const availableProducts = products.filter((product) => product.showInCeremony !== false && product.shownInCeremonyWeek == null && !product.shownInCeremony);
   const pickedCount =
     Object.values(ceremonyPicks.improvedByHalaqa ?? {}).filter(isRealPick).length +
     Object.values(ceremonyPicks.behaviorByHalaqa ?? {}).filter(isRealPick).length +
@@ -541,7 +541,7 @@ export function CeremonyShow() {
       const selected = new Set(ceremonyProductIds);
       const ceremonyItems = ceremonyProductIds.length > 0
         ? products.filter((product) => product.showInCeremony !== false && selected.has(product.id))
-        : products.filter((product) => product.showInCeremony !== false);
+        : products.filter((product) => product.showInCeremony !== false && product.shownInCeremonyWeek == null && !product.shownInCeremony);
       if (ceremonyItems.length > 0) st.push({ kind: "newProducts", items: ceremonyItems });
     }
     st.push({ kind: "finale" });

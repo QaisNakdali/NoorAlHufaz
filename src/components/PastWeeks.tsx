@@ -34,10 +34,10 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
     else days[day] = { ...days[day], [key]: checked, absent: false };
     update({ ...record, days });
   };
-  const setLines = (day: DayKey, key: "memorizationLines" | "reviewLines", value: number) => {
+  const updateWardField = (day: DayKey, field: keyof DailyWard, value: any) => {
     const curWard = record.ward ?? emptyWeeklyWard();
     const curDay = curWard[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
-    update({ ...record, ward: { ...curWard, [day]: { ...curDay, [key]: Math.max(0, value || 0) } } });
+    update({ ...record, ward: { ...curWard, [day]: { ...curDay, [field]: value } } });
   };
   return <article className="rounded-2xl border-2 border-grape-100 bg-white p-4">
     <div className="flex flex-wrap items-center gap-3">
@@ -47,17 +47,37 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
       <button type="button" className="rounded-xl bg-coral-50 px-3 py-2 text-xs font-bold text-coral-600" onClick={remove}>إزالة من هذا الأسبوع</button>
     </div>
     <div className="mt-3 grid gap-2 lg:grid-cols-2">
-      {DAYS.map((day) => <div key={day.key} className="rounded-xl bg-grape-50 p-3">
-        <p className="mb-2 font-display text-sm font-extrabold">{day.label}{weekStartDateIso ? <span className="ms-2 text-xs text-grape-400">{formatHijriDate(addCalendarDays(weekStartDateIso, DAYS.findIndex((item) => item.key === day.key)), { day: "numeric", month: "long" })}</span> : null}</p>
-        <div className="grid grid-cols-4 gap-1 text-xs">
-          {(["a", "h", "r"] as DayPart[]).map((part) => <label key={part} className="rounded-lg bg-white p-2 text-center font-bold"><input className="me-1" type="checkbox" disabled={!!record.days?.[day.key]?.absent} checked={!!record.days?.[day.key]?.[part]} onChange={(e) => setDay(day.key, part, e.target.checked)} />{part === "a" ? "حضور" : part === "h" ? "حفظ" : "مراجعة"}</label>)}
-          <label className="rounded-lg bg-coral-50 p-2 text-center font-bold text-coral-600"><input className="me-1" type="checkbox" checked={!!record.days?.[day.key]?.absent} onChange={(e) => setDay(day.key, "absent", e.target.checked)} />غائب</label>
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <label className="text-xs font-bold text-grape-500">أسطر الحفظ<input className="field-control mt-1 w-full" type="number" min="0" step="0.5" value={record.ward?.[day.key]?.memorizationLines ?? 0} onChange={(e) => setLines(day.key, "memorizationLines", Number(e.target.value))} /></label>
-          <label className="text-xs font-bold text-grape-500">أسطر المراجعة<input className="field-control mt-1 w-full" type="number" min="0" step="0.5" value={record.ward?.[day.key]?.reviewLines ?? 0} onChange={(e) => setLines(day.key, "reviewLines", Number(e.target.value))} /></label>
-        </div>
-      </div>)}
+      {DAYS.map((day) => {
+        const ward = record.ward?.[day.key] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
+        const absent = !!record.days?.[day.key]?.absent;
+        return (
+          <div key={day.key} className="rounded-xl bg-grape-50 p-3">
+            <p className="mb-2 font-display text-sm font-extrabold">{day.label}{weekStartDateIso ? <span className="ms-2 text-xs text-grape-400">{formatHijriDate(addCalendarDays(weekStartDateIso, DAYS.findIndex((item) => item.key === day.key)), { day: "numeric", month: "long" })}</span> : null}</p>
+            <div className="grid grid-cols-4 gap-1 text-xs">
+              {(["a", "h", "r"] as DayPart[]).map((part) => <label key={part} className="rounded-lg bg-white p-2 text-center font-bold"><input className="me-1" type="checkbox" disabled={absent} checked={!!record.days?.[day.key]?.[part]} onChange={(e) => setDay(day.key, part, e.target.checked)} />{part === "a" ? "حضور" : part === "h" ? "حفظ" : "مراجعة"}</label>)}
+              <label className="rounded-lg bg-coral-50 p-2 text-center font-bold text-coral-600"><input className="me-1" type="checkbox" checked={absent} onChange={(e) => setDay(day.key, "absent", e.target.checked)} />غائب</label>
+            </div>
+            <div className="mt-2.5 space-y-2">
+              <div className="rounded-lg bg-white p-2 border border-grape-200/60">
+                <span className="text-[11px] font-extrabold text-grape-700">ورد الحفظ:</span>
+                <div className="mt-1 grid grid-cols-3 gap-1.5">
+                  <input disabled={absent} placeholder="السورة" className="field-control text-xs" value={ward.memorization} onChange={(e) => updateWardField(day.key, "memorization", e.target.value)} />
+                  <input disabled={absent} type="number" min="0" placeholder="الآيات" className="field-control text-xs text-center" value={ward.memorizationVerses || ""} onChange={(e) => updateWardField(day.key, "memorizationVerses", Number(e.target.value))} />
+                  <input disabled={absent} type="number" min="0" step="0.5" placeholder="الأسطر" className="field-control text-xs text-center" value={ward.memorizationLines || ""} onChange={(e) => updateWardField(day.key, "memorizationLines", Number(e.target.value))} />
+                </div>
+              </div>
+              <div className="rounded-lg bg-white p-2 border border-amber-200/60">
+                <span className="text-[11px] font-extrabold text-amber-800">ورد المراجعة:</span>
+                <div className="mt-1 grid grid-cols-3 gap-1.5">
+                  <input disabled={absent} placeholder="السورة" className="field-control text-xs border-amber-200" value={ward.review} onChange={(e) => updateWardField(day.key, "review", e.target.value)} />
+                  <input disabled={absent} type="number" min="0" placeholder="الآيات" className="field-control text-xs border-amber-200 text-center" value={ward.reviewVerses || ""} onChange={(e) => updateWardField(day.key, "reviewVerses", Number(e.target.value))} />
+                  <input disabled={absent} type="number" min="0" step="0.5" placeholder="الأسطر" className="field-control text-xs border-amber-200 text-center" value={ward.reviewLines || ""} onChange={(e) => updateWardField(day.key, "reviewLines", Number(e.target.value))} />
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   </article>;
 }
@@ -284,11 +304,68 @@ export default function PastWeeks() {
                   remove={() => setDraft((log) => log ? { ...log, records: log.records?.filter((r) => r.id !== record.id) } : log)}
                 />
               ) : (
-                <article key={record.id} className="flex items-center gap-3 rounded-2xl bg-grape-50 p-3">
-                  <Avatar photo={record.photo} name={record.name} size={42} />
-                  <div>
-                    <p className="font-display font-extrabold">{record.name} {record.isTesting && <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] text-white">اختبار</span>}</p>
-                    <p className="text-xs font-bold text-grape-500">حضور {ar(DAYS.filter((d) => record.days[d.key].a).length)} · غياب {ar(DAYS.filter((d) => record.days[d.key].absent).length)} · حفظ {ar(DAYS.filter((d) => record.days[d.key].h).length)} · مراجعة {ar(DAYS.filter((d) => record.days[d.key].r).length)}</p>
+                <article key={record.id} className="rounded-2xl border-2 border-grape-100 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grape-100 pb-2.5">
+                    <div className="flex items-center gap-3">
+                      <Avatar photo={record.photo} name={record.name} size={42} />
+                      <div>
+                        <p className="font-display font-extrabold text-base text-ink">{record.name} {record.isTesting && <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] text-white">اختبار</span>}</p>
+                        <p className="text-xs font-bold text-grape-500">حضور {ar(DAYS.filter((d) => record.days[d.key].a).length)} · غياب {ar(DAYS.filter((d) => record.days[d.key].absent).length)} · حفظ {ar(DAYS.filter((d) => record.days[d.key].h).length)} · مراجعة {ar(DAYS.filter((d) => record.days[d.key].r).length)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {DAYS.map((d) => {
+                      const entry = record.days[d.key];
+                      const ward = record.ward?.[d.key];
+                      const isAbsent = entry?.absent;
+                      const hasH = entry?.h || Number(ward?.memorizationLines) > 0 || Number(ward?.memorizationVerses) > 0 || !!ward?.memorization?.trim();
+                      const hasR = entry?.r || Number(ward?.reviewLines) > 0 || Number(ward?.reviewVerses) > 0 || !!ward?.review?.trim();
+                      const memPages = (ward?.memorizationLines ? Number(ward.memorizationLines) / 15 : 0);
+                      const revPages = (ward?.reviewLines ? Number(ward.reviewLines) / 15 : 0);
+
+                      return (
+                        <div key={d.key} className="rounded-xl border border-grape-100 bg-grape-50/60 p-2.5 text-xs">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-extrabold text-grape-700">{d.label}</span>
+                            {isAbsent ? (
+                              <span className="rounded-md bg-coral-100 px-1.5 py-0.5 font-extrabold text-coral-600">غائب</span>
+                            ) : entry?.a ? (
+                              <span className="rounded-md bg-mint-100 px-1.5 py-0.5 font-extrabold text-mint-700">حاضر</span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-grape-400">لم يسجل</span>
+                            )}
+                          </div>
+
+                          {!isAbsent && (
+                            <div className="space-y-1 mt-1">
+                              {hasH && (
+                                <div className="rounded bg-white p-1.5 text-[11px] leading-tight text-grape-800 border border-grape-200/50">
+                                  <span className="font-extrabold text-grape-600">حفظ: </span>
+                                  {ward?.memorization ? <b>{ward.memorization} </b> : null}
+                                  {ward?.memorizationVerses ? <span>({ar(ward.memorizationVerses)} آية) </span> : null}
+                                  {ward?.memorizationLines ? <span>[{ar(ward.memorizationLines)} سطر ≈ {ar(Math.round(memPages * 10) / 10)} ص]</span> : null}
+                                  {!ward?.memorization && !ward?.memorizationLines && <span>تم التسميع</span>}
+                                </div>
+                              )}
+                              {hasR && (
+                                <div className="rounded bg-amber-50 p-1.5 text-[11px] leading-tight text-amber-900 border border-amber-200/50">
+                                  <span className="font-extrabold text-amber-700">مراجعة: </span>
+                                  {ward?.review ? <b>{ward.review} </b> : null}
+                                  {ward?.reviewVerses ? <span>({ar(ward.reviewVerses)} آية) </span> : null}
+                                  {ward?.reviewLines ? <span>[{ar(ward.reviewLines)} سطر ≈ {ar(Math.round(revPages * 10) / 10)} ص]</span> : null}
+                                  {!ward?.review && !ward?.reviewLines && <span>تمت المراجعة</span>}
+                                </div>
+                              )}
+                              {!hasH && !hasR && entry?.a && (
+                                <span className="text-[11px] text-grape-400">حضور فقط</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </article>
               )) : (shown.students ?? shown.top).map((entry) => (

@@ -299,7 +299,7 @@ function RegisterRow({
   const { markDay, markAbsent, updateWard, toggleDailyRecitation, toggleDailyAbsent, removeHeart, removeStudent, toggleStudentTesting, setMode, setTab, halaqas, weeksLog, heartPrice, weekStartDateIso } = useApp();
   const currentDayKey = getWeekDayKey(todayKey, weekStartDateIso);
   const isAbsentToday = s.dailyAbsentDate === todayKey || (s.days[currentDayKey]?.absent === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date));
-  const isRecitedToday = s.dailyRecitedDate === todayKey || (s.days[currentDayKey]?.h === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date));
+  const isRecitedToday = s.dailyRecitedDate === todayKey;
   const fade = heartFade(s.hearts);
   const noHearts = s.hearts === 0;
   const { level, into, need } = levelInfo(s.xp);
@@ -563,8 +563,7 @@ function RegisterRow({
                         value={rating}
                         onChange={(event) => {
                           const value = event.target.value as RecitationRating | "";
-                          if (value) markDay(s.id, d.key, p.key, value);
-                          else if (on) markDay(s.id, d.key, p.key);
+                          markDay(s.id, d.key, p.key, value || undefined);
                         }}
                         className={`h-9 rounded-lg border px-1 text-center text-xs font-extrabold outline-none transition disabled:cursor-not-allowed disabled:opacity-40 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400"}`}
                       >
@@ -742,7 +741,7 @@ export default function Register() {
 
   const filteredList = useMemo(() => {
     return byName.filter((s) => {
-      const isRecited = s.dailyRecitedDate === todayKey || (s.days[currentDayKey]?.h === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date));
+      const isRecited = s.dailyRecitedDate === todayKey;
       const isAbsent = s.dailyAbsentDate === todayKey || (s.days[currentDayKey]?.absent === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date));
       if (recitationFilter === "pending") return !isRecited && !isAbsent;
       if (recitationFilter === "recited") return isRecited;
@@ -752,7 +751,7 @@ export default function Register() {
   }, [byName, recitationFilter, todayKey, currentDayKey]);
 
   const totalCount = countedStudents.length;
-  const recitedCount = countedStudents.filter((s) => s.dailyRecitedDate === todayKey || (s.days[currentDayKey]?.h === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date))).length;
+  const recitedCount = countedStudents.filter((s) => s.dailyRecitedDate === todayKey).length;
   const absentCount = countedStudents.filter((s) => s.dailyAbsentDate === todayKey || (s.days[currentDayKey]?.absent === true && (s.days[currentDayKey]?.date === todayKey || !s.days[currentDayKey]?.date))).length;
   const pendingCount = Math.max(0, totalCount - recitedCount - absentCount);
 
