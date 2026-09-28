@@ -487,7 +487,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
 
 /* ===== تبويب المتجر (المعلم) ===== */
 export default function StoreTab() {
-  const { sorted = [], products = [], removeProduct, heartPrice = 10, setHeartPrice, parentStoreOpen = true, toggleParentStore } = useApp();
+  const { sorted = [], products = [], removeProduct, saveProduct, heartPrice = 40, setHeartPrice, parentStoreOpen = true, toggleParentStore } = useApp();
   const [notifyModalOpen, setNotifyModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ShopProduct | null>(null);
@@ -639,7 +639,7 @@ export default function StoreTab() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => removeProduct(p.id)}
+                  onClick={() => { if (window.confirm(`هل أنت متأكد من حذف المنتج «${p.name}»؟ لن تُحذف مشتريات الطلاب السابقة.`)) removeProduct(p.id); }}
                   title="حذف"
                   className="grid h-8 w-8 place-items-center rounded-lg bg-coral-500/12 text-coral-500 transition hover:bg-coral-500 hover:text-white active:scale-90"
                 >

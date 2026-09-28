@@ -1353,7 +1353,7 @@ export default function StatisticsPage() {
                                 </span>
                                 {hasPhone ? (
                                   <span className="text-[10px] font-mono text-grape-400">
-                                    📱 {stObj.guardianPhone}
+                                    📱 {stObj?.guardianPhone}
                                   </span>
                                 ) : (
                                   <span className="text-[10px] font-bold text-coral-400">
@@ -1538,7 +1538,7 @@ export default function StatisticsPage() {
                                     </span>
                                     {hasPhone ? (
                                       <span className="text-[10px] font-mono text-grape-400">
-                                        📱 {stObj.guardianPhone}
+                                        📱 {stObj?.guardianPhone}
                                       </span>
                                     ) : (
                                       <span className="text-[10px] font-bold text-coral-400">
@@ -1649,7 +1649,7 @@ export default function StatisticsPage() {
                             <div>
                               <div className="flex items-center justify-between gap-2 border-b border-grape-100/70 pb-2">
                                 <div className="flex items-center gap-2">
-                                  <Avatar photo={rec.studentPhoto ?? stObj?.photo} name={rec.studentName} size={34} />
+                                  <Avatar photo={rec.studentPhoto ?? stObj?.photo ?? null} name={rec.studentName} size={34} />
                                   <div>
                                     <p className="font-display text-sm font-extrabold text-ink">{rec.studentName}</p>
                                     <p className="text-[10px] font-bold text-grape-400">تاريخ التواصل: {rec.contactDateHijri}</p>
@@ -1657,7 +1657,7 @@ export default function StatisticsPage() {
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => removeParentContact(rec.id)}
+                                  onClick={() => { if (window.confirm(`هل تريد حذف سجل التواصل مع ولي أمر ${rec.studentName}؟`)) removeParentContact(rec.id); }}
                                   className="text-grape-400 hover:text-coral-500 text-xs font-extrabold px-1"
                                   title="حذف هذا السجل من الأرشيف"
                                 >
@@ -1699,7 +1699,7 @@ export default function StatisticsPage() {
 
                               <button
                                 type="button"
-                                onClick={() => removeParentContact(rec.id)}
+                                onClick={() => { if (window.confirm(`هل تريد إعادة حالة ${rec.studentName} إلى القائمة النشطة؟`)) removeParentContact(rec.id); }}
                                 className="flex items-center gap-1 rounded-xl border border-grape-200 bg-white px-2.5 py-1 text-xs font-black text-grape-600 hover:border-grape-400 hover:bg-grape-50 shadow-sm transition active:scale-95"
                                 title="إلغاء أرشفة هذا التواصل وإعادة الطالب للقائمة النشطة"
                               >
@@ -1734,7 +1734,7 @@ export default function StatisticsPage() {
                             <div>
                               <div className="flex items-center justify-between gap-2 border-b border-grape-100/70 pb-2">
                                 <div className="flex items-center gap-2">
-                                  <Avatar photo={rec.studentPhoto ?? stObj?.photo} name={rec.studentName} size={34} />
+                                  <Avatar photo={rec.studentPhoto ?? stObj?.photo ?? null} name={rec.studentName} size={34} />
                                   <div>
                                     <p className="font-display text-sm font-extrabold text-ink">{rec.studentName}</p>
                                     <p className="text-[10px] font-bold text-grape-400">تاريخ التواصل: {rec.contactDateHijri}</p>
@@ -1742,7 +1742,7 @@ export default function StatisticsPage() {
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => removeParentContact(rec.id)}
+                                  onClick={() => { if (window.confirm(`هل تريد حذف سجل التواصل مع ولي أمر ${rec.studentName}؟`)) removeParentContact(rec.id); }}
                                   className="text-grape-400 hover:text-coral-500 text-xs font-extrabold px-1"
                                   title="حذف هذا السجل من الأرشيف"
                                 >
@@ -1784,7 +1784,7 @@ export default function StatisticsPage() {
 
                               <button
                                 type="button"
-                                onClick={() => removeParentContact(rec.id)}
+                                onClick={() => { if (window.confirm(`هل تريد إعادة حالة ${rec.studentName} إلى القائمة النشطة؟`)) removeParentContact(rec.id); }}
                                 className="flex items-center gap-1 rounded-xl border border-grape-200 bg-white px-2.5 py-1 text-xs font-black text-grape-600 hover:border-grape-400 hover:bg-grape-50 shadow-sm transition active:scale-95"
                                 title="إلغاء أرشفة هذا التواصل وإعادة الطالب للقائمة النشطة"
                               >
@@ -2134,7 +2134,7 @@ export default function StatisticsPage() {
                             </span>
                             {hasPhone ? (
                               <span className="text-[11px] font-mono text-grape-500">
-                                📱 {stObj.guardianPhone}
+                                📱 {stObj?.guardianPhone}
                               </span>
                             ) : (
                               <span className="text-[11px] font-bold text-coral-400">
