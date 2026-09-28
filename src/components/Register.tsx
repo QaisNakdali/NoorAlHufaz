@@ -67,7 +67,7 @@ function DeleteBtn({ onDelete, label = "" }: { onDelete: () => void; label?: str
 
 /* ===== نافذة إعدادات الطالب (عملات / خبرة / قلوب) ===== */
 function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { students, halaqas, updateStudentProfile, addCoins, addXp, deductXp, removeHeart, restoreHeart, removeStudent, toast, heartPrice } = useApp();
+  const { students, halaqas, updateStudentProfile, addCoins, addXp, deductXp, removeHeart, restoreHeart, removeStudent, toast, heartPrice, orders = [], products = [] } = useApp();
   const s = students.find((x) => x.id === id);
   const [name, setName] = useState(s?.name ?? "");
   const [photo, setPhoto] = useState<string | null>(s?.photo ?? null);
@@ -459,6 +459,55 @@ function RegisterRow({
                 <span className="font-bold text-grape-500">· +{ar(s.weekCoins)} عملة</span>
               </div>
             </div>
+
+          {/* مشتريات وجوائز الطالب */}
+          <div className="rounded-2xl border-2 border-grape-200 bg-white p-4 sm:col-span-2 space-y-2.5 shadow-sm">
+            <div className="flex items-center justify-between border-b border-grape-100 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-gold-500 text-ink text-xs font-black">
+                  🛍️
+                </span>
+                <p className="font-display text-sm font-extrabold text-ink">مشتريات وجوائز الطالب</p>
+              </div>
+              <span className="text-xs font-bold text-grape-500">
+                {ar((s.bag ?? []).length + orders.filter((o) => o.studentId === s.id).length)} عنصر
+              </span>
+            </div>
+
+            {orders.filter((o) => o.studentId === s.id).length > 0 ? (
+              <div className="max-h-40 overflow-y-auto space-y-1.5 pe-1">
+                {orders.filter((o) => o.studentId === s.id).map((order) => (
+                  <div key={order.id} className="flex items-center justify-between gap-2 rounded-xl bg-grape-50/50 p-2 text-xs">
+                    <span className="font-extrabold text-ink">{order.itemName} ({ar(order.price)} 🪙)</span>
+                    <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black ${
+                      order.status === "delivered" ? "bg-mint-100 text-mint-800" : "bg-gold-100 text-gold-800"
+                    }`}>
+                      {order.status === "delivered" ? "تم التسليم ✓" : "بانتظار التسليم ⏳"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (s.bag ?? []).length > 0 ? (
+              <div className="max-h-40 overflow-y-auto space-y-1.5 pe-1">
+                {(s.bag ?? []).map((b, i) => {
+                  const p = products.find((x) => x.id === b.itemId);
+                  const isDone = b.receivedQty >= b.qty;
+                  return (
+                    <div key={i} className="flex items-center justify-between gap-2 rounded-xl bg-grape-50/50 p-2 text-xs">
+                      <span className="font-extrabold text-ink">{p?.name || "جائزة"} (الكمية: {ar(b.qty)})</span>
+                      <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black ${
+                        isDone ? "bg-mint-100 text-mint-800" : "bg-gold-100 text-gold-800"
+                      }`}>
+                        {isDone ? "تم التسليم ✓" : `متبقي ${ar(b.qty - b.receivedQty)} للتسليم ⏳`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs font-bold text-grape-400">لا توجد مشتريات مسجلة لهذا الطالب حتى الآن.</p>
+            )}
+          </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">

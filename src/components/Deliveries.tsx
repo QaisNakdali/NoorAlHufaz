@@ -6,7 +6,7 @@ import Avatar from "./Avatar";
 import { Icon, SectionHead } from "./ui";
 
 export default function Deliveries() {
-  const { students, products, deliverItem, undeliverItem } = useApp();
+  const { students, products, deliverItem, undeliverItem, orders = [], deliverOrder, undeliverOrder } = useApp();
   const [pendingOnly, setPendingOnly] = useState(false);
 
   /* كل السجلات: طالب × منتج له وحدات في الحقيبة */
@@ -123,6 +123,80 @@ export default function Deliveries() {
           })}
         </div>
       )}
-    </div>
+    
+      {/* سجل طلبات الشراء والمشتريات من البوابة */}
+      {orders.length > 0 && (
+        <div className="mt-8 space-y-3">
+          <div className="flex items-center justify-between border-b border-grape-200 pb-2">
+            <h3 className="font-display text-base font-extrabold text-ink flex items-center gap-2">
+              <span>🛍️</span>
+              <span>سجل طلبات الشراء المؤرخة ({ar(orders.length)})</span>
+            </h3>
+            <span className="text-xs font-bold text-grape-500">
+              بانتظار التسليم: {ar(orders.filter((o) => o.status === "pending").length)}
+            </span>
+          </div>
+
+          <div className="grid gap-2.5 lg:grid-cols-2">
+            {orders.map((o) => {
+              const s = students.find((x) => x.id === o.studentId);
+              const isDone = o.status === "delivered";
+              const pDate = new Date(o.purchasedAt);
+
+              return (
+                <div
+                  key={o.id}
+                  className={`flex items-center justify-between gap-3 rounded-2xl border-2 p-3 shadow-xs transition ${
+                    isDone ? "border-mint-200 bg-mint-50/20" : "border-gold-200 bg-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar photo={s?.photo ?? null} name={o.studentName} size={44} />
+                    <div className="min-w-0">
+                      <p className="truncate font-display text-sm font-extrabold text-ink">
+                        {o.studentName} — {o.itemName}
+                      </p>
+                      <p className="text-xs font-bold text-grape-500">
+                        السعر: {ar(o.price)} عملة &bull; {pDate.toLocaleDateString("ar-SA")}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    {isDone ? (
+                      <span className="rounded-xl bg-mint-100 px-2.5 py-1 text-xs font-black text-mint-800">
+                        تم التسليم ✓
+                      </span>
+                    ) : (
+                      <span className="rounded-xl bg-gold-100 px-2.5 py-1 text-xs font-black text-gold-800">
+                        بانتظار التسليم ⏳
+                      </span>
+                    )}
+
+                    {!isDone ? (
+                      <button
+                        type="button"
+                        onClick={() => deliverOrder(o.id)}
+                        className="rounded-xl bg-mint-600 px-3 py-1.5 text-xs font-black text-white hover:bg-mint-700 transition"
+                      >
+                        سلّمت
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => undeliverOrder(o.id)}
+                        className="rounded-xl border border-grape-200 bg-white px-2 py-1 text-xs font-bold text-grape-500 hover:bg-grape-50 transition"
+                      >
+                        تراجع
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+</div>
   );
 }

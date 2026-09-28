@@ -487,7 +487,8 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
 
 /* ===== تبويب المتجر (المعلم) ===== */
 export default function StoreTab() {
-  const { sorted, products, removeProduct, heartPrice, setHeartPrice } = useApp();
+  const { sorted = [], products = [], removeProduct, heartPrice = 10, setHeartPrice, parentStoreOpen = true, toggleParentStore } = useApp();
+  const [notifyModalOpen, setNotifyModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ShopProduct | null>(null);
   const [buyerId, setBuyerId] = useState<string | null>(null);
@@ -518,6 +519,55 @@ export default function StoreTab() {
           </BigBtn></div>
         }
       />
+
+      {/* شريط التحكم بمتجر أولياء الأمور وإشعار الواتساب */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-grape-200 bg-white p-3.5 shadow-xs">
+        <div className="flex items-center gap-3">
+          <span className={`grid h-10 w-10 place-items-center rounded-xl text-lg font-black ${
+            parentStoreOpen ? "bg-mint-100 text-mint-700" : "bg-amber-100 text-amber-800"
+          }`}>
+            {parentStoreOpen ? "🛒" : "🔒"}
+          </span>
+          <div>
+            <h4 className="font-display text-sm font-extrabold text-ink flex items-center gap-2">
+              <span>متجر أولياء الأمور:</span>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${
+                parentStoreOpen ? "bg-mint-100 text-mint-800" : "bg-amber-100 text-amber-800"
+              }`}>
+                {parentStoreOpen ? "مفتوح للشراء الآن ✓" : "مغلق حاليًا 🔒"}
+              </span>
+            </h4>
+            <p className="text-xs font-bold text-grape-400">
+              {parentStoreOpen
+                ? "يستطيع أولياء الأمور الدخول وشراء الجوائز لأبنائهم باستخدام عملاتهم"
+                : "لا يمكن لأولياء الأمور الشراء وتظهر لهم رسالة إغلاق المتجر"}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 ms-auto sm:ms-0">
+          <button
+            type="button"
+            onClick={() => toggleParentStore()}
+            className={`rounded-xl px-4 py-2 font-display text-xs font-black transition ${
+              parentStoreOpen
+                ? "border-2 border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                : "bg-mint-600 text-white hover:bg-mint-700 shadow-xs"
+            }`}
+          >
+            {parentStoreOpen ? "إغلاق المتجر للأولياء" : "فتح المتجر للأولياء"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setNotifyModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-grape-600 px-4 py-2 font-display text-xs font-black text-white hover:bg-grape-700 transition shadow-xs"
+          >
+            <Icon name="sparkle" className="h-3.5 w-3.5" />
+            <span>إبلاغ أولياء الأمور بفتح المتجر</span>
+          </button>
+        </div>
+      </div>
 
       <div className="mb-6 rounded-[24px] border-2 border-coral-200 bg-white p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -630,6 +680,99 @@ export default function StoreTab() {
 
       {editorOpen && <ProductModal initial={editing} onClose={() => setEditorOpen(false)} />}
       {awardsOpen && <WeeklyAwards onClose={() => setAwardsOpen(false)} />}
-    </div>
+    
+      {/* نافذة إبلاغ أولياء الأمور بفتح المتجر */}
+      {notifyModalOpen && (
+        <Modal open onClose={() => setNotifyModalOpen(false)} wide>
+          <div className="p-6 space-y-4" dir="rtl">
+            <div className="flex items-center justify-between border-b border-grape-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-grape-100 text-grape-700 text-lg">
+                  📢
+                </span>
+                <div>
+                  <h3 className="font-display text-base font-extrabold text-ink">
+                    إبلاغ أولياء الأمور بفتح متجر الجوائز
+                  </h3>
+                  <p className="text-xs font-bold text-grape-500">
+                    تجهيز روابط واتساب المباشرة لكل ولي أمر لفتح المتجر والشراء
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNotifyModalOpen(false)}
+                className="rounded-full p-2 text-grape-400 hover:bg-grape-100 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-grape-200 bg-grape-50/50 p-3.5 text-xs font-bold text-grape-600">
+              <p className="font-extrabold text-grape-800 mb-1">نموذج الرسالة المجهزة تلقائيًا:</p>
+              <p className="leading-relaxed bg-white p-2.5 rounded-xl border border-grape-100 font-mono text-gray-700">
+                السلام عليكم ورحمة الله وبركاته،<br />
+                تم فتح متجر الطالب {"{اسم الطالب}"}، ويمكنه الآن الدخول إلى بوابته والاطلاع على المنتجات المتاحة والشراء باستخدام عملاته.<br />
+                رابط بوابة الطالب: {"{رابط الطالب}"}<br />
+                بارك الله فيكم.
+              </p>
+            </div>
+
+            <div className="max-h-[360px] overflow-y-auto space-y-2 pe-1">
+              {sorted.map((s) => {
+                const hasPhone = Boolean(s.guardianPhone?.trim());
+                const cleanPhone = (s.guardianPhone ?? "").replace(/[^0-9+]/g, "").replace(/^00/, "+").replace(/^0/, "966");
+                const portalLink = `${typeof window !== "undefined" ? window.location.origin : ""}/parent/${s.parentAccessToken}`;
+                const msg = `السلام عليكم ورحمة الله وبركاته،\nتم فتح متجر الطالب ${s.name}، ويمكنه الآن الدخول إلى بوابته والاطلاع على المنتجات المتاحة والشراء باستخدام عملاته.\nرابط بوابة الطالب:\n${portalLink}\nبارك الله فيكم.`;
+                const waUrl = hasPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}` : "";
+
+                return (
+                  <div
+                    key={s.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-grape-100 bg-white p-3 hover:border-grape-200 transition"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Avatar photo={s.photo} name={s.name} size={36} />
+                      <div className="min-w-0">
+                        <span className="font-display text-sm font-black text-ink truncate block">{s.name}</span>
+                        {hasPhone ? (
+                          <span className="text-xs font-mono text-grape-500">📱 {s.guardianPhone}</span>
+                        ) : (
+                          <span className="text-xs font-bold text-coral-500">(لا يوجد رقم مسجل)</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 ms-auto sm:ms-0">
+                      {hasPhone ? (
+                        <button
+                          type="button"
+                          onClick={() => window.open(waUrl, "_blank")}
+                          className="flex items-center gap-1.5 rounded-xl bg-mint-600 px-3 py-1.5 text-xs font-extrabold text-white hover:bg-mint-700 transition"
+                        >
+                          <span>فتح واتساب 💬</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs font-bold text-grape-400">غير متاح</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end border-t border-grape-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setNotifyModalOpen(false)}
+                className="rounded-xl bg-grape-100 px-5 py-2 text-xs font-extrabold text-grape-700 hover:bg-grape-200 transition"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+</div>
   );
 }
