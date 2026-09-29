@@ -194,6 +194,7 @@ type Ctx = State & {
   undeliverOrder: (orderId: string) => void;
   parentLogs: ParentAccessLog[];
   logParentAccess: (studentId: string, enteredStore?: boolean, purchased?: boolean) => void;
+  clearParentActivity: (confirmationCode: string) => Promise<{ success: boolean; error?: string }>;
   checkoutParentCart: (studentId: string, items: { itemId: string; qty: number }[], allowClosedStore?: boolean) => Promise<{ success: boolean; error?: string }>;
 
   grantAward: (id: string, title: string, coins?: number, xp?: number, uniqueKey?: string) => void;
@@ -961,6 +962,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       checkoutLocksRef.current.delete(checkoutKey);
     }
   }, [applySnapshot, logParentAccess, pushCloud, receiveRemote, toast]);
+
+  /** يمسح سجل الزيارات فقط؛ لا يغيّر الطلبات أو الطلاب أو الأرصدة أو الملكيات. */
+  const clearParentActivity = useCallback(async (confirmationCode: string) => {
+    if (confirmationCode.trim() !== "911") return { success: false, error: "رمز التأكيد غير صحيح" };
+    try {
+      if (isCloudEnabled()) {
+        if (dirtyRef.current) await pushCloud(true);
+        let latest = await cloudLoad();
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          if (!latest) return { success: false, error: "تعذر قراءة السجل المشترك" };
+          const current = stateFromPartial(latest.data as Partial<State>);
+          const next: State = { ...current, parentLogs: [] };
+          const saved = await cloudSave({ rev: latest.rev + 1, data: next }, latest.rev);
+          if (saved.applied) {
+            receiveRemote(stateFromPartial(saved.data as Partial<State>), saved.rev);
+            toast("success", "تم حذف سجل زيارات أولياء الأمور فقط");
+            return { success: true };
+          }
+          latest = { rev: saved.rev, data: saved.data };
+        }
+        return { success: false, error: "حدث تعارض أثناء تنظيف السجل؛ حاول مرة أخرى" };
+      }
+      setParentLogs([]);
+      toast("success", "تم حذف سجل زيارات أولياء الأمور فقط");
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: `تعذر تنظيف السجل: ${errMsg(error)}` };
+    }
+  }, [pushCloud, receiveRemote, toast]);
 
   /** سحب أحدث نسخة من السحابة وتطبيقها إن كانت أحدث من المحلية */
   const pullCloud = useCallback(
@@ -2299,6 +2329,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     undeliverOrder,
     parentLogs,
     logParentAccess,
+    clearParentActivity,
     checkoutParentCart,
   };
 

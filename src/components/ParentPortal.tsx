@@ -5,10 +5,11 @@ import { analyzeStudentTrend, pagesForWardDay } from "../analytics";
 import { ar, bagQty, DAYS, levelInfo, MAX_HEARTS, type Student } from "../core";
 import Avatar from "./Avatar";
 import CosmeticThumb from "./CosmeticThumb";
-import { Icon } from "./ui";
+import { HeartsRow, Icon } from "./ui";
 import { formatHijriDate, addCalendarDays, formatTeachingWeek, hijriMonthKey, localDateKey } from "../hijriDate";
 import { roundUpToQuarter } from "../statisticsNumber";
 import { HEART_ITEM_ID } from "../checkoutTransaction";
+import { profileCardClass, profileCardIsDark, profileCardTopClass } from "../profileAppearance";
 
 const n = (value: number) => ar(roundUpToQuarter(value));
 
@@ -84,6 +85,13 @@ export default function ParentPortal({ token }: { token: string }) {
   }
 
   const { level } = levelInfo(student.xp);
+  const avatarHeartFade = student.hearts >= MAX_HEARTS
+    ? ""
+    : student.hearts === 2
+    ? "saturate-[.82] opacity-95"
+    : student.hearts === 1
+    ? "saturate-[.58] grayscale-[.18] opacity-90"
+    : "saturate-[.35] grayscale-[.38] opacity-82";
 
   // حسابات إحصائيات الأسبوع الحالي
   const currPresent = DAYS.filter((d) => !!student.days?.[d.key]?.a && !student.days?.[d.key]?.absent).length;
@@ -265,14 +273,16 @@ export default function ParentPortal({ token }: { token: string }) {
 
       <main className="mx-auto max-w-2xl space-y-3 px-3 pt-3 sm:space-y-4 sm:px-4 sm:pt-4">
         {/* بطاقة معلومات الطالب الأساسية */}
-        <section className="rounded-3xl border-2 border-grape-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <section className={`relative overflow-hidden rounded-3xl border-2 p-4 shadow-sm sm:p-5 ${profileCardClass(student.cardBg)}`}>
+          <div className={`pointer-events-none absolute inset-x-0 top-0 h-24 ${profileCardTopClass(student.cardBg)}`} />
+          <div className="relative flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3.5 min-w-0">
-              <Avatar photo={student.photo} name={student.name} size={64} frame={student.frame} crown={student.crown} glow={student.glow} />
+              <Avatar photo={student.photo} name={student.name} size={64} frame={student.frame} crown={student.crown} glow={student.glow} imageClassName={avatarHeartFade} />
               <div className="min-w-0">
-                <h2 className="font-display text-xl font-black text-ink truncate">
-                  {student.name}
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <h2 className={`max-w-full truncate font-display text-xl font-black ${profileCardIsDark(student.cardBg) ? "text-white" : "text-ink"}`}>{student.name}</h2>
+                  <HeartsRow hearts={student.hearts} max={MAX_HEARTS} size="h-5 w-5" />
+                </div>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-grape-100 px-2.5 py-0.5 text-xs font-black text-grape-700">
                     {halaqa?.name || "حلقة التحفيظ"}
@@ -284,7 +294,7 @@ export default function ParentPortal({ token }: { token: string }) {
               </div>
             </div>
 
-            <div className="grid w-full grid-cols-3 gap-1.5 sm:ms-0 sm:w-auto sm:gap-2.5">
+            <div className="grid w-full grid-cols-2 gap-1.5 sm:ms-0 sm:w-auto sm:gap-2.5">
               <div className="rounded-2xl border border-gold-200 bg-gold-50/70 px-2 py-2 text-center sm:px-3.5">
                 <span className="block text-[10px] font-bold text-gold-700">العملات الذهبية</span>
                 <span className="font-display text-lg font-black text-gold-900">{ar(student.coins)} 🪙</span>
@@ -292,10 +302,6 @@ export default function ParentPortal({ token }: { token: string }) {
               <div className="rounded-2xl border border-grape-100 bg-grape-50/60 px-2 py-2 text-center sm:px-3">
                 <span className="block text-[10px] font-bold text-grape-400">النقاط</span>
                 <span className="font-display text-base font-black text-grape-700">{ar(student.xp)}</span>
-              </div>
-              <div className="rounded-2xl border border-coral-100 bg-coral-50/60 px-2 py-2 text-center sm:px-3">
-                <span className="block text-[10px] font-bold text-coral-400">القلوب</span>
-                <span className="font-display text-base font-black text-coral-600">{ar(student.hearts)}/3</span>
               </div>
             </div>
           </div>

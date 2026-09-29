@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useApp } from "../appState";
 import { ar, generateParentToken } from "../core";
 import Avatar from "./Avatar";
-import { Icon, SectionHead } from "./ui";
+import { Icon, Modal, SectionHead } from "./ui";
 
 export default function ParentActivity() {
   const {
@@ -11,6 +11,7 @@ export default function ParentActivity() {
     halaqas,
     orders,
     parentLogs,
+    clearParentActivity,
     deliverOrder,
     undeliverOrder,
     updateStudentProfile,
@@ -19,6 +20,10 @@ export default function ParentActivity() {
 
   const [activeSubTab, setActiveSubTab] = useState<"logs" | "orders" | "links">("logs");
   const [searchQuery, setSearchQuery] = useState("");
+  const [clearOpen, setClearOpen] = useState(false);
+  const [confirmationCode, setConfirmationCode] = useState("");
+  const [clearError, setClearError] = useState("");
+  const [clearing, setClearing] = useState(false);
 
   const filteredStudents = useMemo(() => {
     if (!searchQuery.trim()) return students;
@@ -54,6 +59,9 @@ export default function ParentActivity() {
             <span className="rounded-xl border border-gold-200 bg-gold-50 px-3 py-1.5 text-xs font-black text-gold-800 shadow-xs">
               مشتريات البوابة: {ar(totalPurchases)}
             </span>
+            <button type="button" onClick={() => { setConfirmationCode(""); setClearError(""); setClearOpen(true); }} className="rounded-xl border border-coral-200 bg-white px-3 py-1.5 text-xs font-black text-coral-700 shadow-xs hover:bg-coral-50">
+              حذف سجل النشاط
+            </button>
           </div>
         }
       />
@@ -348,6 +356,32 @@ export default function ParentActivity() {
           </div>
         </div>
       )}
+
+      <Modal open={clearOpen} onClose={() => !clearing && setClearOpen(false)}>
+        <div className="space-y-4 p-5" dir="rtl">
+          <div>
+            <h3 className="font-display text-lg font-black text-ink">حذف سجل نشاط أولياء الأمور</h3>
+            <p className="mt-2 text-xs font-bold leading-6 text-grape-600">سيتم حذف سجل الزيارات المعروض فقط. لن تُحذف المشتريات الحقيقية أو الطلاب أو العملات أو القلوب أو المنتجات.</p>
+          </div>
+          <label className="block text-xs font-black text-grape-700">
+            رمز التأكيد
+            <input type="password" inputMode="numeric" value={confirmationCode} onChange={(event) => { setConfirmationCode(event.target.value); setClearError(""); }} placeholder="أدخل رمز التأكيد" className="field-control mt-1 w-full" autoComplete="off" />
+          </label>
+          {clearError && <p className="rounded-xl bg-coral-50 px-3 py-2 text-xs font-black text-coral-700">{clearError}</p>}
+          <div className="flex gap-2">
+            <button type="button" disabled={clearing} onClick={async () => {
+              setClearing(true);
+              const result = await clearParentActivity(confirmationCode);
+              setClearing(false);
+              if (result.success) setClearOpen(false);
+              else setClearError(result.error || "تعذر حذف السجل");
+            }} className="min-h-11 flex-1 rounded-xl bg-coral-500 px-4 text-xs font-black text-white disabled:opacity-50">
+              {clearing ? "جاري الحذف..." : "تأكيد حذف السجل"}
+            </button>
+            <button type="button" disabled={clearing} onClick={() => setClearOpen(false)} className="min-h-11 rounded-xl border border-grape-200 px-4 text-xs font-black text-grape-600">إلغاء</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
