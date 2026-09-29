@@ -122,17 +122,11 @@ export function parseHijriInput(value: string, around = new Date()): string | nu
 }
 
 
-/** تحويل الأرقام إلى عربية للتنسيق المتناسق */
-const toArDigits = (n: number | string): string =>
-  String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
-
-/**
- * تنسيق نطاق الأسبوع التعليمي الفعلي (الأحد إلى الأربعاء)
- * مثال: "الأحد ٢٨ سبتمبر – الأربعاء ١ أكتوبر"
- */
-/** تحويل الأرقام إلى عربية للتنسيق المتناسق */
-const toArDigits = (n: number | string): string =>
-  String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
+/** تحويل الأرقام إلى عربية للتنسيق المتناسق مع معالجة الحالات الفارغة بأمان */
+export const toArDigits = (n?: number | string | null): string => {
+  if (n === undefined || n === null || (typeof n === 'number' && Number.isNaN(n))) return '';
+  return String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
+};
 
 /**
  * تنسيق نطاق الأسبوع التعليمي الفعلي (الأحد إلى الأربعاء)
