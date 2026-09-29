@@ -23,16 +23,16 @@ function KindBadge({ p }: { p: ShopProduct }) {
 /* صورة المنتج: صورة المعلم إن وُجدت، وإلا رسم تلقائي لخصائص البروفايل */
 function ProductImage({ p, dimmed = false }: { p: ShopProduct; dimmed?: boolean }) {
   return (
-    <div className={`h-24 sm:h-28 md:h-32 w-full overflow-hidden rounded-xl bg-slate-50 flex items-center justify-center p-1.5 border border-slate-100/80 transition group-hover:bg-white ${dimmed ? "opacity-45 grayscale" : ""}`}>
+    <div className={`h-36 sm:h-40 w-full overflow-hidden rounded-xl bg-slate-50 flex items-center justify-center p-2 border border-slate-100/80 transition group-hover:bg-white ${dimmed ? "opacity-45 grayscale" : ""}`}>
       {p.image ? (
-        <img src={p.image} alt={p.name} className="max-h-full max-w-full object-contain drop-shadow-2xs transition duration-200 group-hover:scale-105" />
+        <img src={p.image} alt={p.name} className="max-h-full max-w-full object-contain drop-shadow-xs transition duration-200 group-hover:scale-105" />
       ) : p.kind === "cosmetic" ? (
         <div className="h-full w-full flex items-center justify-center">
           <CosmeticThumb slot={p.slot} value={p.value} />
         </div>
       ) : (
         <div className="grid h-full w-full place-items-center text-grape-400">
-          <Icon name={p.icon || "gift"} className="h-8 w-8" strokeWidth={1.8} />
+          <Icon name={p.icon || "gift"} className="h-10 w-10" strokeWidth={1.8} />
         </div>
       )}
     </div>
@@ -595,7 +595,7 @@ export default function StoreTab() {
           {products.map((p) => (
             <div key={p.id} className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border-2 border-grape-200 bg-white p-3 shadow-xs hover:border-grape-400 hover:shadow-md transition">
               <div className="relative">
-                <div className="h-24 sm:h-28 md:h-32 w-full overflow-hidden rounded-xl bg-slate-50 flex items-center justify-center p-1.5 border border-slate-100/80 mb-2">
+                <div className="h-32 sm:h-36 w-full overflow-hidden rounded-xl bg-slate-50 flex items-center justify-center p-2 border border-slate-100/80 mb-2">
                   {p.image ? (
                     <img src={p.image} alt={p.name} className="max-h-full max-w-full object-contain drop-shadow-xs transition duration-200 group-hover:scale-105" />
                   ) : p.kind === "cosmetic" ? (

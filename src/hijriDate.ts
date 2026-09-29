@@ -130,6 +130,14 @@ const toArDigits = (n: number | string): string =>
  * تنسيق نطاق الأسبوع التعليمي الفعلي (الأحد إلى الأربعاء)
  * مثال: "الأحد ٢٨ سبتمبر – الأربعاء ١ أكتوبر"
  */
+/** تحويل الأرقام إلى عربية للتنسيق المتناسق */
+const toArDigits = (n: number | string): string =>
+  String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
+
+/**
+ * تنسيق نطاق الأسبوع التعليمي الفعلي (الأحد إلى الأربعاء)
+ * مثال: "الأحد ٢٨ سبتمبر – الأربعاء ١ أكتوبر"
+ */
 export function formatTeachingWeekRange(value: Date | string, useArabicNumerals = true): string {
   const start = value instanceof Date ? value : (dateFromLocalKey(value) ?? new Date(value));
   if (!start || Number.isNaN(start.getTime())) return "تاريخ الأسبوع غير محدد";
