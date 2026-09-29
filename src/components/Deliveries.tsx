@@ -14,8 +14,8 @@ export default function Deliveries() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const visibleOrders = useMemo(
-    () => orders.filter((order) => (view === "pending" ? order.status === "pending" : order.status === "delivered")),
-    [orders, view],
+    () => orders.filter((order) => students.some((student) => student.id === order.studentId) && order.itemKind !== "heart" && (view === "pending" ? order.status === "pending" : order.status === "delivered")),
+    [orders, students, view],
   );
 
   /* bag كانت مصدر التسليم القديم. نعرض الوحدات التي لا يقابلها order فقط. */
@@ -52,7 +52,7 @@ export default function Deliveries() {
     return [...map.entries()];
   }, [legacyRows, visibleOrders]);
 
-  const pendingCount = orders.filter((order) => order.status === "pending").length
+  const pendingCount = orders.filter((order) => students.some((student) => student.id === order.studentId) && order.itemKind !== "heart" && order.status === "pending").length
     + legacyRows.filter((row) => row.received < row.qty).length;
   const toggle = (studentId: string) => setExpanded((current) => {
     const next = new Set(current);

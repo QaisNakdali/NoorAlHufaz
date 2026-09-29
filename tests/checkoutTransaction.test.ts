@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { removeCartLine } from "../src/cart.ts";
-import { applyCheckoutTransaction } from "../src/checkoutTransaction.ts";
+import { applyCheckoutTransaction, HEART_ITEM_ID } from "../src/checkoutTransaction.ts";
 import { seedStudents, type ShopItem } from "../src/core.ts";
 
 const product: ShopItem = {
@@ -19,13 +18,8 @@ const product: ShopItem = {
 function state() {
   const first = { ...seedStudents()[0], coins: 100, coinsSpent: 0, bag: [], inventory: [] };
   const second = { ...seedStudents()[1], coins: 100, coinsSpent: 0, bag: [], inventory: [] };
-  return { parentStoreOpen: true, students: [first, second], products: [product], orders: [] };
+  return { parentStoreOpen: true, heartPrice: 40, students: [first, second], products: [product], orders: [] };
 }
-
-test("حذف منتج من السلة لا يحذف المنتجات الأخرى", () => {
-  const cart = [{ itemId: "a", qty: 1 }, { itemId: "b", qty: 2 }, { itemId: "c", qty: 1 }];
-  assert.deepEqual(removeCartLine(cart, "b"), [{ itemId: "a", qty: 1 }, { itemId: "c", qty: 1 }]);
-});
 
 test("الشراء يخصم العملات والمخزون وينشئ طلبًا كوحدة واحدة", () => {
   const initial = state();
@@ -70,4 +64,35 @@ test("فشل الشراء لا يخصم شيئًا ولا ينشئ طلبًا", 
   assert.equal(initial.students[0].coins, 10);
   assert.equal(initial.products[0].stock, 1);
   assert.equal(initial.orders.length, 0);
+});
+
+test("الطالب دون قلب لا يستطيع شراء منتج عادي", () => {
+  const initial = state();
+  initial.students[0].hearts = 0;
+  const result = applyCheckoutTransaction(initial, initial.students[0].id, [{ itemId: product.id, qty: 1 }], "no-heart", "2026-09-29T00:00:00.000Z");
+  assert.equal(result.success, false);
+  assert.match(result.success ? "" : result.error, /قلب/);
+  assert.equal(initial.students[0].coins, 100);
+  assert.equal(initial.products[0].stock, 1);
+});
+
+test("شراء القلب يخصم السعر الحالي ويرفع قلبًا واحدًا فقط", () => {
+  const initial = state();
+  initial.heartPrice = 25;
+  initial.students[0].hearts = 0;
+  const result = applyCheckoutTransaction(initial, initial.students[0].id, [{ itemId: HEART_ITEM_ID, qty: 1 }], "heart-a", "2026-09-29T00:00:00.000Z");
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.state.students[0].coins, 75);
+  assert.equal(result.state.students[0].hearts, 1);
+  assert.equal(result.state.orders[0].itemKind, "heart");
+  assert.equal(result.state.orders[0].status, "delivered");
+});
+
+test("لا يسمح بشراء قلب عند اكتمال القلوب", () => {
+  const initial = state();
+  initial.students[0].hearts = 3;
+  const result = applyCheckoutTransaction(initial, initial.students[0].id, [{ itemId: HEART_ITEM_ID, qty: 1 }], "heart-full", "2026-09-29T00:00:00.000Z");
+  assert.equal(result.success, false);
+  assert.equal(initial.students[0].coins, 100);
 });

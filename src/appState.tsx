@@ -74,7 +74,7 @@ import {
   subscribeCloud,
 } from "./cloudSync";
 import { mergeLocalChanges, sameValue, type MergeConflict } from "./syncMerge";
-import { applyCheckoutTransaction } from "./checkoutTransaction";
+import { applyCheckoutTransaction, HEART_ITEM_ID } from "./checkoutTransaction";
 
 export type ToastKind = "xp" | "coin" | "level" | "award" | "error" | "success" | "heart" | "info";
 export type Toast = { id: number; kind: ToastKind; msg: string };
@@ -1327,6 +1327,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const st = students.find((s) => s.id === id);
       setStudents((ss) => ss.filter((s) => s.id !== id));
       setTripAttendees((a) => a.filter((x) => x !== id));
+      setCeremonyPicks((current) => ({
+        ...current,
+        improved: current.improved === id ? undefined : current.improved,
+        behavior: current.behavior === id ? undefined : current.behavior,
+        champion1: current.champion1 === id ? undefined : current.champion1,
+        champion2: current.champion2 === id ? undefined : current.champion2,
+        champion3: current.champion3 === id ? undefined : current.champion3,
+        improvedByHalaqa: Object.fromEntries(Object.entries(current.improvedByHalaqa ?? {}).filter(([, studentId]) => studentId !== id)),
+        behaviorByHalaqa: Object.fromEntries(Object.entries(current.behaviorByHalaqa ?? {}).filter(([, studentId]) => studentId !== id)),
+        championExcludedIds: (current.championExcludedIds ?? []).filter((studentId) => studentId !== id),
+      }));
       toast("error", `تم حذف ${st?.name ?? "الطالب"} من الكشف`);
     },
     [students, toast]
@@ -1693,20 +1704,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sfx.error();
         return;
       }
-      setStudents((ss) =>
-        ss.map((s) => (s.id === id ? {
-          ...s,
-          coins: s.coins - heartPrice,
-          coinsSpent: (s.coinsSpent ?? 0) + heartPrice,
-          hearts: Math.min(MAX_HEARTS, s.hearts + 1),
-        } : s))
-      );
-      sfx.coin();
-      const t = window.setTimeout(() => sfx.sparkle(), 180);
-      timers.current.push(t);
-      toast("heart", `اشترى ${st.name} قلبًا جديدًا وعاد لنقاط المستوى`);
+      void checkoutParentCart(id, [{ itemId: HEART_ITEM_ID, qty: 1 }], true).then((result) => {
+        if (!result.success) {
+          toast("error", result.error || "تعذر شراء القلب بأمان");
+          sfx.error();
+        }
+      });
     },
-    [acquireActionLock, heartPrice, students, toast]
+    [acquireActionLock, checkoutParentCart, heartPrice, students, toast]
   );
 
   const buyItem = useCallback(

@@ -30,9 +30,14 @@ export default function ParentActivity() {
     );
   }, [students, searchQuery]);
 
-  const totalVisits = parentLogs.length;
-  const totalPurchases = orders.length;
-  const storeVisitorsCount = parentLogs.filter((l) => l.enteredStore).length;
+  // نحتفظ بالسجلات التاريخية في البيانات، لكن الطالب المحذوف لا يبقى ظاهرًا كطالب نشط.
+  const activeStudentIds = useMemo(() => new Set(students.map((student) => student.id)), [students]);
+  const activeParentLogs = useMemo(() => parentLogs.filter((log) => activeStudentIds.has(log.studentId)), [activeStudentIds, parentLogs]);
+  const activeOrders = useMemo(() => orders.filter((order) => activeStudentIds.has(order.studentId)), [activeStudentIds, orders]);
+
+  const totalVisits = activeParentLogs.length;
+  const totalPurchases = activeOrders.length;
+  const storeVisitorsCount = activeParentLogs.filter((l) => l.enteredStore).length;
 
   return (
     <div className="anim-fade space-y-5" dir="rtl">
@@ -84,7 +89,7 @@ export default function ParentActivity() {
           }`}
         >
           <span>👁️</span>
-          <span>سجل زيارات الأولياء ({ar(parentLogs.length)})</span>
+          <span>سجل زيارات الأولياء ({ar(activeParentLogs.length)})</span>
         </button>
         <button
           type="button"
@@ -96,7 +101,7 @@ export default function ParentActivity() {
           }`}
         >
           <span>🛍️</span>
-          <span>نشاط المتجر والطلبات ({ar(orders.length)})</span>
+          <span>نشاط المتجر والطلبات ({ar(activeOrders.length)})</span>
         </button>
         <button
           type="button"
@@ -115,7 +120,7 @@ export default function ParentActivity() {
       {/* محتوى التبويب الأول: سجل الزيارات */}
       {activeSubTab === "logs" && (
         <div className="space-y-3">
-          {parentLogs.length === 0 ? (
+          {activeParentLogs.length === 0 ? (
             <div className="rounded-3xl border-2 border-dashed border-grape-200 bg-white/70 p-12 text-center">
               <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-grape-50 text-2xl mb-2">
                 ⏳
@@ -127,7 +132,7 @@ export default function ParentActivity() {
             </div>
           ) : (
             <div className="grid gap-2.5">
-              {parentLogs.map((log) => {
+              {activeParentLogs.map((log) => {
                 const s = students.find((x) => x.id === log.studentId);
                 const enterDate = new Date(log.enteredAt);
                 const lastDate = new Date(log.lastActiveAt);
@@ -183,7 +188,7 @@ export default function ParentActivity() {
       {/* محتوى التبويب الثاني: نشاط المتجر والطلبات */}
       {activeSubTab === "orders" && (
         <div className="space-y-3">
-          {orders.length === 0 ? (
+          {activeOrders.length === 0 ? (
             <div className="rounded-3xl border-2 border-dashed border-grape-200 bg-white/70 p-12 text-center">
               <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-gold-50 text-2xl mb-2">
                 🛍️
@@ -195,7 +200,7 @@ export default function ParentActivity() {
             </div>
           ) : (
             <div className="grid gap-2.5">
-              {orders.map((order) => {
+              {activeOrders.map((order) => {
                 const s = students.find((x) => x.id === order.studentId);
                 const isDone = order.status === "delivered";
                 const pDate = new Date(order.purchasedAt);
