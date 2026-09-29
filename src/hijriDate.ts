@@ -121,42 +121,25 @@ export function parseHijriInput(value: string, around = new Date()): string | nu
   return null;
 }
 
-
-/** تحويل الأرقام إلى عربية للتنسيق المتناسق */
+/** تحويل الأرقام إلى عربية للتنسيق المتناسق. */
 const toArDigits = (n: number | string): string =>
   String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
 
-/**
- * تنسيق نطاق الأسبوع التعليمي الفعلي (الأحد إلى الأربعاء)
- * مثال: "الأحد ٢٨ سبتمبر – الأربعاء ١ أكتوبر"
- */
-/** تحويل الأرقام إلى عربية للتنسيق المتناسق */
-const toArDigits = (n: number | string): string =>
-  String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
-
-/**
- * تنسيق نطاق الأسبوع التعليمي الفعلي (الأحد إلى الأربعاء)
- * مثال: "الأحد ٢٨ سبتمبر – الأربعاء ١ أكتوبر"
- */
+/** تنسيق نطاق الأسبوع التعليمي الفعلي (الأحد إلى الأربعاء). */
 export function formatTeachingWeekRange(value: Date | string, useArabicNumerals = true): string {
   const start = value instanceof Date ? value : (dateFromLocalKey(value) ?? new Date(value));
-  if (!start || Number.isNaN(start.getTime())) return "تاريخ الأسبوع غير محدد";
-  
-  const end = addCalendarDays(start, 3); // الأحد + 3 أيام = الأربعاء
-
-  const fmtDay = (d: Date) => {
-    const weekday = new Intl.DateTimeFormat("ar", { weekday: "long" }).format(d);
-    const day = useArabicNumerals ? toArDigits(d.getDate()) : String(d.getDate());
-    const month = new Intl.DateTimeFormat("ar", { month: "long" }).format(d);
+  if (Number.isNaN(start.getTime())) return "تاريخ الأسبوع غير محدد";
+  const end = addCalendarDays(start, 3);
+  const fmtDay = (date: Date) => {
+    const weekday = new Intl.DateTimeFormat("ar", { weekday: "long" }).format(date);
+    const day = useArabicNumerals ? toArDigits(date.getDate()) : String(date.getDate());
+    const month = new Intl.DateTimeFormat("ar", { month: "long" }).format(date);
     return `${weekday} ${day} ${month}`;
   };
-
   return `${fmtDay(start)} – ${fmtDay(end)}`;
 }
 
-/**
- * الحصول على تواريخ الأيام الأربعة للأسبوع التعليمي (الأحد، الاثنين، الثلاثاء، الأربعاء)
- */
+/** تواريخ أيام الأسبوع التعليمي الأربعة. */
 export function getTeachingWeekDays(startDateIso: string): { key: string; label: string; date: Date; dateIso: string; formatted: string }[] {
   const start = dateFromLocalKey(startDateIso) ?? teachingWeekStart();
   const daysNames = [
@@ -165,18 +148,15 @@ export function getTeachingWeekDays(startDateIso: string): { key: string; label:
     { key: "tue", label: "الثلاثاء" },
     { key: "wed", label: "الأربعاء" },
   ];
-
-  return daysNames.map((d, index) => {
-    const curDate = addCalendarDays(start, index);
-    const iso = localDateKey(curDate);
-    const dayNum = toArDigits(curDate.getDate());
-    const month = new Intl.DateTimeFormat("ar", { month: "long" }).format(curDate);
+  return daysNames.map((day, index) => {
+    const date = addCalendarDays(start, index);
+    const month = new Intl.DateTimeFormat("ar", { month: "long" }).format(date);
     return {
-      key: d.key,
-      label: d.label,
-      date: curDate,
-      dateIso: iso,
-      formatted: `${d.label} ${dayNum} ${month}`,
+      key: day.key,
+      label: day.label,
+      date,
+      dateIso: localDateKey(date),
+      formatted: `${day.label} ${toArDigits(date.getDate())} ${month}`,
     };
   });
 }
