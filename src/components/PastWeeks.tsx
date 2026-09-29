@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
-import { addCalendarDays, formatHijriDate, formatTeachingWeek, formatTeachingWeekRange } from "../hijriDate";
-import { ar, DAYS, emptyRecitationRatings, emptyWeeklyWard, emptyWeekDays, uid, type DayKey, type DayPart, type WeekLog, type WeekStudentRecord } from "../core";
+import { addCalendarDays, formatHijriDate, formatTeachingWeek } from "../hijriDate";
+import { ar, DAYS, emptyRecitationRatings, emptyWeeklyWard, emptyWeekDays, uid, type DailyWard, type DayKey, type DayPart, type WeekLog, type WeekStudentRecord } from "../core";
 import Avatar from "./Avatar";
+import NumericInput from "./NumericInput";
 import { Icon, Modal, SectionHead } from "./ui";
 
 const copy = <T,>(value: T): T => structuredClone(value);
@@ -11,7 +12,7 @@ const normalizeSearch = (value: string): string => {
   const arDigits = "٠١٢٣٤٥٦٧٨٩";
   let s = value;
   for (let i = 0; i < arDigits.length; i++) {
-    s = s.replaceAll(arDigits[i], String(i));
+    s = s.split(arDigits[i]).join(String(i));
   }
   return s
     .replace(/[ًٌٍَُِّْـ]/g, "")
@@ -62,16 +63,16 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
                 <span className="text-[11px] font-extrabold text-grape-700">ورد الحفظ:</span>
                 <div className="mt-1 grid grid-cols-3 gap-1.5">
                   <input disabled={absent} placeholder="السورة" className="field-control text-xs" value={ward.memorization} onChange={(e) => updateWardField(day.key, "memorization", e.target.value)} />
-                  <input disabled={absent} type="number" min="0" placeholder="الآيات" className="field-control text-xs text-center" value={ward.memorizationVerses || ""} onChange={(e) => updateWardField(day.key, "memorizationVerses", Number(e.target.value))} />
-                  <input disabled={absent} type="number" min="0" step="0.5" placeholder="الأسطر" className="field-control text-xs text-center" value={ward.memorizationLines || ""} onChange={(e) => updateWardField(day.key, "memorizationLines", Number(e.target.value))} />
+                  <NumericInput disabled={absent} min={0} placeholder="الآيات" className="field-control text-xs text-center" value={ward.memorizationVerses || 0} onValueChange={(value) => updateWardField(day.key, "memorizationVerses", value)} />
+                  <NumericInput disabled={absent} min={0} step={0.5} placeholder="الأسطر" className="field-control text-xs text-center" value={ward.memorizationLines || 0} onValueChange={(value) => updateWardField(day.key, "memorizationLines", value)} />
                 </div>
               </div>
               <div className="rounded-lg bg-white p-2 border border-amber-200/60">
                 <span className="text-[11px] font-extrabold text-amber-800">ورد المراجعة:</span>
                 <div className="mt-1 grid grid-cols-3 gap-1.5">
                   <input disabled={absent} placeholder="السورة" className="field-control text-xs border-amber-200" value={ward.review} onChange={(e) => updateWardField(day.key, "review", e.target.value)} />
-                  <input disabled={absent} type="number" min="0" placeholder="الآيات" className="field-control text-xs border-amber-200 text-center" value={ward.reviewVerses || ""} onChange={(e) => updateWardField(day.key, "reviewVerses", Number(e.target.value))} />
-                  <input disabled={absent} type="number" min="0" step="0.5" placeholder="الأسطر" className="field-control text-xs border-amber-200 text-center" value={ward.reviewLines || ""} onChange={(e) => updateWardField(day.key, "reviewLines", Number(e.target.value))} />
+                  <NumericInput disabled={absent} min={0} placeholder="الآيات" className="field-control text-xs border-amber-200 text-center" value={ward.reviewVerses || 0} onValueChange={(value) => updateWardField(day.key, "reviewVerses", value)} />
+                  <NumericInput disabled={absent} min={0} step={0.5} placeholder="الأسطر" className="field-control text-xs border-amber-200 text-center" value={ward.reviewLines || 0} onValueChange={(value) => updateWardField(day.key, "reviewLines", value)} />
                 </div>
               </div>
             </div>
@@ -108,7 +109,7 @@ export default function PastWeeks() {
         String(log.week),
       ];
       if (log.weekStartDateIso) {
-        searchTargets.push(formatTeachingWeek(log.weekStartDateIso)); searchTargets.push(formatTeachingWeekRange(log.weekStartDateIso));
+        searchTargets.push(formatTeachingWeek(log.weekStartDateIso));
         searchTargets.push(formatHijriDate(log.weekStartDateIso, { day: "numeric", month: "long", year: "numeric" }));
         DAYS.forEach((_, idx) => {
           const d = addCalendarDays(log.weekStartDateIso!, idx);
@@ -209,7 +210,7 @@ export default function PastWeeks() {
                   shown?.week === log.week ? "border-grape-600 bg-grape-600 text-white shadow" : "border-grape-100 bg-white hover:border-grape-300"
                 }`}
               >
-                <strong className="block font-display">{log.weekStartDateIso ? formatTeachingWeekRange(log.weekStartDateIso) : (log.name || `الأسبوع ${ar(log.week)}`)}</strong>
+                <strong className="block font-display">{log.weekStartDateIso ? formatTeachingWeek(log.weekStartDateIso) : (log.name || `أسبوع محفوظ رقم ${ar(log.week)}`)}</strong>
                 <span className="text-xs opacity-75">
                   {log.weekStartDateIso
                     ? formatTeachingWeek(log.weekStartDateIso)
@@ -230,7 +231,7 @@ export default function PastWeeks() {
           <section className="rounded-3xl border-2 border-grape-100 bg-white p-5">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex-1">
-                <h3 className="font-display text-xl font-extrabold">{shown.weekStartDateIso ? formatTeachingWeekRange(shown.weekStartDateIso) : (shown.name || `الأسبوع ${ar(shown.week)}`)}</h3>
+                <h3 className="font-display text-xl font-extrabold">{shown.weekStartDateIso ? formatTeachingWeek(shown.weekStartDateIso) : (shown.name || `أسبوع محفوظ رقم ${ar(shown.week)}`)}</h3>
                 <p className="text-xs font-bold text-grape-500">
                   {shown.weekStartDateIso ? formatTeachingWeek(shown.weekStartDateIso) : shown.savedAtIso ? formatHijriDate(shown.savedAtIso) : "تاريخ محفوظ سابقًا"}
                 </p>
@@ -302,7 +303,7 @@ export default function PastWeeks() {
                   type="text"
                   value={studentSearch}
                   onChange={(e) => setStudentSearch(e.target.value)}
-                  placeholder={`🔍 بحث عن طالب بالاسم في ${shown.name || `الأسبوع ${ar(shown.week)}`}...`}
+                  placeholder={`🔍 بحث عن طالب بالاسم في ${shown.weekStartDateIso ? formatTeachingWeek(shown.weekStartDateIso) : (shown.name || `الأسبوع ${ar(shown.week)}`)}...`}
                   className="field-control w-full pe-9 text-xs"
                 />
                 {studentSearch && (

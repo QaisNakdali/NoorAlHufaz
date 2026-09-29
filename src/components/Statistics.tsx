@@ -5,7 +5,7 @@ import { analyzeStudent, analyzeStudentTrend, measureStudentWork, pagesForWardDa
 import { ar, DAYS, type DayKey, type Student, type WeekLog, type WeekLogEntry, type WeekStudentRecord, type ParentContactRecord, estimatedLinesFromVerses } from "../core";
 import Avatar from "./Avatar";
 import { Icon, Modal, SectionHead } from "./ui";
-import { addCalendarDays, dateFromLocalKey, formatHijriDate, formatHijriMonth, formatTeachingWeekRange, hijriMonthKey, localDateKey } from "../hijriDate";
+import { addCalendarDays, dateFromLocalKey, formatHijriDate, formatHijriMonth, formatTeachingWeek, hijriMonthKey, localDateKey } from "../hijriDate";
 import { roundUpToQuarter } from "../statisticsNumber";
 
 type Period = "daily" | "weekly" | "monthly" | "all";
@@ -447,8 +447,8 @@ export default function StatisticsPage() {
   const [day, setDay] = useState<DayKey>("sun");
   const [selectedWeek, setSelectedWeek] = useState("current");
   const [statsView, setStatsView] = useState<StatsView>("both");
-  const [notHeardTab, setNotHeardTab] = useState<"both" | "mem" | "rev">("both");
-  const [detailsCategory, setDetailsCategory] = useState<"absent" | "both" | "mem" | "rev" | null>(null);
+  const [notHeardTab, setNotHeardTab] = useState<"all" | "mem" | "rev">("all");
+  const [detailsCategory, setDetailsCategory] = useState<"absent" | "all" | "both" | "mem" | "rev" | null>(null);
   const [modalSearch, setModalSearch] = useState("");
 
   // إعدادات رسائل الواتساب
@@ -743,6 +743,33 @@ export default function StatisticsPage() {
       .sort((a, b) => b.activeCount - a.activeCount || a.name.localeCompare(b.name, "ar"));
   }, [metrics, parentContacts]);
 
+  // قائمة موحدة: يظهر كل طالب مرة واحدة مع إبقاء عدادي الحفظ والمراجعة مستقلين.
+  // نعتمد القوائم النشطة نفسها حتى لا نعيد حالات سبق أرشفتها بعد التواصل.
+  const notHeardAllRanked = useMemo(() => {
+    const byId = new Map<string, any>();
+    for (const item of notHeardMemRanked) {
+      byId.set(item.id, {
+        ...item,
+        activeMemCount: item.activeCount,
+        activeRevCount: 0,
+      });
+    }
+    for (const item of notHeardRevRanked) {
+      const current = byId.get(item.id);
+      byId.set(item.id, {
+        ...(current || item),
+        activeMemCount: current?.activeMemCount ?? 0,
+        activeRevCount: item.activeCount,
+      });
+    }
+    return [...byId.values()]
+      .map((item) => ({
+        ...item,
+        activeCount: item.activeMemCount + item.activeRevCount,
+      }))
+      .sort((a, b) => b.activeCount - a.activeCount || a.name.localeCompare(b.name, "ar"));
+  }, [notHeardMemRanked, notHeardRevRanked]);
+
   // أرشيف الغائبين المفلتر
   const absenceArchive = useMemo(() => {
     const list = parentContacts.filter((c) => c.type === "absence");
@@ -831,17 +858,27 @@ export default function StatisticsPage() {
         contactType: "absence" as const,
       };
     }
+    if (detailsCategory === "all") {
+      return {
+        title: "جميع الطلاب الذين لديهم عدم تسميع",
+        countLabel: "طالب بحاجة لمتابعة",
+        icon: "book",
+        tone: "amber",
+        list: notHeardAllRanked,
+        formatCount: (item: any) =>
+          `لم يسمع حفظ: ${ar(item.activeMemCount)} · لم يسمع مراجعة: ${ar(item.activeRevCount)}`,
+        contactType: "notHeard" as const,
+      };
+    }
     if (detailsCategory === "both") {
       return {
-        title: "قائمة الطلاب الذين لم يسمعوا الحفظ والمراجعة معًا",
+        title: "الطلاب الذين لم يسمعوا الحفظ والمراجعة في اليوم نفسه",
         countLabel: "طالب بحاجة لمتابعة",
         icon: "book",
         tone: "amber",
         list: notHeardBothRanked,
         formatCount: (item: any) =>
-          item.lastContactedCount > 0
-            ? `${formatNotHeardCount(item.activeCount)} جديدة (إجمالي: ${ar(item.notHeardBoth)} كلاهما)`
-            : `${formatNotHeardCount(item.activeCount)} (حفظ ومراجعة معًا في نفس اليوم)`,
+          `${formatNotHeardCount(item.activeCount)} (حفظ ومراجعة معًا)`,
         contactType: "notHeard" as const,
       };
     }
@@ -874,7 +911,7 @@ export default function StatisticsPage() {
       };
     }
     return null;
-  }, [detailsCategory, absentRanked, notHeardBothRanked, notHeardMemRanked, notHeardRevRanked]);
+  }, [detailsCategory, absentRanked, notHeardAllRanked, notHeardBothRanked, notHeardMemRanked, notHeardRevRanked]);
 
   const filteredModalList = useMemo(() => {
     if (!activeCategoryData) return [];
@@ -889,7 +926,7 @@ export default function StatisticsPage() {
   const handleContactWhatsApp = (
     item: StudentMetrics & { activeAbsence?: number; activeCount?: number },
     category: "absence" | "notHeard",
-    specificRecitationType?: "both" | "mem" | "rev"
+    specificRecitationType?: "all" | "both" | "mem" | "rev"
   ) => {
     const stObj = students.find((s) => s.id === item.id);
     const rawPhone = stObj?.guardianPhone;
@@ -912,7 +949,9 @@ export default function StatisticsPage() {
 
     const typeKey = specificRecitationType || notHeardTab;
     const recitationType =
-      typeKey === "both"
+      typeKey === "all"
+        ? "الحفظ أو المراجعة"
+        : typeKey === "both"
         ? "الحفظ والمراجعة معًا"
         : typeKey === "mem"
         ? "الحفظ"
@@ -1085,10 +1124,10 @@ export default function StatisticsPage() {
                 onChange={(e) => setSelectedWeek(e.target.value)}
                 className="field-control mt-1 w-full"
               >
-                <option value="current">الأسبوع الحالي ({weekStartDateIso ? formatTeachingWeekRange(weekStartDateIso) : ar(week)})</option>
+                <option value="current">الأسبوع الحالي ({formatTeachingWeek(weekStartDateIso)})</option>
                 {uniqueLogs.map((log) => (
                   <option key={log.week} value={log.week}>
-                    {log.weekStartDateIso ? formatTeachingWeekRange(log.weekStartDateIso) : (log.name || `الأسبوع ${ar(log.week)}`)}
+                    {log.weekStartDateIso ? formatTeachingWeek(log.weekStartDateIso) : (log.name || `أسبوع محفوظ رقم ${ar(log.week)}`)}
                   </option>
                 ))}
               </select>
@@ -1271,7 +1310,7 @@ export default function StatisticsPage() {
               role="button"
               tabIndex={0}
               onClick={() => toggleCollapse("absent")}
-              className="flex cursor-pointer select-none items-center justify-between gap-2 border-b border-grape-100 pb-3"
+              className="flex cursor-pointer select-none flex-col items-stretch gap-3 border-b border-grape-100 pb-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex items-center gap-3">
                 <span className="grid h-10 w-10 place-items-center rounded-2xl bg-coral-50 text-coral-600">
@@ -1289,14 +1328,14 @@ export default function StatisticsPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setDetailsCategory("absent");
                   }}
-                  className="rounded-xl border border-coral-200 bg-coral-50/60 px-3 py-1.5 text-xs font-black text-coral-700 hover:bg-coral-100 transition shrink-0"
+                  className="min-h-10 flex-1 rounded-xl border border-coral-200 bg-coral-50/60 px-3 py-2 text-xs font-black text-coral-700 transition hover:bg-coral-100 sm:min-h-0 sm:flex-none sm:py-1.5"
                 >
                   فتح التفاصيل ↲
                 </button>
@@ -1353,7 +1392,7 @@ export default function StatisticsPage() {
                                 </span>
                                 {hasPhone ? (
                                   <span className="text-[10px] font-mono text-grape-400">
-                                    📱 {stObj.guardianPhone}
+                                    📱 {stObj?.guardianPhone}
                                   </span>
                                 ) : (
                                   <span className="text-[10px] font-bold text-coral-400">
@@ -1392,7 +1431,7 @@ export default function StatisticsPage() {
               role="button"
               tabIndex={0}
               onClick={() => toggleCollapse("notHeard")}
-              className="flex cursor-pointer select-none flex-wrap items-center justify-between gap-2 border-b border-grape-100 pb-3"
+              className="flex cursor-pointer select-none flex-col items-stretch gap-3 border-b border-grape-100 pb-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex items-center gap-3">
                 <span className="grid h-10 w-10 place-items-center rounded-2xl bg-amber-50 text-amber-600">
@@ -1407,14 +1446,14 @@ export default function StatisticsPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setDetailsCategory(notHeardTab);
                   }}
-                  className="rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-1.5 text-xs font-black text-amber-800 hover:bg-amber-100 transition shrink-0"
+                  className="min-h-10 flex-1 rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs font-black text-amber-800 transition hover:bg-amber-100 sm:min-h-0 sm:flex-none sm:py-1.5"
                 >
                   فتح التفاصيل ↲
                 </button>
@@ -1426,18 +1465,18 @@ export default function StatisticsPage() {
 
             {!collapsed.notHeard && (
               <div className="anim-fade mt-3 flex flex-col flex-1">
-                {/* تبويبات الأقسام الثلاثة: كلاهما | حفظ | مراجعة (الأعداد مطابقة 100% للقوائم) */}
+                {/* تبويبات الأقسام الثلاثة: الكل | حفظ | مراجعة (الكل بلا تكرار للطالب) */}
                 <div className="flex items-center gap-1.5 rounded-xl bg-grape-100/70 p-1">
                   <button
                     type="button"
-                    onClick={() => setNotHeardTab("both")}
+                    onClick={() => setNotHeardTab("all")}
                     className={`flex-1 rounded-lg py-1.5 text-xs font-extrabold transition ${
-                      notHeardTab === "both"
+                      notHeardTab === "all"
                         ? "bg-grape-600 text-white shadow-sm"
                         : "text-grape-700 hover:bg-white/60"
                     }`}
                   >
-                    كلاهما ({ar(notHeardBothRanked.length)})
+                    الكل ({ar(notHeardAllRanked.length)})
                   </button>
                   <button
                     type="button"
@@ -1466,15 +1505,15 @@ export default function StatisticsPage() {
                 <div className="mt-3 flex-1">
                   {(() => {
                     const currentList =
-                      notHeardTab === "both"
-                        ? notHeardBothRanked
+                      notHeardTab === "all"
+                        ? notHeardAllRanked
                         : notHeardTab === "mem"
                         ? notHeardMemRanked
                         : notHeardRevRanked;
 
                     const labelSuffix =
-                      notHeardTab === "both"
-                        ? "حفظ ومراجعة معًا في نفس اليوم"
+                      notHeardTab === "all"
+                        ? "الكل"
                         : notHeardTab === "mem"
                         ? "حفظ"
                         : "مراجعة";
@@ -1494,9 +1533,7 @@ export default function StatisticsPage() {
                           const trend = stObj ? analyzeStudentTrend(stObj, weeksLog, parentContacts) : null;
                           const hasPhone = Boolean(stObj?.guardianPhone?.trim());
                           const totalVal =
-                            notHeardTab === "both"
-                              ? item.notHeardBoth
-                              : notHeardTab === "mem"
+                            notHeardTab === "mem"
                               ? item.notHeardMem
                               : item.notHeardRev;
 
@@ -1530,7 +1567,9 @@ export default function StatisticsPage() {
                                   </div>
                                   <div className="flex flex-wrap items-center gap-2 mt-0.5">
                                     <span className="text-[11px] font-bold text-amber-700">
-                                      {item.lastContactedCount > 0 ? (
+                                      {notHeardTab === "all" ? (
+                                        <span>لم يسمع حفظ: {ar(item.activeMemCount)} · لم يسمع مراجعة: {ar(item.activeRevCount)}</span>
+                                      ) : item.lastContactedCount > 0 ? (
                                         <span>{formatNotHeardCount(item.activeCount)} جديدة (إجمالي: {ar(totalVal)} {labelSuffix})</span>
                                       ) : (
                                         <span>{formatNotHeardCount(item.activeCount)} ({labelSuffix})</span>
@@ -1538,7 +1577,7 @@ export default function StatisticsPage() {
                                     </span>
                                     {hasPhone ? (
                                       <span className="text-[10px] font-mono text-grape-400">
-                                        📱 {stObj.guardianPhone}
+                                        📱 {stObj?.guardianPhone}
                                       </span>
                                     ) : (
                                       <span className="text-[10px] font-bold text-coral-400">
@@ -1649,7 +1688,7 @@ export default function StatisticsPage() {
                             <div>
                               <div className="flex items-center justify-between gap-2 border-b border-grape-100/70 pb-2">
                                 <div className="flex items-center gap-2">
-                                  <Avatar photo={rec.studentPhoto ?? stObj?.photo} name={rec.studentName} size={34} />
+                                  <Avatar photo={rec.studentPhoto ?? stObj?.photo ?? null} name={rec.studentName} size={34} />
                                   <div>
                                     <p className="font-display text-sm font-extrabold text-ink">{rec.studentName}</p>
                                     <p className="text-[10px] font-bold text-grape-400">تاريخ التواصل: {rec.contactDateHijri}</p>
@@ -1657,7 +1696,7 @@ export default function StatisticsPage() {
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => removeParentContact(rec.id)}
+                                  onClick={() => { if (window.confirm(`هل تريد حذف سجل التواصل مع ولي أمر ${rec.studentName}؟`)) removeParentContact(rec.id); }}
                                   className="text-grape-400 hover:text-coral-500 text-xs font-extrabold px-1"
                                   title="حذف هذا السجل من الأرشيف"
                                 >
@@ -1699,7 +1738,7 @@ export default function StatisticsPage() {
 
                               <button
                                 type="button"
-                                onClick={() => removeParentContact(rec.id)}
+                                onClick={() => { if (window.confirm(`هل تريد إعادة حالة ${rec.studentName} إلى القائمة النشطة؟`)) removeParentContact(rec.id); }}
                                 className="flex items-center gap-1 rounded-xl border border-grape-200 bg-white px-2.5 py-1 text-xs font-black text-grape-600 hover:border-grape-400 hover:bg-grape-50 shadow-sm transition active:scale-95"
                                 title="إلغاء أرشفة هذا التواصل وإعادة الطالب للقائمة النشطة"
                               >
@@ -1734,7 +1773,7 @@ export default function StatisticsPage() {
                             <div>
                               <div className="flex items-center justify-between gap-2 border-b border-grape-100/70 pb-2">
                                 <div className="flex items-center gap-2">
-                                  <Avatar photo={rec.studentPhoto ?? stObj?.photo} name={rec.studentName} size={34} />
+                                  <Avatar photo={rec.studentPhoto ?? stObj?.photo ?? null} name={rec.studentName} size={34} />
                                   <div>
                                     <p className="font-display text-sm font-extrabold text-ink">{rec.studentName}</p>
                                     <p className="text-[10px] font-bold text-grape-400">تاريخ التواصل: {rec.contactDateHijri}</p>
@@ -1742,7 +1781,7 @@ export default function StatisticsPage() {
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => removeParentContact(rec.id)}
+                                  onClick={() => { if (window.confirm(`هل تريد حذف سجل التواصل مع ولي أمر ${rec.studentName}؟`)) removeParentContact(rec.id); }}
                                   className="text-grape-400 hover:text-coral-500 text-xs font-extrabold px-1"
                                   title="حذف هذا السجل من الأرشيف"
                                 >
@@ -1784,7 +1823,7 @@ export default function StatisticsPage() {
 
                               <button
                                 type="button"
-                                onClick={() => removeParentContact(rec.id)}
+                                onClick={() => { if (window.confirm(`هل تريد إعادة حالة ${rec.studentName} إلى القائمة النشطة؟`)) removeParentContact(rec.id); }}
                                 className="flex items-center gap-1 rounded-xl border border-grape-200 bg-white px-2.5 py-1 text-xs font-black text-grape-600 hover:border-grape-400 hover:bg-grape-50 shadow-sm transition active:scale-95"
                                 title="إلغاء أرشفة هذا التواصل وإعادة الطالب للقائمة النشطة"
                               >
@@ -2134,7 +2173,7 @@ export default function StatisticsPage() {
                             </span>
                             {hasPhone ? (
                               <span className="text-[11px] font-mono text-grape-500">
-                                📱 {stObj.guardianPhone}
+                                📱 {stObj?.guardianPhone}
                               </span>
                             ) : (
                               <span className="text-[11px] font-bold text-coral-400">

@@ -20,10 +20,12 @@ import {
   type Student,
 } from "../core";
 import { distributionForHalaqa } from "../halaqaRotation";
-import { addCalendarDays, dateForCurrentWeekDay, dateFromLocalKey, formatHijriDate, formatTeachingWeek, formatTeachingWeekRange, hijriInputValue, hijriMonthKey, localDateKey, parseHijriInput, teachingWeekStart } from "../hijriDate";
+import { addCalendarDays, dateForCurrentWeekDay, dateFromLocalKey, formatHijriDate, formatTeachingWeek, hijriInputValue, hijriMonthKey, localDateKey, parseHijriInput, teachingWeekStart } from "../hijriDate";
 import { compressImage } from "../photos";
 import { sfx } from "../sound";
 import Avatar from "./Avatar";
+import { normalizeNumericDraft } from "../numericInput";
+import NumericInput from "./NumericInput";
 import { BigBtn, Coin, heartFade, HeartsRow, Icon, LevelBadge, Modal, SectionHead } from "./ui";
 
 /* ألوان كل خانة من خانات اليوم عند تسجيلها */
@@ -67,7 +69,7 @@ function DeleteBtn({ onDelete, label = "" }: { onDelete: () => void; label?: str
 
 /* ===== نافذة إعدادات الطالب (عملات / خبرة / قلوب) ===== */
 function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { students, halaqas, updateStudentProfile, addCoins, addXp, deductXp, removeHeart, restoreHeart, removeStudent, toast, heartPrice, orders = [], products = [] } = useApp();
+  const { students, halaqas, updateStudentProfile, addCoins, addXp, deductXp, removeHeart, restoreHeart, removeStudent, toast, heartPrice } = useApp();
   const s = students.find((x) => x.id === id);
   const [name, setName] = useState(s?.name ?? "");
   const [photo, setPhoto] = useState<string | null>(s?.photo ?? null);
@@ -80,6 +82,8 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
   const [deductInput, setDeductInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  if (!s) return null;
+
   const confirmDeduct = (amount: number) => {
     const clean = Math.min(s.xp, Math.max(1, Math.floor(amount)));
     if (clean <= 0) return;
@@ -89,7 +93,6 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
       setDeductInput("");
     }
   };
-  if (!s) return null;
   const { level } = levelInfo(s.xp);
   const saveProfile = () => {
     updateStudentProfile(s.id, { name, photo, coins, hearts, xp: studentLevel !== level ? xpForLevel(Math.max(1, studentLevel)) : undefined, halaqaId, guardianPhone: guardianPhone.trim() || undefined });
@@ -127,8 +130,8 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
               <label className="text-xs font-bold text-grape-600">الاسم<input value={name} onChange={(e) => setName(e.target.value)} className="field-control mt-1 w-full" /></label>
               <label className="text-xs font-bold text-grape-600">الحلقة<select value={halaqaId ?? ""} onChange={(e) => setHalaqaId(e.target.value || null)} className="field-control mt-1 w-full"><option value="">بلا حلقة</option>{halaqas.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}</select></label>
-              <label className="text-xs font-bold text-grape-600">العملات<input type="number" min="0" value={coins} onChange={(e) => setCoins(Number(e.target.value))} className="field-control mt-1 w-full" /></label>
-              <label className="text-xs font-bold text-grape-600">المستوى<input type="number" min="1" value={studentLevel} onChange={(e) => setStudentLevel(Number(e.target.value))} className="field-control mt-1 w-full" /></label>
+              <label className="text-xs font-bold text-grape-600">العملات<NumericInput min={0} value={coins} onValueChange={setCoins} className="field-control mt-1 w-full" /></label>
+              <label className="text-xs font-bold text-grape-600">المستوى<NumericInput min={1} value={studentLevel} onValueChange={setStudentLevel} className="field-control mt-1 w-full" /></label>
               <label className="text-xs font-bold text-grape-600">القلوب<select value={hearts} onChange={(e) => setHearts(Number(e.target.value))} className="field-control mt-1 w-full">{[0,1,2,3].map((v) => <option key={v} value={v}>{ar(v)}</option>)}</select></label>
                 <label className="text-xs font-bold text-grape-600 sm:col-span-3">رقم ولي الأمر (اختياري — للتواصل عبر واتساب)<input type="tel" dir="ltr" value={guardianPhone} onChange={(e) => setGuardianPhone(e.target.value)} placeholder="مثال: 0501234567 أو +966501234567" className="field-control mt-1 w-full text-start font-mono" /></label>
             </div>
@@ -190,7 +193,7 @@ function ManageStudentModal({ id, onClose }: { id: string; onClose: () => void }
                   max={s.xp}
                   placeholder="عدد النقاط المراد إنقاصها..."
                   value={deductInput}
-                  onChange={(e) => setDeductInput(e.target.value)}
+                  onChange={(e) => setDeductInput(normalizeNumericDraft(e.target.value))}
                   className="field-control h-9 flex-1 text-center font-bold"
                 />
                 <button
@@ -460,6 +463,8 @@ function RegisterRow({
               </div>
             </div>
 
+          </div>
+
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
@@ -643,16 +648,16 @@ function RegisterRow({
                     <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-grape-700"><Icon name="book" className="h-4 w-4" />الحفظ الجديد</div>
                     <div className="grid gap-2 grid-cols-[minmax(0,1fr)_88px_78px]">
                       <input disabled={absent} aria-label={`سورة الحفظ ${d.label}`} value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder={absent ? "غائب" : "اسم السورة"} className="field-control disabled:cursor-not-allowed disabled:opacity-50" />
-                      <input disabled={absent} aria-label={`عدد آيات الحفظ ${d.label}`} type="number" min="0" value={ward.memorizationVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationVerses: Number(e.target.value) })} placeholder="الآيات" className="field-control text-center disabled:cursor-not-allowed disabled:opacity-50" />
-                      <input disabled={absent} aria-label={`عدد أسطر الحفظ ${d.label}`} type="number" min="0" step="0.5" value={ward.memorizationLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorizationLines: Number(e.target.value) })} placeholder="الأسطر" className="field-control text-center font-extrabold text-grape-700 disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput disabled={absent} aria-label={`عدد آيات الحفظ ${d.label}`} min={0} value={ward.memorizationVerses || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, memorizationVerses: value })} placeholder="الآيات" className="field-control text-center disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput disabled={absent} aria-label={`عدد أسطر الحفظ ${d.label}`} min={0} step={0.5} value={ward.memorizationLines || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, memorizationLines: value })} placeholder="الأسطر" className="field-control text-center font-extrabold text-grape-700 disabled:cursor-not-allowed disabled:opacity-50" />
                     </div>
                   </div>
                   <div className="rounded-xl bg-amber-50 p-2.5">
                     <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-amber-700"><Icon name="refresh" className="h-4 w-4" />المراجعة</div>
                     <div className="grid gap-2 grid-cols-[minmax(0,1fr)_88px_78px]">
                       <input disabled={absent} aria-label={`سورة المراجعة ${d.label}`} value={ward.review} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder={absent ? "غائب" : "اسم السورة أو السور"} className="field-control border-amber-200 disabled:cursor-not-allowed disabled:opacity-50" />
-                      <input disabled={absent} aria-label={`عدد آيات المراجعة ${d.label}`} type="number" min="0" value={ward.reviewVerses || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewVerses: Number(e.target.value) })} placeholder="الآيات" className="field-control border-amber-200 text-center disabled:cursor-not-allowed disabled:opacity-50" />
-                      <input disabled={absent} aria-label={`عدد أسطر المراجعة ${d.label}`} type="number" min="0" step="0.5" value={ward.reviewLines || ""} onChange={(e) => updateWard(s.id, d.key, { ...ward, reviewLines: Number(e.target.value) })} placeholder="الأسطر" className="field-control border-amber-200 text-center font-extrabold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput disabled={absent} aria-label={`عدد آيات المراجعة ${d.label}`} min={0} value={ward.reviewVerses || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, reviewVerses: value })} placeholder="الآيات" className="field-control border-amber-200 text-center disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput disabled={absent} aria-label={`عدد أسطر المراجعة ${d.label}`} min={0} step={0.5} value={ward.reviewLines || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, reviewLines: value })} placeholder="الأسطر" className="field-control border-amber-200 text-center font-extrabold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50" />
                     </div>
                   </div>
                 </div>
@@ -900,7 +905,7 @@ export default function Register() {
       <SectionHead
         icon="calendar"
         title="كشف الحلقة"
-        desc={`${weekName || "الأسبوع الحالي"} · مرتب أبجديًا · كل يوم: حضور + تسميع حفظ + تسميع مراجعة`}
+        desc={`${formatTeachingWeek(weekStartDateIso)}${weekName ? ` · ${weekName}` : ""} · مرتب أبجديًا · كل يوم: حضور + تسميع حفظ + تسميع مراجعة`}
         extra={
           <BigBtn onClick={() => setAddOpen(true)} color="bg-gradient-to-l from-mint-600 to-mint-500 hover:brightness-105 shadow-[0_12px_28px_-16px_rgba(22,133,104,.9)]">
             <Icon name="plus" className="h-5 w-5" strokeWidth={3} />
@@ -911,35 +916,15 @@ export default function Register() {
 
       <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[240px] flex-1">
-            <p className="text-xs font-extrabold text-sky-700">نطاق الأسبوع التعليمي الحالي (الأحد إلى الأربعاء)</p>
-            <p className="mt-1 font-display text-lg font-extrabold text-ink">{formatTeachingWeekRange(weekStartDateIso)}</p>
-            <p className="mt-0.5 text-xs font-bold text-grape-500">الموافق هجريًا: {formatTeachingWeek(weekStartDateIso)}</p>
+          <div className="min-w-[230px] flex-1">
+            <p className="text-xs font-extrabold text-sky-700">أسبوع الكشف الهجري · الأحد إلى الأربعاء</p>
+            <p className="mt-1 font-display text-base font-extrabold text-ink">{formatTeachingWeek(weekStartDateIso)}</p>
           </div>
-          <label className="text-xs font-bold text-grape-600">تعديل تاريخ بداية الأسبوع (الأحد)
-            <input
-              type="date"
-              className="field-control mt-1 w-44 text-center font-bold"
-              value={weekStartDateIso}
-              onChange={(e) => {
-                if (e.target.value) {
-                  setWeekStartDateIso(e.target.value);
-                  toast("success", "تم تحديث تاريخ بداية ونطاق الأسبوع بنجاح");
-                }
-              }}
-            />
+          <label className="text-xs font-bold text-grape-600">تاريخ الأحد هجريًا
+            <input dir="ltr" inputMode="numeric" className="field-control mt-1 w-40 text-center" value={weekDateDraft} onChange={(event) => setWeekDateDraft(event.target.value)} placeholder="1448-04-13" />
           </label>
-          <button
-            type="button"
-            onClick={() => {
-              const cur = localDateKey(teachingWeekStart());
-              setWeekStartDateIso(cur);
-              toast("info", "تمت العودة إلى الأسبوع الحالي");
-            }}
-            className="h-11 rounded-xl bg-white border border-sky-200 px-4 text-xs font-extrabold text-sky-700 hover:bg-sky-100/60 transition"
-          >
-            الأسبوع الحالي
-          </button>
+          <button type="button" onClick={saveHijriWeek} className="h-11 rounded-xl bg-sky-600 px-4 text-sm font-extrabold text-white">حفظ التاريخ</button>
+          <button type="button" onClick={() => setWeekStartDateIso(localDateKey(teachingWeekStart()))} className="h-11 rounded-xl bg-white px-4 text-sm font-extrabold text-sky-700">الأسبوع الحالي</button>
         </div>
       </div>
 
