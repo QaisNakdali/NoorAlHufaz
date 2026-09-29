@@ -17,7 +17,7 @@ import TermFinale from "./components/TermFinale";
 import StatisticsPage from "./components/Statistics";
 import ParentPortal from "./components/ParentPortal";
 import ParentActivity from "./components/ParentActivity";
-import { Coin, HeartIcon, Icon } from "./components/ui";
+import { Coin, HeartIcon, Icon, Modal } from "./components/ui";
 
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -104,6 +104,7 @@ function CloudChip() {
 function Nav() {
   const { tab, setTab, mode, setMode, sound, toggleSound } = useApp();
   const [explainOpen, setExplainOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   return (
     <header className="sticky top-0 z-40 border-b border-grape-100 bg-white/95 shadow-[0_10px_30px_-25px_rgba(55,29,104,.4)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-[1360px] flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
@@ -127,6 +128,17 @@ function Nav() {
         )}
         <div className="ms-auto flex items-center gap-2">
           <CloudChip />
+          {mode === "teacher" && (
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="grid h-10 w-10 place-items-center rounded-xl border border-grape-200 bg-white text-grape-600 transition hover:bg-grape-50 active:scale-95"
+              aria-label="الإعدادات"
+              title="الإعدادات"
+            >
+              <Icon name="settings" className="h-5 w-5" strokeWidth={2.2} />
+            </button>
+          )}
           {mode === "student" && (
             <span className="hidden items-center gap-1.5 rounded-full bg-grape-100 px-3 py-1.5 text-xs font-bold text-grape-600 sm:flex">
               <Icon name="eye" className="h-4 w-4" strokeWidth={2.2} />
@@ -178,6 +190,43 @@ function Nav() {
         </div>
       </div>
       {explainOpen && <ExplainerModal onClose={() => setExplainOpen(false)} />}
+      {settingsOpen && (
+        <Modal open onClose={() => setSettingsOpen(false)} wide>
+          <div className="space-y-5 p-5 sm:p-6" dir="rtl">
+            <div className="flex items-start justify-between gap-3 border-b border-grape-100 pb-4">
+              <div>
+                <h2 className="font-display text-xl font-black text-ink">الإعدادات</h2>
+                <p className="mt-1 text-xs font-bold text-grape-500">إدارة إعدادات المنصة والبيانات</p>
+              </div>
+              <button type="button" onClick={() => setSettingsOpen(false)} className="grid h-10 w-10 place-items-center rounded-xl bg-grape-50 font-black text-grape-500">✕</button>
+            </div>
+
+            <section className="rounded-3xl border-2 border-coral-200 bg-coral-50/30 p-4">
+              <div className="mb-4 flex items-start gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-coral-100 text-coral-700"><Icon name="alert" className="h-5 w-5" /></span>
+                <div>
+                  <h3 className="font-display text-base font-black text-coral-900">منطقة إدارة البيانات</h3>
+                  <p className="mt-1 text-xs font-bold leading-5 text-coral-700">العمليات التالية معروضة هنا فقط وليست مفعلة؛ يلزم أولًا ربط صلاحية إدارة حقيقية من الخادم حتى لا يستطيع رابط عام تجاوز رمز التأكيد.</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {[
+                  ["مسح سجل نشاط أولياء الأمور", "يمسح سجل الزيارات والتفاعل فقط، ولا يمس الطلاب أو الأداء."],
+                  ["بدء مسابقة جديدة", "يبقي الطلاب وروابطهم وحلقاتهم، ويصفر بيانات المسابقة وفق مخطط البيانات."],
+                  ["حذف جميع البيانات وبدء بداية جديدة", "الأخطر: يمسح بيانات التشغيل ويُبقي بنية النظام وإعداداته التقنية."],
+                ].map(([title, description], index) => (
+                  <div key={title} className={`rounded-2xl border bg-white p-3 ${index === 2 ? "border-coral-300" : "border-grape-100"}`}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div><p className="text-sm font-black text-ink">{title}</p><p className="mt-1 text-xs font-bold leading-5 text-grape-500">{description}</p></div>
+                      <button type="button" disabled className="min-h-10 shrink-0 rounded-xl bg-slate-200 px-4 text-xs font-black text-slate-500" title="غير متاح قبل تفعيل حماية الإدارة على الخادم">يتطلب حماية الخادم</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </Modal>
+      )}
     </header>
   );
 }
@@ -191,6 +240,7 @@ const TOAST_STYLE: Record<Toast["kind"], { cls: string; icon: ReactNode }> = {
   error: { cls: "border-coral-400 bg-coral-500 text-white", icon: <Icon name="x" className="h-5 w-5" strokeWidth={3} /> },
   success: { cls: "border-mint-400 bg-mint-600 text-white", icon: <Icon name="check" className="h-5 w-5" strokeWidth={3} /> },
   heart: { cls: "border-coral-400 bg-white text-coral-500", icon: <HeartIcon filled className="h-5 w-5" /> },
+  info: { cls: "border-grape-300 bg-white text-grape-700", icon: <Icon name="sparkle" className="h-5 w-5" strokeWidth={2.4} /> },
 };
 
 
@@ -313,9 +363,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-amber-100 text-3xl">
               🛡️
             </span>
-            <h2 className="mt-4 font-display text-xl font-extrabold text-ink">تم حفظ بياناتك بأمان</h2>
+            <h2 className="mt-4 font-display text-xl font-extrabold text-ink">تعذّر عرض الصفحة مؤقتًا</h2>
             <p className="mt-2 text-sm text-grape-600 leading-relaxed">
-              حدث تنبيه غير متوقع أثناء عرض الصفحة، وجميع بيانات الطلاب والعملات والقلوب محفوظة بأمان ولم يتأثر أي سجل.
+              حدث خطأ غير متوقع أثناء العرض. لم ينفّذ النظام أي حذف أو إعادة تهيئة؛ جرّب إعادة المحاولة، وتأكد من حالة المزامنة قبل إغلاق الصفحة.
             </p>
             {this.state.error?.message && (
               <p className="mt-2 rounded-xl bg-grape-50 p-2 text-xs font-mono text-grape-500 break-all text-start" dir="ltr">
