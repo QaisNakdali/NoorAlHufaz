@@ -1,287 +1,132 @@
-/* صفحة التسليمات — إدارة تسليم جوائز ومشتريات الطلاب بدون تكرار وبحماية تامة */
+/* التسليمات — الطلبات المؤرخة هي المصدر الأساسي، مع إبقاء المشتريات القديمة المتوافقة */
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
 import { ar, type PurchaseOrder } from "../core";
+import { formatHijriDate } from "../hijriDate";
 import Avatar from "./Avatar";
-import { Icon, SectionHead } from "./ui";
+import { SectionHead } from "./ui";
+
+type LegacyRow = { studentId: string; itemId: string; qty: number; received: number };
 
 export default function Deliveries() {
-  const { students, products, orders = [], deliverOrder, undeliverOrder } = useApp();
-  const [expandedStudents, setExpandedStudents] = useState<Record<string, boolean>>({});
-  const [showCompleted, setShowCompleted] = useState(false);
+  const { students, products, deliverItem, undeliverItem, orders = [], deliverOrder, undeliverOrder } = useApp();
+  const [view, setView] = useState<"pending" | "completed">("pending");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // تصفية الأوامر الفيزيائية فقط (الجوائز الخارجية التي تتطلب تسليماً يدوياً)
-  const physicalOrders = useMemo(() => {
-    return orders.filter((o) => o.itemKind !== "cosmetic");
-  }, [orders]);
+  const visibleOrders = useMemo(
+    () => orders.filter((order) => (view === "pending" ? order.status === "pending" : order.status === "delivered")),
+    [orders, view],
+  );
 
-  // تجميع التسليمات المعلقة حسب الطالب
-  const pendingByStudent = useMemo(() => {
-    const map = new Map<string, { student: (typeof students)[0]; pendingOrders: PurchaseOrder[] }>();
-    
-    for (const order of physicalOrders) {
-      if (order.status === "delivered") continue;
-      const s = students.find((x) => x.id === order.studentId);
-      if (!s) continue;
-      
-      if (!map.has(s.id)) {
-        map.set(s.id, { student: s, pendingOrders: [] });
+  /* bag كانت مصدر التسليم القديم. نعرض الوحدات التي لا يقابلها order فقط. */
+  const legacyRows = useMemo(() => {
+    const result: LegacyRow[] = [];
+    for (const student of students) {
+      for (const bag of student.bag ?? []) {
+        const orderedQty = orders
+          .filter((order) => order.studentId === student.id && order.itemId === bag.itemId)
+          .reduce((sum, order) => sum + Math.max(1, order.quantity ?? 1), 0);
+        const legacyQty = Math.max(0, bag.qty - orderedQty);
+        if (legacyQty === 0) continue;
+        const legacyReceived = Math.min(legacyQty, bag.receivedQty);
+        const pending = legacyReceived < legacyQty;
+        if ((view === "pending") !== pending) continue;
+        result.push({ studentId: student.id, itemId: bag.itemId, qty: legacyQty, received: legacyReceived });
       }
-      map.get(s.id)!.pendingOrders.push(order);
     }
-    
-    return [...map.values()].sort((a, b) => b.pendingOrders.length - a.pendingOrders.length || a.student.name.localeCompare(b.student.name, "ar"));
-  }, [physicalOrders, students]);
+    return result;
+  }, [orders, students, view]);
 
-  // التسليمات المكتملة (المسلمة)
-  const completedOrders = useMemo(() => {
-    return physicalOrders
-      .filter((o) => o.status === "delivered")
-      .sort((a, b) => new Date(b.deliveredAt || b.purchasedAt).getTime() - new Date(a.deliveredAt || a.purchasedAt).getTime());
-  }, [physicalOrders]);
+  const grouped = useMemo(() => {
+    const map = new Map<string, { orders: PurchaseOrder[]; legacy: LegacyRow[] }>();
+    for (const order of visibleOrders) {
+      const group = map.get(order.studentId) ?? { orders: [], legacy: [] };
+      group.orders.push(order);
+      map.set(order.studentId, group);
+    }
+    for (const row of legacyRows) {
+      const group = map.get(row.studentId) ?? { orders: [], legacy: [] };
+      group.legacy.push(row);
+      map.set(row.studentId, group);
+    }
+    return [...map.entries()];
+  }, [legacyRows, visibleOrders]);
 
-  const totalPendingUnits = useMemo(() => {
-    return physicalOrders
-      .filter((o) => o.status !== "delivered")
-      .reduce((sum, o) => sum + (o.qty ?? 1), 0);
-  }, [physicalOrders]);
-
-  const toggleStudent = (studentId: string) => {
-    setExpandedStudents((prev) => ({
-      ...prev,
-      [studentId]: !prev[studentId],
-    }));
-  };
+  const pendingCount = orders.filter((order) => order.status === "pending").length
+    + legacyRows.filter((row) => row.received < row.qty).length;
+  const toggle = (studentId: string) => setExpanded((current) => {
+    const next = new Set(current);
+    if (next.has(studentId)) next.delete(studentId); else next.add(studentId);
+    return next;
+  });
 
   return (
-    <div className="anim-fade space-y-6" dir="rtl">
+    <div className="anim-fade">
       <SectionHead
         icon="gift"
-        title="تسليم الجوائز والمشتريات"
-        desc="متابعة تسليم الجوائز والمشتريات الخارجية يدًا للطلاب — كل عملية شراء موثقة برقم مستقل دون أي تكرار"
+        title="التسليمات"
+        desc="كل عملية شراء تظهر مرة واحدة بمعرفها، وتسليمها لا يغير أي طلب آخر"
         color="bg-mint-400/20 text-mint-600"
-        extra={
-          <span className="rounded-2xl border-2 border-gold-500/50 bg-gold-400/20 px-4 py-2 font-display text-base font-extrabold text-gold-700 shadow-xs">
-            بانتظار التسليم: {ar(totalPendingUnits)} قطعة
-          </span>
-        }
+        extra={<span className="rounded-2xl border-2 border-gold-500/50 bg-gold-400/20 px-4 py-2 font-display text-base font-extrabold text-gold-600">بانتظار التسليم: {ar(pendingCount)}</span>}
       />
 
-      {/* التبويبات العلوية */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-grape-100 pb-3">
-        <button
-          type="button"
-          onClick={() => setShowCompleted(false)}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 font-display text-xs font-black transition ${
-            !showCompleted
-              ? "bg-grape-600 text-white shadow-sm"
-              : "bg-white text-grape-600 border border-grape-200 hover:bg-grape-50"
-          }`}
-        >
-          <span>⏳ التسليمات المعلقة</span>
-          <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px]">
-            {ar(pendingByStudent.length)} طالب
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setShowCompleted(true)}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 font-display text-xs font-black transition ${
-            showCompleted
-              ? "bg-grape-600 text-white shadow-sm"
-              : "bg-white text-grape-600 border border-grape-200 hover:bg-grape-50"
-          }`}
-        >
-          <span>✓ التسليمات المكتملة</span>
-          <span className="rounded-full bg-mint-100 text-mint-800 px-2 py-0.5 text-[11px]">
-            {ar(completedOrders.length)}
-          </span>
-        </button>
+      <div className="mb-4 flex rounded-2xl border-2 border-grape-200 bg-white p-1.5 sm:w-fit">
+        {([['pending', 'التسليمات المعلقة'], ['completed', 'تم التسليم']] as const).map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setView(key)} className={`flex-1 rounded-xl px-5 py-2.5 font-display text-sm font-extrabold transition-all sm:flex-none ${view === key ? "bg-grape-600 text-white shadow" : "text-grape-500 hover:text-grape-700"}`}>{label}</button>
+        ))}
       </div>
 
-      {/* 1. قسم التسليمات المعلقة */}
-      {!showCompleted && (
-        <div className="space-y-4">
-          {pendingByStudent.length === 0 ? (
-            <div className="dashed-border rounded-3xl bg-white/80 p-12 text-center">
-              <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-mint-50 text-mint-600 text-2xl mb-3">
-                ✓
-              </span>
-              <p className="font-display text-lg font-extrabold text-ink">
-                رائع! تم تسليم جميع مشتريات وجوائز الطلاب بالكامل
-              </p>
-              <p className="mt-1 text-xs font-bold text-grape-500">
-                لا توجد أي جوائز معلقة بانتظار التسليم حاليًا.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {pendingByStudent.map(({ student: s, pendingOrders }) => {
-                const isExpanded = expandedStudents[s.id] ?? true; // الافتراضي مفتوح لسهولة المعلم
-                const pendingCount = pendingOrders.reduce((sum, o) => sum + (o.qty ?? 1), 0);
-
-                return (
-                  <div
-                    key={s.id}
-                    className="overflow-hidden rounded-2xl border-2 border-grape-200 bg-white shadow-xs transition hover:border-grape-300"
-                  >
-                    {/* رأس بطاقة الطالب */}
-                    <div
-                      onClick={() => toggleStudent(s.id)}
-                      className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-4 bg-gradient-to-l from-grape-50/50 via-white to-white transition hover:bg-grape-50"
-                    >
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <Avatar photo={s.photo} name={s.name} size={48} frame={s.frame} crown={s.crown} glow={s.glow} />
-                        <div className="min-w-0">
-                          <p className="truncate font-display text-base font-extrabold text-ink">
-                            {s.name}
-                          </p>
-                          <p className="text-xs font-bold text-grape-500">
-                            متبقي للتسليم: <strong className="text-gold-700">{ar(pendingCount)} قطعة</strong>
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-gold-100 text-gold-800 px-3 py-1 text-xs font-black">
-                          {ar(pendingOrders.length)} طلب معلق
-                        </span>
-                        <span className={`transform transition-transform text-grape-400 font-bold text-sm ${isExpanded ? "rotate-180" : ""}`}>
-                          ▼
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* تفاصيل المنتجات المشتراة */}
-                    {isExpanded && (
-                      <div className="border-t border-grape-100 p-3 sm:p-4 bg-slate-50/40">
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-right text-xs">
-                            <thead>
-                              <tr className="border-b border-grape-200/60 text-grape-500 font-black">
-                                <th className="pb-2 pe-3">المنتج</th>
-                                <th className="pb-2 px-3 text-center">الكمية</th>
-                                <th className="pb-2 px-3 text-center">السعر</th>
-                                <th className="pb-2 px-3 text-center">الحالة</th>
-                                <th className="pb-2 ps-3 text-center">الإجراء</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-grape-100/80">
-                              {pendingOrders.map((order) => {
-                                const prod = products.find((p) => p.id === order.itemId);
-                                const qty = order.qty ?? 1;
-
-                                return (
-                                  <tr key={order.id} className="hover:bg-white/80 transition">
-                                    <td className="py-2.5 pe-3">
-                                      <div className="flex items-center gap-2.5 min-w-0">
-                                        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-white border border-grape-200 flex items-center justify-center p-1">
-                                          {order.itemImage ? (
-                                            <img src={order.itemImage} alt={order.itemName} className="h-full w-full object-contain" />
-                                          ) : (
-                                            <Icon name={order.itemIcon || "gift"} className="h-5 w-5 text-grape-500" />
-                                          )}
-                                        </div>
-                                        <div className="min-w-0">
-                                          <p className="font-display font-black text-ink truncate text-sm">
-                                            {order.itemName}
-                                          </p>
-                                          <p className="text-[10px] font-mono text-grape-400">
-                                            #{order.id.slice(0, 8)}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </td>
-
-                                    <td className="py-2.5 px-3 text-center font-display font-extrabold text-ink text-sm">
-                                      {qty > 1 ? `${ar(qty)} ×` : ar(qty)}
-                                    </td>
-
-                                    <td className="py-2.5 px-3 text-center font-bold text-gold-700">
-                                      {ar(order.price)} 🪙
-                                    </td>
-
-                                    <td className="py-2.5 px-3 text-center">
-                                      <span className="rounded-lg bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-black text-amber-800 whitespace-nowrap">
-                                        لم يتم التسليم ⏳
-                                      </span>
-                                    </td>
-
-                                    <td className="py-2.5 ps-3 text-center">
-                                      <button
-                                        type="button"
-                                        onClick={() => deliverOrder(order.id)}
-                                        className="inline-flex items-center gap-1 rounded-xl bg-mint-600 px-3.5 py-1.5 font-display text-xs font-black text-white shadow-[0_3px_0_#0a7a50] hover:bg-mint-700 active:translate-y-0.5 active:shadow-none transition"
-                                      >
-                                        <Icon name="check" className="h-3.5 w-3.5" strokeWidth={3.4} />
-                                        <span>تسليم</span>
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+      {grouped.length === 0 ? (
+        <div className="rounded-3xl border-2 border-dashed border-grape-200 bg-white/70 p-14 text-center">
+          <p className="font-display text-lg font-extrabold text-grape-600">{view === "pending" ? "لا توجد تسليمات معلقة" : "لا توجد تسليمات مكتملة بعد"}</p>
         </div>
-      )}
-
-      {/* 2. قسم التسليمات المكتملة */}
-      {showCompleted && (
+      ) : (
         <div className="space-y-3">
-          {completedOrders.length === 0 ? (
-            <div className="rounded-3xl border-2 border-dashed border-grape-200 bg-white p-12 text-center font-bold text-grape-400">
-              لا توجد تسليمات مكتملة بعد.
-            </div>
-          ) : (
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              {completedOrders.map((order) => {
-                const s = students.find((x) => x.id === order.studentId);
-                const dDate = order.deliveredAt ? new Date(order.deliveredAt) : new Date(order.purchasedAt);
+          {grouped.map(([studentId, group]) => {
+            const student = students.find((item) => item.id === studentId);
+            const isOpen = expanded.has(studentId);
+            const count = group.orders.length + group.legacy.length;
+            return (
+              <section key={studentId} className="overflow-hidden rounded-3xl border-2 border-grape-200 bg-white shadow-sm">
+                <button type="button" onClick={() => toggle(studentId)} className="flex w-full items-center gap-3 p-4 text-start hover:bg-grape-50/60">
+                  <Avatar photo={student?.photo ?? null} name={student?.name ?? group.orders[0]?.studentName ?? "طالب"} size={48} />
+                  <span className="min-w-0 flex-1"><span className="block truncate font-display text-base font-extrabold text-ink">{student?.name ?? group.orders[0]?.studentName ?? "طالب"}</span><span className="text-xs font-bold text-grape-500">{ar(count)} {count === 1 ? "طلب" : "طلبات"}</span></span>
+                  <span className="text-grape-500">{isOpen ? "▲" : "▼"}</span>
+                </button>
 
-                return (
-                  <div
-                    key={order.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border-2 border-mint-200 bg-mint-50/20 p-3 shadow-xs transition"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Avatar photo={s?.photo ?? null} name={order.studentName} size={42} />
-                      <div className="min-w-0">
-                        <p className="truncate font-display text-sm font-extrabold text-ink">
-                          {order.studentName} — {order.itemName}
-                        </p>
-                        <p className="text-[11px] font-bold text-grape-500">
-                          الكمية: {ar(order.qty ?? 1)} &bull; سُلّمت: {dDate.toLocaleDateString("ar-SA")}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="rounded-xl bg-mint-100 text-mint-800 px-2.5 py-1 text-xs font-black">
-                        تم التسليم ✓
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => undeliverOrder(order.id)}
-                        className="rounded-xl border border-grape-200 bg-white px-2 py-1 text-xs font-bold text-grape-400 hover:text-coral-500 transition"
-                        title="تراجع عن التسليم في حال الخطأ"
-                      >
-                        تراجع
-                      </button>
-                    </div>
+                {isOpen && (
+                  <div className="overflow-x-auto border-t border-grape-100">
+                    <table className="w-full min-w-[620px] text-sm">
+                      <thead className="bg-grape-50 text-xs text-grape-600"><tr><th className="p-3 text-start">المنتج</th><th className="p-3">الكمية</th><th className="p-3">التاريخ</th><th className="p-3">الحالة</th><th className="p-3">الإجراء</th></tr></thead>
+                      <tbody>
+                        {group.orders.map((order) => (
+                          <tr key={order.id} className="border-t border-grape-100">
+                            <td className="p-3"><span className="font-extrabold text-ink">{order.itemName}</span><span className="block max-w-56 truncate text-[10px] text-grape-400">#{order.id}</span></td>
+                            <td className="p-3 text-center font-bold">{ar(Math.max(1, order.quantity ?? 1))}</td>
+                            <td className="p-3 text-center text-xs font-bold text-grape-500">{formatHijriDate(order.purchasedAt)}</td>
+                            <td className="p-3 text-center"><span className={`rounded-xl px-2.5 py-1 text-xs font-black ${order.status === "delivered" ? "bg-mint-100 text-mint-800" : "bg-gold-100 text-gold-800"}`}>{order.status === "delivered" ? "تم التسليم ✓" : "لم يتم التسليم"}</span></td>
+                            <td className="p-3 text-center">{order.status === "pending" ? <button type="button" onClick={() => deliverOrder(order.id)} className="rounded-xl bg-mint-600 px-3 py-2 text-xs font-extrabold text-white">✓ تسليم</button> : <button type="button" onClick={() => undeliverOrder(order.id)} className="rounded-xl border border-grape-200 px-3 py-2 text-xs font-bold text-grape-500">تراجع</button>}</td>
+                          </tr>
+                        ))}
+                        {group.legacy.map((row) => {
+                          const product = products.find((item) => item.id === row.itemId);
+                          const done = row.received >= row.qty;
+                          return (
+                            <tr key={`legacy:${row.studentId}:${row.itemId}`} className="border-t border-grape-100">
+                              <td className="p-3"><span className="font-extrabold text-ink">{product?.name ?? "جائزة محفوظة سابقًا"}</span><span className="block text-[10px] text-grape-400">سجل قديم محفوظ</span></td>
+                              <td className="p-3 text-center font-bold">{ar(row.qty)}</td><td className="p-3 text-center text-xs text-grape-400">قبل سجل الطلبات</td>
+                              <td className="p-3 text-center"><span className={`rounded-xl px-2.5 py-1 text-xs font-black ${done ? "bg-mint-100 text-mint-800" : "bg-gold-100 text-gold-800"}`}>{done ? "تم التسليم ✓" : `متبقي ${ar(row.qty - row.received)}`}</span></td>
+                              <td className="p-3 text-center">{!done ? <button type="button" onClick={() => deliverItem(row.studentId, row.itemId)} className="rounded-xl bg-mint-600 px-3 py-2 text-xs font-extrabold text-white">✓ تسليم</button> : <button type="button" onClick={() => undeliverItem(row.studentId, row.itemId)} className="rounded-xl border border-grape-200 px-3 py-2 text-xs font-bold text-grape-500">تراجع</button>}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
