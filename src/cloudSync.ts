@@ -1,4 +1,5 @@
 import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
+import { externalizeDataImages } from "./cloudPayload";
 
 /*
   مزامنة Supabase اللحظية.
@@ -34,42 +35,34 @@ function errMsg(e: unknown): string {
   return "حدث خطأ في المزامنة";
 }
 
-function isDataImage(value: unknown): value is string {
-  return typeof value === "string" && value.startsWith("data:image/");
+async function dataUrlHash(dataUrl: string): Promise<string> {
+  const bytes = new TextEncoder().encode(dataUrl);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function uploadStudentPhoto(studentId: string, dataUrl: string): Promise<string> {
+async function uploadEmbeddedImage(dataUrl: string): Promise<string> {
   const response = await fetch(dataUrl);
   const blob = await response.blob();
   const contentType = blob.type || "image/jpeg";
-  const extension = contentType.includes("webp") ? "webp" : "jpg";
-  const path = `students/${studentId}.${extension}`;
+  const extension = contentType.includes("webp") ? "webp" : contentType.includes("png") ? "png" : "jpg";
+  const hash = await dataUrlHash(dataUrl);
+  const path = `assets/${hash.slice(0, 40)}.${extension}`;
   const { error } = await supabase.storage.from(PHOTOS_BUCKET).upload(path, blob, {
     upsert: true,
     contentType,
-    cacheControl: "86400",
+    cacheControl: "31536000",
   });
   if (error) throw error;
   const { data } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path);
-  return `${data.publicUrl}?v=${Date.now()}`;
+  return `${data.publicUrl}?v=${hash.slice(0, 12)}`;
 }
 
-/** ينقل صور dataURL الحالية إلى Storage مرة واحدة ويعيد نسخة خفيفة للمزامنة. */
+/** ينقل جميع صور dataURL إلى Storage مرة واحدة ويعيد نسخة خفيفة للمزامنة. */
 async function preparePayload(payload: CloudPayload): Promise<CloudPayload> {
   if (!payload.data || typeof payload.data !== "object") return payload;
-  const state = payload.data as { students?: Array<{ id: string; photo?: string | null; [key: string]: unknown }>; [key: string]: unknown };
-  if (!Array.isArray(state.students) || !state.students.some((s) => isDataImage(s.photo))) return payload;
-
-  const students = await Promise.all(state.students.map(async (student) => {
-    if (!isDataImage(student.photo)) return student;
-    try {
-      const photo = await uploadStudentPhoto(student.id, student.photo);
-      return { ...student, photo };
-    } catch {
-      return student;
-    }
-  }));
-  return { ...payload, data: { ...state, students } };
+  const data = await externalizeDataImages(payload.data, uploadEmbeddedImage);
+  return { ...payload, data };
 }
 
 export async function cloudLoad(): Promise<CloudPayload | null> {
