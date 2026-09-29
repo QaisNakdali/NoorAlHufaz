@@ -43,6 +43,7 @@ export default function Avatar({
   crown = null,
   glow = null,
   className = "",
+  imageClassName = "",
 }: {
   photo: string | null;
   name: string;
@@ -51,6 +52,8 @@ export default function Avatar({
   crown?: CrownKind | null;
   glow?: GlowKind | null;
   className?: string;
+  /** يطبّق على طبقة الصورة/الحرف فقط حتى تبقى الزينة والإطار واضحة. */
+  imageClassName?: string;
 }) {
   const ring = size * 0.055;
   const crownW = size * 0.52;
@@ -86,13 +89,13 @@ export default function Avatar({
       alt={name}
       width={size}
       height={size}
-      className="h-full w-full object-cover"
+      className={`h-full w-full object-cover transition-[filter,opacity] duration-300 ${imageClassName}`}
       style={{ borderRadius: rInner }}
       draggable={false}
     />
   ) : (
     <div
-      className="font-display grid h-full w-full place-items-center font-extrabold"
+      className={`font-display grid h-full w-full place-items-center font-extrabold transition-[filter,opacity] duration-300 ${imageClassName}`}
       style={{ ...nameColor(name), fontSize: size * 0.42, borderRadius: rInner }}
     >
       {name.trim().charAt(0) || "؟"}

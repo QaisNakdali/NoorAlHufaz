@@ -59,10 +59,11 @@ import {
   type TripDay,
   type WeekDays,
   type WeekLog,
+  type WeekStudentRecord,
 } from "./core";
 import { buildTrackSnapshot, measureStudentWork } from "./analytics";
 import { localDateKey } from "./halaqaRotation";
-import { addCalendarDays, formatHijriDate, localDateKey as hijriLocalDateKey, teachingWeekStart } from "./hijriDate";
+import { addCalendarDays, formatHijriDate, isTeachingWeekStart, localDateKey as hijriLocalDateKey, teachingWeekStart } from "./hijriDate";
 import { sfx, setSoundEnabled } from "./sound";
 import {
   cloudLoad,
@@ -72,8 +73,10 @@ import {
   isCloudEnabled,
   subscribeCloud,
 } from "./cloudSync";
+import { mergeLocalChanges, sameValue, type MergeConflict } from "./syncMerge";
+import { applyCheckoutTransaction, HEART_ITEM_ID } from "./checkoutTransaction";
 
-export type ToastKind = "xp" | "coin" | "level" | "award" | "error" | "success" | "heart";
+export type ToastKind = "xp" | "coin" | "level" | "award" | "error" | "success" | "heart" | "info";
 export type Toast = { id: number; kind: ToastKind; msg: string };
 
 export const DEFAULT_ABSENCE_MESSAGE = `السلام عليكم ورحمة الله وبركاته،
@@ -172,6 +175,7 @@ type Ctx = State & {
   buyItem: (id: string, itemId: string) => void;
   grantItem: (studentId: string, itemId: string) => void;
   equipCosmetic: (id: string, itemId: string) => void;
+  equipParentCosmetic: (id: string, itemId: string) => Promise<{ success: boolean; error?: string }>;
   unequipSlot: (id: string, slot: CosmeticSlot) => void;
   deliverItem: (id: string, itemId: string) => void;
   undeliverItem: (id: string, itemId: string) => void;
@@ -191,7 +195,8 @@ type Ctx = State & {
   undeliverOrder: (orderId: string) => void;
   parentLogs: ParentAccessLog[];
   logParentAccess: (studentId: string, enteredStore?: boolean, purchased?: boolean) => void;
-  checkoutParentCart: (studentId: string, items: { itemId: string; qty: number }[]) => { success: boolean; error?: string };
+  clearParentActivity: (confirmationCode: string) => Promise<{ success: boolean; error?: string }>;
+  checkoutParentCart: (studentId: string, items: { itemId: string; qty: number }[], allowClosedStore?: boolean) => Promise<{ success: boolean; error?: string }>;
 
   grantAward: (id: string, title: string, coins?: number, xp?: number, uniqueKey?: string) => void;
   setCeremonyPick: (key: keyof CeremonyPicks, id: string | null) => void;
@@ -199,6 +204,7 @@ type Ctx = State & {
   setRewardSetting: (key: keyof RewardSettings, value: Partial<RewardSettings[keyof RewardSettings]>) => void;
   removeWeekLog: (week: number) => void;
   updateWeekLog: (week: number, next: WeekLog) => void;
+  updateArchivedWeekDate: (week: number, weekStartDateIso: string) => Promise<{ success: boolean; error?: string }>;
   /* الرحلة الأسبوعية */
   setTrip: (on: boolean, day?: TripDay | null) => void;
   toggleTripAttendee: (id: string) => void;
@@ -360,7 +366,36 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
   const currentProducts = Array.isArray(p.products) && p.products.length ? (p.products as ShopItem[]) : DEFAULT_SHOP_ITEMS;
   const currentHeartPrice = typeof p.heartPrice === "number" && Number.isFinite(p.heartPrice) ? Math.max(0, Math.round(p.heartPrice)) : DEFAULT_HEART_PRICE;
 
-  const rawStudents = Array.isArray(p.students) ? (p.students as Student[]).map(normStudent) : seedStudents();
+  const sourceStudents = Array.isArray(p.students) ? (p.students as Student[]) : seedStudents();
+  const rawStudents = sourceStudents.map((source) => {
+    let student = normStudent(source);
+
+    // ترقية غير مدمرة للبيانات القديمة: قبل وجود سجل التعديلات والمصروفات كانت
+    // قيمة xp/coins نفسها هي المصدر الوحيد للحقيقة. نحفظ الفرق كقيد دائم حتى
+    // لا تعود الأرصدة القديمة إلى قيمة مشتقة مختلفة بعد التحديث أو المزامنة.
+    if (typeof source.coinsSpent !== "number") {
+      let inferredSpent = 0;
+      for (const itemId of student.inventory ?? []) {
+        const item = currentProducts.find((product) => product.id === itemId);
+        if (item && Number.isFinite(item.price)) inferredSpent += Math.max(0, item.price);
+      }
+      for (const entry of student.bag ?? []) {
+        const item = currentProducts.find((product) => product.id === entry.itemId);
+        if (item && Number.isFinite(item.price)) inferredSpent += Math.max(0, item.price) * Math.max(0, entry.qty ?? 0);
+      }
+      student = { ...student, coinsSpent: inferredSpent };
+    }
+
+    let totals = calculateStudentTotals(student, currentWeeksLog, currentWeekNum, currentProducts, currentHeartPrice);
+    if (typeof source.xp === "number" && Number.isFinite(source.xp) && Math.max(0, source.xp) !== totals.xp) {
+      student = { ...student, manualXpAdjust: (student.manualXpAdjust ?? 0) + Math.max(0, source.xp) - totals.xp };
+      totals = calculateStudentTotals(student, currentWeeksLog, currentWeekNum, currentProducts, currentHeartPrice);
+    }
+    if (typeof source.coins === "number" && Number.isFinite(source.coins) && Math.max(0, source.coins) !== totals.coins) {
+      student = { ...student, manualCoinsAdjust: (student.manualCoinsAdjust ?? 0) + Math.max(0, source.coins) - totals.coins };
+    }
+    return student;
+  });
   const students = rawStudents.map((s) => {
     const totals = calculateStudentTotals(s, currentWeeksLog, currentWeekNum, currentProducts, currentHeartPrice);
     return {
@@ -450,47 +485,19 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
       notHeard: typeof p.contactMessages?.notHeard === "string" && p.contactMessages.notHeard.trim() ? p.contactMessages.notHeard : DEFAULT_NOT_HEARD_MESSAGE,
     },
     parentStoreOpen: p.parentStoreOpen !== false,
-    // توحيد ومزامنة مشتريات الحقيبة القديمة مع سجل أوامر التسليم الفريدة
-    orders: (() => {
-      const existing = Array.isArray(p.orders) ? (p.orders as PurchaseOrder[]) : [];
-      const list = [...existing];
-      for (const s of students) {
-        for (const b of s.bag ?? []) {
-          if (b.qty <= 0) continue;
-          const matching = list.filter((o) => o.studentId === s.id && o.itemId === b.itemId);
-          const totalMatchingQty = matching.reduce((sum, o) => sum + (o.qty ?? 1), 0);
-          if (totalMatchingQty < b.qty) {
-            const prod = currentProducts.find((p) => p.id === b.itemId);
-            const remainingQty = b.qty - totalMatchingQty;
-            list.push({
-              id: `bag-${s.id}-${b.itemId}`,
-              studentId: s.id,
-              studentName: s.name,
-              itemId: b.itemId,
-              itemName: prod?.name || "جائزة",
-              itemKind: "physical",
-              itemImage: prod?.image ?? null,
-              itemIcon: prod?.icon || "gift",
-              price: prod?.price || 0,
-              qty: remainingQty,
-              purchasedAt: new Date(0).toISOString(),
-              status: b.receivedQty >= b.qty ? "delivered" : "pending",
-            });
-          }
-        }
-      }
-      return list;
-    })(),
+    orders: Array.isArray(p.orders) ? (p.orders as PurchaseOrder[]) : [],
     parentLogs: Array.isArray(p.parentLogs) ? (p.parentLogs as ParentAccessLog[]) : [],
   };
 }
+
+let localLoadError: string | null = null;
 
 function loadPersist(): State {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) return stateFromPartial(JSON.parse(raw) as Partial<State>);
-  } catch {
-    /* تجاهل */
+  } catch (error) {
+    localLoadError = error instanceof Error ? error.message : "تعذر قراءة النسخة المحلية";
   }
   return stateFromPartial(null);
 }
@@ -528,121 +535,6 @@ function readStoredBase(): State | null {
   } catch {
     return null;
   }
-}
-
-function sameValue(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
-  }
-}
-
-function arrayItemKey(value: unknown): string | null {
-  if (!value || typeof value !== "object") return null;
-  const item = value as Record<string, unknown>;
-  for (const field of ["id", "week", "itemId", "key"] as const) {
-    const key = item[field];
-    if (typeof key === "string" || typeof key === "number") return `${field}:${String(key)}`;
-  }
-  return null;
-}
-
-/**
- * يطبق فقط الفروق التي صنعها هذا الجهاز فوق أحدث نسخة سحابية.
- * بهذه الطريقة لا يؤدي تعديل قلب أو سعر إلى إعادة قائمة طلاب قديمة كاملة.
- */
-export type MergeConflict = {
-  path: string;
-  kind: "same-field" | "delete-vs-update";
-};
-
-function noteConflict(conflicts: MergeConflict[] | undefined, path: string[], kind: MergeConflict["kind"]): void {
-  if (!conflicts) return;
-  const value = { path: path.join("."), kind };
-  if (!conflicts.some((item) => item.path === value.path && item.kind === value.kind)) conflicts.push(value);
-}
-
-export function mergeLocalChanges(
-  base: unknown,
-  local: unknown,
-  remote: unknown,
-  path: string[] = [],
-  conflicts?: MergeConflict[]
-): unknown {
-  if (sameValue(local, base)) return remote;
-  if (sameValue(remote, base) || sameValue(local, remote)) return local;
-
-  if (Array.isArray(base) && Array.isArray(local) && Array.isArray(remote)) {
-    const keyed = [...base, ...local, ...remote].every((item) => arrayItemKey(item) !== null);
-    if (keyed) {
-      const baseMap = new Map(base.map((item) => [arrayItemKey(item) as string, item]));
-      const localMap = new Map(local.map((item) => [arrayItemKey(item) as string, item]));
-      const remoteMap = new Map(remote.map((item) => [arrayItemKey(item) as string, item]));
-      const order = [...remoteMap.keys(), ...[...localMap.keys()].filter((key) => !remoteMap.has(key))];
-      const merged: unknown[] = [];
-      for (const key of order) {
-        const hadBase = baseMap.has(key);
-        const hasLocal = localMap.has(key);
-        const hasRemote = remoteMap.has(key);
-        if (hadBase && !hasLocal) {
-          if (hasRemote && !sameValue(remoteMap.get(key), baseMap.get(key))) noteConflict(conflicts, [...path, key], "delete-vs-update");
-          continue; // الحذف المقصود يفوز ولا تعيد نسخة قديمة العنصر لاحقًا
-        }
-        if (!hasLocal && hasRemote) {
-          merged.push(remoteMap.get(key));
-          continue;
-        }
-        if (hasLocal && !hasRemote) {
-          if (!hadBase) merged.push(localMap.get(key)); // إضافة محلية
-          else if (!sameValue(localMap.get(key), baseMap.get(key))) noteConflict(conflicts, [...path, key], "delete-vs-update");
-          continue; // حذف بعيد مع عدم تعديل محلي
-        }
-        merged.push(mergeLocalChanges(baseMap.get(key), localMap.get(key), remoteMap.get(key), [...path, key], conflicts));
-      }
-      return merged;
-    }
-
-    // قوائم القيم البسيطة: نطبق إضافات وحذوفات هذا الجهاز فوق القائمة البعيدة.
-    const result = [...remote];
-    for (const oldItem of base) {
-      if (!local.some((item) => sameValue(item, oldItem))) {
-        const index = result.findIndex((item) => sameValue(item, oldItem));
-        if (index >= 0) result.splice(index, 1);
-      }
-    }
-    for (const item of local) {
-      if (!base.some((oldItem) => sameValue(oldItem, item)) && !result.some((current) => sameValue(current, item))) result.push(item);
-    }
-    return result;
-  }
-
-  if (base && local && remote && typeof base === "object" && typeof local === "object" && typeof remote === "object") {
-    const b = base as Record<string, unknown>;
-    const l = local as Record<string, unknown>;
-    const r = remote as Record<string, unknown>;
-    const result: Record<string, unknown> = { ...r };
-    for (const key of new Set([...Object.keys(b), ...Object.keys(l), ...Object.keys(r)])) {
-      if (key in b && !(key in l)) {
-        if (key in r && !sameValue(r[key], b[key])) noteConflict(conflicts, [...path, key], "delete-vs-update");
-        delete result[key];
-      } else if (key in l) result[key] = mergeLocalChanges(b[key], l[key], r[key], [...path, key], conflicts);
-    }
-    return result;
-  }
-
-  // الأرصدة والقيم التراكمية تُدمج كفرق، فلا تضيع زيادة جهاز آخر بسبب لقطة قديمة.
-  const field = path[path.length - 1];
-  if (["coins", "xp", "hearts", "heartsLostWeek", "qty", "receivedQty"].includes(field)
-    && typeof base === "number" && typeof local === "number" && typeof remote === "number") {
-    return Math.max(0, remote + (local - base));
-  }
-  // إذا اختلف التعديل المحلي عن الأساس، فالأولوية لتعديل المعلم على هذا الجهاز لضمان عدم ضياع أي كتابة أو إدخال
-  if (!sameValue(local, base)) {
-    return local;
-  }
-  return remote;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -690,6 +582,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<Mode>("teacher");
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [showCeremony, setShowCeremony] = useState(false);
+  const checkoutLocksRef = useRef(new Set<string>());
   const timers = useRef<number[]>([]);
 
   const toast = useCallback((kind: ToastKind, msg: string) => {
@@ -737,11 +630,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deliverOrder = useCallback((orderId: string) => {
     let targetStudentId = "";
     let targetItemId = "";
+    let targetQuantity = 1;
     setOrders((os) =>
       os.map((o) => {
         if (o.id === orderId && o.status !== "delivered") {
           targetStudentId = o.studentId;
           targetItemId = o.itemId;
+          targetQuantity = Math.max(1, o.quantity ?? 1);
           return { ...o, status: "delivered", deliveredAt: new Date().toISOString() };
         }
         return o;
@@ -753,7 +648,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (s.id !== targetStudentId) return s;
           const bag = [...(s.bag ?? [])];
           const idx = bag.findIndex((b) => b.itemId === targetItemId && b.receivedQty < b.qty);
-          if (idx >= 0) bag[idx] = { ...bag[idx], receivedQty: bag[idx].receivedQty + 1 };
+          if (idx >= 0) bag[idx] = { ...bag[idx], receivedQty: Math.min(bag[idx].qty, bag[idx].receivedQty + targetQuantity) };
           return { ...s, bag };
         })
       );
@@ -764,11 +659,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const undeliverOrder = useCallback((orderId: string) => {
     let targetStudentId = "";
     let targetItemId = "";
+    let targetQuantity = 1;
     setOrders((os) =>
       os.map((o) => {
         if (o.id === orderId && o.status === "delivered") {
           targetStudentId = o.studentId;
           targetItemId = o.itemId;
+          targetQuantity = Math.max(1, o.quantity ?? 1);
           const { deliveredAt, ...rest } = o;
           return { ...rest, status: "pending" };
         }
@@ -781,7 +678,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (s.id !== targetStudentId) return s;
           const bag = [...(s.bag ?? [])];
           const idx = bag.findIndex((b) => b.itemId === targetItemId && b.receivedQty > 0);
-          if (idx >= 0) bag[idx] = { ...bag[idx], receivedQty: Math.max(0, bag[idx].receivedQty - 1) };
+          if (idx >= 0) bag[idx] = { ...bag[idx], receivedQty: Math.max(0, bag[idx].receivedQty - targetQuantity) };
           return { ...s, bag };
         })
       );
@@ -820,100 +717,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [students]);
 
-  const checkoutParentCart = useCallback((studentId: string, items: { itemId: string; qty: number }[]) => {
-    if (!parentStoreOpen) {
-      return { success: false, error: "المتجر مغلق حاليًا من قِبل إدارة الحلقة" };
-    }
-    const st = students.find((s) => s.id === studentId);
-    if (!st) return { success: false, error: "لم يتم العثور على الطالب" };
-
-    if (!items || items.length === 0) return { success: false, error: "السلة فارغة" };
-
-    let totalCost = 0;
-    const lvl = levelInfo(st.xp).level;
-    const resolvedItems: { item: ShopItem; qty: number }[] = [];
-
-    for (const it of items) {
-      const product = products.find((p) => p.id === it.itemId);
-      if (!product) return { success: false, error: `المنتج غير متوفر` };
-      if (lvl < product.minLevel) return { success: false, error: `المنتج «${product.name}» يتطلب المستوى ${product.minLevel}` };
-      if (typeof product.stock === "number" && product.stock < it.qty) {
-        return { success: false, error: "عذرًا، يبدو أن المنتج أصبح غير متوفر. حاول اختيار منتج آخر." };
-      }
-      const isCosmetic = product.kind === "cosmetic";
-      const ownedQty = isCosmetic ? (st.inventory.includes(product.id) ? 1 : 0) : bagQty(st, product.id);
-      if (isCosmetic && ownedQty > 0) return { success: false, error: `الطالب يملك «${product.name}» بالفعل` };
-      if (!isCosmetic && !product.repeatable && ownedQty > 0) return { success: false, error: `تم شراء «${product.name}» مسبقًا` };
-
-      totalCost += product.price * it.qty;
-      resolvedItems.push({ item: product, qty: it.qty });
-    }
-
-    if (st.coins < totalCost) {
-      return { success: false, error: `رصيد العملات غير كافٍ. المطلوب: ${totalCost}، المتوفر: ${st.coins}` };
-    }
-
-    const now = new Date().toISOString();
-    const newOrders: PurchaseOrder[] = [];
-
-    setProducts((ps) =>
-      ps.map((p) => {
-        const found = resolvedItems.find((r) => r.item.id === p.id);
-        if (found && typeof p.stock === "number") {
-          return { ...p, stock: Math.max(0, p.stock - found.qty) };
-        }
-        return p;
-      })
-    );
-
-    setStudents((ss) =>
-      ss.map((s) => {
-        if (s.id !== studentId) return s;
-        let next: Student = { ...s, coinsSpent: (s.coinsSpent ?? 0) + totalCost, coins: Math.max(0, s.coins - totalCost) };
-        const bag = [...(s.bag ?? [])];
-        const inv = [...(s.inventory ?? [])];
-
-        for (const r of resolvedItems) {
-          const isCosmetic = r.item.kind === "cosmetic";
-          newOrders.push({
-            id: uid(),
-            studentId: s.id,
-            studentName: s.name,
-            itemId: r.item.id,
-            itemName: r.item.name,
-            itemKind: isCosmetic ? "cosmetic" : "physical",
-            itemImage: r.item.image ?? null,
-            itemIcon: r.item.icon,
-            price: r.item.price * r.qty,
-            qty: r.qty,
-            purchasedAt: now,
-            status: "pending",
-          });
-
-          if (isCosmetic) {
-            if (!inv.includes(r.item.id)) inv.push(r.item.id);
-            next = equipOn(next, r.item);
-          } else {
-            const bIdx = bag.findIndex((b) => b.itemId === r.item.id);
-            if (bIdx >= 0) bag[bIdx] = { ...bag[bIdx], qty: bag[bIdx].qty + r.qty };
-            else bag.push({ itemId: r.item.id, qty: r.qty, receivedQty: 0 });
-          }
-        }
-        next.inventory = inv;
-        next.bag = bag;
-        return next;
-      })
-    );
-
-    setOrders((os) => [...newOrders, ...os]);
-    logParentAccess(studentId, true, true);
-
-    sfx.coin();
-    setTimeout(() => sfx.sparkle(), 250);
-    toast("success", `تمت عملية الشراء بنجاح! خصم ${totalCost} عملة`);
-    return { success: true };
-  }, [parentStoreOpen, students, products, logParentAccess, toast]);
-
   /* ===== المزامنة السحابية ===== */
   const cloudEnabled = isCloudEnabled();
   const [cloud, setCloud] = useState<CloudInfo>({
@@ -931,8 +734,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pushInFlight = useRef(false);
   const pushAgain = useRef(false);
   const reportedConflictRef = useRef<string>("");
+  const actionLocksRef = useRef(new Set<string>());
+  const localPersistErrorRef = useRef(false);
   // يحدد إن كانت اللقطة الجاري تطبيقها نظيفة أم تحتوي دمجًا محليًا يحتاج رفعًا جديدًا.
   const applyingSnapshot = useRef<{ rev: number; dirty: boolean } | null>(null);
+
+  const reportConflicts = useCallback((conflicts: MergeConflict[]) => {
+    if (conflicts.length === 0) return;
+    const signature = conflicts.map((item) => `${item.kind}:${item.path}`).sort().join("|");
+    if (reportedConflictRef.current === signature) return;
+    reportedConflictRef.current = signature;
+    toast("error", "حدث تعديل متزامن؛ احتفظ النظام بالسجلات ولم يحذفها. راجع آخر تعديل ثم أعد المحاولة إن لزم.");
+  }, [toast]);
+
+  const acquireActionLock = useCallback((key: string, duration = 1200): boolean => {
+    if (actionLocksRef.current.has(key)) return false;
+    actionLocksRef.current.add(key);
+    const timer = window.setTimeout(() => actionLocksRef.current.delete(key), duration);
+    timers.current.push(timer);
+    return true;
+  }, []);
+
+  const persistLocal = useCallback((data: State, rev: number, dirty: boolean) => {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ ...data, __rev: rev, __dirty: dirty, __base: syncedBaseRef.current }));
+      localPersistErrorRef.current = false;
+    } catch (error) {
+      if (!localPersistErrorRef.current) {
+        localPersistErrorRef.current = true;
+        toast("error", `تعذر حفظ النسخة المحلية${error instanceof Error && error.name === "QuotaExceededError" ? " لأن مساحة المتصفح ممتلئة" : ""}. لا تغلق الصفحة قبل نجاح المزامنة السحابية.`);
+      }
+    }
+  }, [toast]);
 
   /** تطبيق لقطة كاملة مع إبقاء جميع المعرفات والسجلات كما وردت. */
   const applySnapshot = useCallback((next: State, rev: number, dirty: boolean) => {
@@ -960,6 +793,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTripDay(next.tripDay);
     setTripAttendees(next.tripAttendees);
     setRewardSettings(next.rewardSettings);
+    setParentContacts(next.parentContacts);
+    setContactMessages(next.contactMessages ?? { absence: DEFAULT_ABSENCE_MESSAGE, notHeard: DEFAULT_NOT_HEARD_MESSAGE });
+    setParentStoreOpen(next.parentStoreOpen);
+    setOrders(next.orders);
+    setParentLogs(next.parentLogs);
   }, []);
 
   /** رفع نسخة إلى السحابة */
@@ -1007,6 +845,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dirtyRef.current = stillDirty;
       cloudDataRef.current = finalLocal;
       applySnapshot(finalLocal, savedRev, stillDirty);
+      reportConflicts(conflicts);
       // تم الاحتفاظ بالتعديلات دون رسائل منبثقة مزعجة
       if (stillDirty) pushAgain.current = true;
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
@@ -1020,7 +859,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pushTimer.current = window.setTimeout(() => void pushCloud(), 250);
       }
     }
-  }, [applySnapshot, toast]);
+  }, [applySnapshot, reportConflicts]);
 
   /** تطبيق حزمة قادمة من السحابة على الحالة */
   const prepareRemote = useCallback((remote: State): State => {
@@ -1053,8 +892,116 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dirtyRef.current = dirty;
     cloudDataRef.current = merged;
     applySnapshot(merged, remoteRev, dirty);
+    reportConflicts(conflicts);
     // تم الحفظ الآمن دون رسائل منبثقة مزعجة
-  }, [applySnapshot, prepareRemote, toast]);
+  }, [applySnapshot, prepareRemote, reportConflicts]);
+
+  /**
+   * شراء بوابة ولي الأمر: قراءة أحدث نسخة ثم تنفيذ خصم الرصيد والمخزون وإنشاء
+   * الطلب في لقطة واحدة، وتثبيتها بشرط revision. عند سبق جهاز آخر لنا نعيد
+   * الحساب فوق النسخة الأحدث بدل بيع مخزون قديم أو خصم الرصيد مرتين.
+   */
+  const checkoutParentCart = useCallback(async (studentId: string, items: { itemId: string; qty: number }[], allowClosedStore = false) => {
+    const checkoutKey = `parent-checkout:${studentId}`;
+    if (checkoutLocksRef.current.has(checkoutKey)) {
+      return { success: false, error: "عملية الشراء قيد التنفيذ، يرجى الانتظار قليلًا" };
+    }
+    checkoutLocksRef.current.add(checkoutKey);
+    const requestId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : uid();
+    const purchasedAt = new Date().toISOString();
+
+    try {
+      if (isCloudEnabled()) {
+        setCloud((current) => ({ ...current, status: "syncing" }));
+
+        let latest = await cloudLoad();
+        for (let attempt = 0; attempt < 7; attempt += 1) {
+          if (!latest) throw new Error("تعذر قراءة بيانات المتجر المشتركة");
+          const remote = stateFromPartial(latest.data as Partial<State>);
+          // دمج أي تغييرات محلية معلّقة فوق أحدث نسخة سحابية داخل عملية الشراء
+          // نفسها، بدل تنفيذ حفظ كامل إضافي قبل الشراء. هذا يقلل رحلة شبكية
+          // ويحافظ في الوقت نفسه على تحديثات المعلم غير المتعارضة.
+          const local = cloudDataRef.current ?? remote;
+          const base = syncedBaseRef.current ?? local;
+          const conflicts: MergeConflict[] = [];
+          const current = dirtyRef.current
+            ? stateFromPartial(mergeLocalChanges(base, local, remote, [], conflicts) as Partial<State>)
+            : remote;
+          if (conflicts.length) reportConflicts(conflicts);
+          const transaction = applyCheckoutTransaction(current, studentId, items, requestId, purchasedAt, allowClosedStore);
+          if (!transaction.success) return transaction;
+
+          const saved = await cloudSave({ rev: latest.rev + 1, data: transaction.state }, latest.rev);
+          if (saved.applied) {
+            const committed = stateFromPartial(saved.data as Partial<State>);
+            receiveRemote(committed, saved.rev);
+            logParentAccess(studentId, true, true);
+            sfx.coin();
+            timers.current.push(window.setTimeout(() => sfx.sparkle(), 250));
+            toast("success", transaction.alreadyApplied
+              ? "عملية الشراء مسجلة بالفعل"
+              : `تمت عملية الشراء بنجاح! خصم ${transaction.totalCost} عملة`);
+            setCloud((currentCloud) => ({ ...currentCloud, status: "ok", lastSyncAt: Date.now(), lastError: null }));
+            return { success: true };
+          }
+
+          latest = { rev: saved.rev, data: saved.data };
+          const possibleCommit = stateFromPartial(saved.data as Partial<State>);
+          if (possibleCommit.orders.some((order) => order.requestId === requestId)) {
+            receiveRemote(possibleCommit, saved.rev);
+            return { success: true };
+          }
+        }
+        return { success: false, error: "حدثت عمليات شراء متزامنة كثيرة؛ حدّث الصفحة وحاول مرة أخرى" };
+      }
+
+      const current = cloudDataRef.current;
+      if (!current) return { success: false, error: "بيانات المتجر غير جاهزة بعد" };
+      const transaction = applyCheckoutTransaction(current, studentId, items, requestId, purchasedAt, allowClosedStore);
+      if (!transaction.success) return transaction;
+      applySnapshot(transaction.state as State, revRef.current, true);
+      logParentAccess(studentId, true, true);
+      sfx.coin();
+      timers.current.push(window.setTimeout(() => sfx.sparkle(), 250));
+      toast("success", `تمت عملية الشراء بنجاح! خصم ${transaction.totalCost} عملة`);
+      return { success: true };
+    } catch (error) {
+      const message = errMsg(error);
+      setCloud((current) => ({ ...current, status: "error", lastError: message }));
+      return { success: false, error: `تعذر تثبيت عملية الشراء بأمان: ${message}` };
+    } finally {
+      checkoutLocksRef.current.delete(checkoutKey);
+    }
+  }, [applySnapshot, logParentAccess, receiveRemote, reportConflicts, toast]);
+
+  /** يمسح سجل الزيارات فقط؛ لا يغيّر الطلبات أو الطلاب أو الأرصدة أو الملكيات. */
+  const clearParentActivity = useCallback(async (confirmationCode: string) => {
+    if (confirmationCode.trim() !== "911") return { success: false, error: "رمز التأكيد غير صحيح" };
+    try {
+      if (isCloudEnabled()) {
+        if (dirtyRef.current) await pushCloud(true);
+        let latest = await cloudLoad();
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          if (!latest) return { success: false, error: "تعذر قراءة السجل المشترك" };
+          const current = stateFromPartial(latest.data as Partial<State>);
+          const next: State = { ...current, parentLogs: [] };
+          const saved = await cloudSave({ rev: latest.rev + 1, data: next }, latest.rev);
+          if (saved.applied) {
+            receiveRemote(stateFromPartial(saved.data as Partial<State>), saved.rev);
+            toast("success", "تم حذف سجل زيارات أولياء الأمور فقط");
+            return { success: true };
+          }
+          latest = { rev: saved.rev, data: saved.data };
+        }
+        return { success: false, error: "حدث تعارض أثناء تنظيف السجل؛ حاول مرة أخرى" };
+      }
+      setParentLogs([]);
+      toast("success", "تم حذف سجل زيارات أولياء الأمور فقط");
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: `تعذر تنظيف السجل: ${errMsg(error)}` };
+    }
+  }, [pushCloud, receiveRemote, toast]);
 
   /** سحب أحدث نسخة من السحابة وتطبيقها إن كانت أحدث من المحلية */
   const pullCloud = useCallback(
@@ -1068,6 +1015,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           receiveRemote(norm, remote.rev);
           if (announce) toast("success", "تم جلب تحديثات جديدة من السحابة");
         } else if (!remote) {
+          if (localLoadError) throw new Error("تعذر قراءة البيانات المحلية؛ أوقف النظام الرفع التلقائي حتى لا يستبدل بيانات سليمة بنسخة افتراضية");
           // السحابة فارغة ولدينا بيانات حقيقية — ننشر نسختنا
           dirtyRef.current = true;
           await pushCloud(true);
@@ -1108,6 +1056,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       rewardSettings,
       parentContacts,
       contactMessages,
+      parentStoreOpen,
+      orders,
+      parentLogs,
     };
 
     // النسخة السحابية: تُحذف الصور إن طُلب ذلك للتقليل من الحجم
@@ -1121,11 +1072,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       applyingSnapshot.current = null;
       revRef.current = snapshot.rev;
       dirtyRef.current = snapshot.dirty;
-      try {
-        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: snapshot.rev, __dirty: snapshot.dirty, __base: syncedBaseRef.current }));
-      } catch {
-        /* تجاهل */
-      }
+      persistLocal(persistData, snapshot.rev, snapshot.dirty);
       if (snapshot.dirty && isCloudEnabled()) {
         if (pushTimer.current) window.clearTimeout(pushTimer.current);
         pushTimer.current = window.setTimeout(() => void pushCloud(), 250);
@@ -1139,26 +1086,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       revRef.current = readStoredRev();
       dirtyRef.current = readStoredDirty();
       syncedBaseRef.current = readStoredBase() ?? persistData;
-      try {
-        localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current, __dirty: dirtyRef.current, __base: syncedBaseRef.current }));
-      } catch {
-        /* تجاهل */
-      }
+      persistLocal(persistData, revRef.current, dirtyRef.current);
       return;
     }
 
     // تعديل حقيقي: نضع علامة dirty؛ رقم السحابة لا يتغير إلا بعد نجاح الحفظ المشروط.
     dirtyRef.current = true;
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ ...persistData, __rev: revRef.current, __dirty: true, __base: syncedBaseRef.current }));
-    } catch {
-      /* تجاهل */
-    }
+    persistLocal(persistData, revRef.current, true);
     if (isCloudEnabled()) {
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
       pushTimer.current = window.setTimeout(() => void pushCloud(), 700);
     }
-  }, [students, halaqas, lessons, nextLessonId, lastCompletedLessonId, week, weekName, weekStartDateIso, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, ceremonyProductIds, tripOn, tripDay, tripAttendees, rewardSettings, pushCloud]);
+  }, [students, halaqas, lessons, nextLessonId, lastCompletedLessonId, week, weekName, weekStartDateIso, weeksLog, sound, ceremonyPicks, products, heartPrice, showNewProducts, ceremonyProductIds, tripOn, tripDay, tripAttendees, rewardSettings, parentContacts, contactMessages, parentStoreOpen, orders, parentLogs, persistLocal, pushCloud]);
 
   // سحب أولي مرة واحدة، ثم استقبال التحديثات لحظيًا عبر Supabase Realtime.
   useEffect(() => {
@@ -1238,17 +1177,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const updateStudentProfile = useCallback((id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null; guardianPhone?: string; parentAccessToken?: string | null }) => {
-    setStudents((ss) => ss.map((s) => s.id === id ? {
-      ...s,
-      ...(changes.guardianPhone !== undefined ? { guardianPhone: changes.guardianPhone.trim() || undefined } : {}),
-      ...(changes.parentAccessToken !== undefined ? { parentAccessToken: changes.parentAccessToken ? changes.parentAccessToken.trim() : undefined } : {}),
-      ...(changes.name !== undefined ? { name: changes.name.trim() || s.name } : {}),
-      ...(changes.photo !== undefined ? { photo: changes.photo } : {}),
-      ...(changes.coins !== undefined ? { coins: Math.max(0, Math.floor(changes.coins)) } : {}),
-      ...(changes.xp !== undefined ? { xp: Math.max(0, Math.floor(changes.xp)) } : {}),
-      ...(changes.hearts !== undefined ? { hearts: Math.max(0, Math.min(MAX_HEARTS, Math.floor(changes.hearts))) } : {}),
-      ...(changes.halaqaId !== undefined ? { halaqaId: changes.halaqaId } : {}),
-    } : s));
+    setStudents((ss) => ss.map((s) => {
+      if (s.id !== id) return s;
+      const nextCoins = changes.coins !== undefined ? Math.max(0, Math.floor(changes.coins)) : s.coins;
+      const nextXp = changes.xp !== undefined ? Math.max(0, Math.floor(changes.xp)) : s.xp;
+      return {
+        ...s,
+        ...(changes.guardianPhone !== undefined ? { guardianPhone: changes.guardianPhone.trim() || undefined } : {}),
+        ...(changes.parentAccessToken !== undefined ? { parentAccessToken: changes.parentAccessToken ? changes.parentAccessToken.trim() : undefined } : {}),
+        ...(changes.name !== undefined ? { name: changes.name.trim() || s.name } : {}),
+        ...(changes.photo !== undefined ? { photo: changes.photo } : {}),
+        ...(changes.coins !== undefined ? {
+          coins: nextCoins,
+          manualCoinsAdjust: (s.manualCoinsAdjust ?? 0) + (nextCoins - s.coins),
+        } : {}),
+        ...(changes.xp !== undefined ? {
+          xp: nextXp,
+          manualXpAdjust: (s.manualXpAdjust ?? 0) + (nextXp - s.xp),
+        } : {}),
+        ...(changes.hearts !== undefined ? { hearts: Math.max(0, Math.min(MAX_HEARTS, Math.floor(changes.hearts))) } : {}),
+        ...(changes.halaqaId !== undefined ? { halaqaId: changes.halaqaId } : {}),
+      };
+    }));
     // حفظ هادئ
   }, [toast]);
 
@@ -1418,6 +1368,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const st = students.find((s) => s.id === id);
       setStudents((ss) => ss.filter((s) => s.id !== id));
       setTripAttendees((a) => a.filter((x) => x !== id));
+      setCeremonyPicks((current) => ({
+        ...current,
+        improved: current.improved === id ? undefined : current.improved,
+        behavior: current.behavior === id ? undefined : current.behavior,
+        champion1: current.champion1 === id ? undefined : current.champion1,
+        champion2: current.champion2 === id ? undefined : current.champion2,
+        champion3: current.champion3 === id ? undefined : current.champion3,
+        improvedByHalaqa: Object.fromEntries(Object.entries(current.improvedByHalaqa ?? {}).filter(([, studentId]) => studentId !== id)),
+        behaviorByHalaqa: Object.fromEntries(Object.entries(current.behaviorByHalaqa ?? {}).filter(([, studentId]) => studentId !== id)),
+        championExcludedIds: (current.championExcludedIds ?? []).filter((studentId) => studentId !== id),
+      }));
       toast("error", `تم حذف ${st?.name ?? "الطالب"} من الكشف`);
     },
     [students, toast]
@@ -1681,6 +1642,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return {
             ...s,
             xp: newXp,
+            manualXpAdjust: (s.manualXpAdjust ?? 0) + cleanAmount,
             highestRewardedLevel: nextHighest,
             coins: s.coins + levelCoins,
           };
@@ -1712,6 +1674,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return {
             ...s,
             xp: Math.max(0, s.xp - cleanAmount),
+            manualXpAdjust: (s.manualXpAdjust ?? 0) - Math.min(cleanAmount, s.xp),
           };
         })
       );
@@ -1723,7 +1686,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addCoins = useCallback(
     (id: string, amount: number) => {
-      update(id, (s) => ({ ...s, coins: Math.max(0, s.coins + amount) }));
+      update(id, (s) => {
+        const nextCoins = Math.max(0, s.coins + amount);
+        return {
+          ...s,
+          coins: nextCoins,
+          manualCoinsAdjust: (s.manualCoinsAdjust ?? 0) + (nextCoins - s.coins),
+        };
+      });
       if (amount > 0) {
         sfx.coin();
         toast("coin", `+${ar(amount)} عملة ذهبية`);
@@ -1762,6 +1732,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /* ===== الشراء ===== */
   const buyHeart = useCallback(
     (id: string) => {
+      if (!acquireActionLock(`buy-heart:${id}`)) return;
       const st = students.find((s) => s.id === id);
       if (!st) return;
       if (st.hearts >= MAX_HEARTS) {
@@ -1774,110 +1745,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sfx.error();
         return;
       }
-      setStudents((ss) =>
-        ss.map((s) => (s.id === id ? { ...s, coins: s.coins - heartPrice, hearts: Math.min(MAX_HEARTS, s.hearts + 1) } : s))
-      );
-      sfx.coin();
-      const t = window.setTimeout(() => sfx.sparkle(), 180);
-      timers.current.push(t);
-      toast("heart", `اشترى ${st.name} قلبًا جديدًا وعاد لنقاط المستوى`);
+      void checkoutParentCart(id, [{ itemId: HEART_ITEM_ID, qty: 1 }], true).then((result) => {
+        if (!result.success) {
+          toast("error", result.error || "تعذر شراء القلب بأمان");
+          sfx.error();
+        }
+      });
     },
-    [heartPrice, students, toast]
+    [acquireActionLock, checkoutParentCart, heartPrice, students, toast]
   );
 
   const buyItem = useCallback(
     (id: string, itemId: string) => {
+      if (!acquireActionLock(`buy-item:${id}:${itemId}`)) return;
       const item = findItem(products, itemId);
       const st = students.find((s) => s.id === id);
       if (!item || !st) return;
-      // من فقد كل قلوبه لا يشتري أي منتج — عليه شراء قلب أولًا
       if (st.hearts <= 0) {
         toast("heart", `قلوب ${st.name} نفدت — عليه شراء قلب جديد أولًا ليعود للشراء`);
         sfx.error();
         return;
       }
-      const lvl = levelInfo(st.xp).level;
-      const isCosmetic = item.kind === "cosmetic";
-      const ownedQty = isCosmetic ? (st.inventory.includes(itemId) ? 1 : 0) : bagQty(st, itemId);
-      if (isCosmetic && ownedQty > 0) {
-        toast("error", "تملك هذه الخاصية بالفعل");
-        sfx.error();
-        return;
-      }
-      if (!isCosmetic && !item.repeatable && ownedQty > 0) {
-        toast("error", "اشتريت هذه الجائزة بالفعل");
-        sfx.error();
-        return;
-      }
-      // نفاد الكمية لدى المعلم يمنع الشراء (للنوعين)
-      if (typeof item.stock === "number" && item.stock <= 0) {
-        toast("error", "عذرًا، يبدو أن المنتج أصبح غير متوفر. حاول اختيار منتج آخر.");
-        sfx.error();
-        return;
-      }
-      if (lvl < item.minLevel) {
-        toast("error", `يُفتح في المستوى ${ar(item.minLevel)}`);
-        sfx.error();
-        return;
-      }
-      if (st.coins < item.price) {
-        toast("error", `عملاتك لا تكفي — تحتاج ${ar(item.price)}`);
-        sfx.error();
-        return;
-      }
-      // خصم وحدة من الكمية المتوفرة عند الشراء (للنوعين)
-      if (typeof item.stock === "number") {
-        setProducts((ps) =>
-          ps.map((x) => (x.id === itemId && typeof x.stock === "number" ? { ...x, stock: Math.max(0, x.stock - 1) } : x))
-        );
-      }
-      const now = new Date().toISOString();
-      const buyOrderId = uid();
-      setStudents((ss) =>
-        ss.map((s) => {
-          if (s.id !== id) return s;
-          const next: Student = { ...s, coins: s.coins - item.price, coinsSpent: (s.coinsSpent ?? 0) + item.price };
-          if (isCosmetic) {
-            next.inventory = [...s.inventory, itemId];
-            return equipOn(next, item); // تُلبس الخاصية فور شرائها
-          }
-          // خارجية: تُضاف إلى الحقيبة (تُنتظر التسليم من المعلم)
-          const bag = [...(s.bag ?? [])];
-          const idx = bag.findIndex((b) => b.itemId === itemId);
-          if (idx >= 0) bag[idx] = { ...bag[idx], qty: bag[idx].qty + 1 };
-          else bag.push({ itemId, qty: 1, receivedQty: 0 });
-          next.bag = bag;
-          return next;
-        })
-      );
-      if (!isCosmetic) {
-        setOrders((os) => [
-          {
-            id: buyOrderId,
-            studentId: st.id,
-            studentName: st.name,
-            itemId: item.id,
-            itemName: item.name,
-            itemKind: "physical",
-            itemImage: item.image ?? null,
-            itemIcon: item.icon,
-            price: item.price,
-            qty: 1,
-            purchasedAt: now,
-            status: "pending",
-          },
-          ...os,
-        ]);
-      }
-      sfx.coin();
-      const t = window.setTimeout(() => sfx.sparkle(), 200);
-      timers.current.push(t);
-      toast(
-        "success",
-        isCosmetic ? `لبس ${st.name} «${item.name}» — عدّله من الحقيبة` : `أضاف ${st.name} «${item.name}» إلى حقيبته`
-      );
+      void checkoutParentCart(id, [{ itemId, qty: 1 }], true).then((result) => {
+        if (!result.success) {
+          toast("error", result.error || "تعذر إتمام الشراء");
+          sfx.error();
+        }
+      });
     },
-    [products, students, toast]
+    [acquireActionLock, checkoutParentCart, products, students, toast]
   );
 
   /* ===== خصائص البروفايل والحقيبة ===== */
@@ -1893,6 +1789,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [products, students, toast, update]
   );
+
+  /** تفعيل خاصية من بوابة ولي الأمر فوق أحدث revision وبالتحقق من الملكية. */
+  const equipParentCosmetic = useCallback(async (id: string, itemId: string) => {
+    const mutate = (current: State): { state?: State; error?: string } => {
+      const student = current.students.find((entry) => entry.id === id);
+      const item = current.products.find((entry) => entry.id === itemId);
+      if (!student) return { error: "لم يتم العثور على الطالب" };
+      if (!item || item.kind !== "cosmetic" || !item.slot) return { error: "خاصية البروفايل غير صالحة" };
+      if (!student.inventory.includes(itemId)) return { error: "لا يملك الطالب هذه الخاصية" };
+      return {
+        state: {
+          ...current,
+          students: current.students.map((entry) => entry.id === id ? equipOn(entry, item) : entry),
+        },
+      };
+    };
+
+    try {
+      if (isCloudEnabled()) {
+        let latest = await cloudLoad();
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          if (!latest) return { success: false, error: "تعذر قراءة بيانات الطالب المشتركة" };
+          const current = stateFromPartial(latest.data as Partial<State>);
+          const result = mutate(current);
+          if (!result.state) return { success: false, error: result.error };
+          const saved = await cloudSave({ rev: latest.rev + 1, data: result.state }, latest.rev);
+          if (saved.applied) {
+            receiveRemote(stateFromPartial(saved.data as Partial<State>), saved.rev);
+            toast("success", "تم تفعيل الخاصية وظهرت في ملف الطالب");
+            return { success: true };
+          }
+          latest = { rev: saved.rev, data: saved.data };
+        }
+        return { success: false, error: "حدث تعارض أثناء التفعيل؛ حاول مرة أخرى" };
+      }
+      const current = cloudDataRef.current;
+      if (!current) return { success: false, error: "بيانات الطالب غير جاهزة" };
+      const result = mutate(current);
+      if (!result.state) return { success: false, error: result.error };
+      applySnapshot(result.state, revRef.current, true);
+      toast("success", "تم تفعيل الخاصية في شنطة الطالب");
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: `تعذر تفعيل الخاصية: ${errMsg(error)}` };
+    }
+  }, [applySnapshot, receiveRemote, toast]);
 
   /** خلع خاصية من خانة معيّنة (إرجاعها للشكل الأساسي) */
   const unequipSlot = useCallback(
@@ -1923,24 +1865,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...s,
         bag: (s.bag ?? []).map((b) => (b.itemId === itemId ? { ...b, receivedQty: nowReceived } : b)),
       }));
-
-      // مزامنة حالة الطلب في orders
-      setOrders((os) => {
-        const idx = os.findIndex((o) => o.studentId === id && o.itemId === itemId && o.status !== "delivered");
-        if (idx >= 0) {
-          const updated = [...os];
-          updated[idx] = { ...updated[idx], status: "delivered", deliveredAt: new Date().toISOString() };
-          return updated;
-        }
-        return os;
-      });
-
       if (nowReceived >= entry.qty) {
         sfx.sparkle();
-        toast("success", `استلم ${st.name} «${findItem(products, itemId)?.name ?? "الجائزة"}» بالكامل ✓`);
+        toast("success", `استلم ${st.name} «${findItem(products, itemId)?.name ?? "الجائزة"}» بالكامل`);
       } else {
         sfx.pop();
-        toast("success", `سُلّمت قطعة من «${findItem(products, itemId)?.name ?? "الجائزة"}» لـ${st.name}`);
       }
     },
     [products, students, toast, update]
@@ -1957,23 +1886,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           b.itemId === itemId && b.receivedQty > 0 ? { ...b, receivedQty: b.receivedQty - 1 } : b
         ),
       }));
-
-      setOrders((os) => {
-        const idx = os.findIndex((o) => o.studentId === id && o.itemId === itemId && o.status === "delivered");
-        if (idx >= 0) {
-          const updated = [...os];
-          const { deliveredAt, ...rest } = updated[idx];
-          updated[idx] = { ...rest, status: "pending" };
-          return updated;
-        }
-        return os;
-      });
       sfx.click();
-      toast("info", "تم التراجع عن تسليم الجائزة");
     },
-    [students, update, toast]
+    [students, update]
   );
 
+  /** منح منتج من المتجر لطالب مجانًا (صلاحية المعلم) — يخصم من الكمية أيضًا */
   const grantItem = useCallback(
     (studentId: string, itemId: string) => {
       const item = findItem(products, itemId);
@@ -2123,6 +2041,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateWeekLog = useCallback((targetWeek: number, next: WeekLog) => {
     const updatedEntries = next.records ? next.records.map((r) => {
       const mockStudent = r as unknown as Student;
+      const previousEntry = next.students?.find((entry) => entry.id === r.id) ?? next.top?.find((entry) => entry.id === r.id);
       const mem = measureStudentWork(mockStudent, "memorization");
       const rev = measureStudentWork(mockStudent, "review");
       return {
@@ -2145,6 +2064,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         reviewPages: rev.pages,
         memorizationDays: mem.sessions,
         reviewDays: rev.sessions,
+        frame: previousEntry?.frame ?? null,
+        crown: previousEntry?.crown ?? null,
         isTesting: r.isTesting === true,
         halaqaId: r.halaqaId ?? null,
       };
@@ -2223,6 +2144,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast("success", "تم حفظ تعديلات الأسبوع وتحديث نقاط وعملات الطلاب");
   }, [heartPrice, products, toast, week, weeksLog]);
 
+  /** يعدّل تاريخ سجل الأسبوع نفسه فقط؛ لا يعيد حساب أو نقل أي بيانات طالب. */
+  const updateArchivedWeekDate = useCallback(async (targetWeek: number, nextStart: string) => {
+    if (!isTeachingWeekStart(nextStart)) {
+      return { success: false, error: "يجب أن يكون تاريخ بداية الأسبوع يوم الأحد" };
+    }
+    const mutate = (current: State): State | null => {
+      if (!current.weeksLog.some((entry) => entry.week === targetWeek)) return null;
+      return {
+        ...current,
+        weeksLog: current.weeksLog.map((entry) => entry.week === targetWeek
+          ? { ...entry, weekStartDateIso: nextStart }
+          : entry),
+      };
+    };
+    try {
+      if (isCloudEnabled()) {
+        let latest = await cloudLoad();
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          if (!latest) return { success: false, error: "تعذر قراءة الأرشيف المشترك" };
+          const current = stateFromPartial(latest.data as Partial<State>);
+          const next = mutate(current);
+          if (!next) return { success: false, error: "لم يتم العثور على الأسبوع" };
+          const saved = await cloudSave({ rev: latest.rev + 1, data: next }, latest.rev);
+          if (saved.applied) {
+            receiveRemote(stateFromPartial(saved.data as Partial<State>), saved.rev);
+            toast("success", "تم تحديث تاريخ الأسبوع في جميع الواجهات");
+            return { success: true };
+          }
+          latest = { rev: saved.rev, data: saved.data };
+        }
+        return { success: false, error: "حدث تعارض أثناء تعديل التاريخ؛ حاول مرة أخرى" };
+      }
+      const current = cloudDataRef.current;
+      if (!current) return { success: false, error: "بيانات الأرشيف غير جاهزة" };
+      const next = mutate(current);
+      if (!next) return { success: false, error: "لم يتم العثور على الأسبوع" };
+      applySnapshot(next, revRef.current, true);
+      toast("success", "تم تحديث تاريخ الأسبوع");
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: `تعذر تحديث التاريخ: ${errMsg(error)}` };
+    }
+  }, [applySnapshot, receiveRemote, toast]);
+
   /* ===== الرحلة الأسبوعية ===== */
   const setTrip = useCallback((on: boolean, day?: TripDay | null) => {
     setTripOn(on);
@@ -2256,6 +2221,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /** بدء أسبوع جديد: يؤرشف نتائج الأسبوع الحالي — القلوب تستمر كما هي */
   const startWeek = useCallback(() => {
+    if (!acquireActionLock(`start-week:${week}`, 5000)) return;
     // أرشفة الأسبوع المنتهي
     const championExcluded = new Set(ceremonyPicks.championExcludedIds ?? []);
     const champs = championTop(students, tripOn, tripAttendees, rewardSettings.champions.ratingMode).filter((student) => !championExcluded.has(student.id));
@@ -2357,7 +2323,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setShowCeremony(false);
     sfx.sparkle();
     toast("success", "بدأ أسبوع جديد — كشف نظيف للجميع، والقلوب كما هي");
-  }, [ceremonyPicks, ceremonyProductIds, rewardSettings, showNewProducts, students, toast, tripAttendees, tripDay, tripOn, week, weekName, weekStartDateIso]);
+  }, [acquireActionLock, ceremonyPicks, ceremonyProductIds, rewardSettings, showNewProducts, students, toast, tripAttendees, tripDay, tripOn, week, weekName, weekStartDateIso]);
 
   const setWeekName = useCallback((name: string) => setWeekNameState(name), []);
   const setWeekStartDateIso = useCallback((value: string) => setWeekStartDateIsoState(value), []);
@@ -2431,6 +2397,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     buyItem,
     grantItem,
     equipCosmetic,
+    equipParentCosmetic,
     unequipSlot,
     deliverItem,
     undeliverItem,
@@ -2445,6 +2412,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRewardSetting,
     removeWeekLog,
     updateWeekLog,
+    updateArchivedWeekDate,
     startWeek,
     showCeremony,
     startCeremony,
@@ -2464,6 +2432,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     undeliverOrder,
     parentLogs,
     logParentAccess,
+    clearParentActivity,
     checkoutParentCart,
   };
 

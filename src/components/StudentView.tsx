@@ -1,28 +1,13 @@
 /* وضع الطالب — يشاهد مستواه ونقاطه ونتيجة الأسبوع، ويدخل متجره وحقيبته */
 import { useEffect, useState } from "react";
 import { useApp } from "../appState";
-import { ar, attendedDays, denseWeekRanking, denseXpRanking, DAYS, DAY_PARTS, levelInfo, MAX_LEVEL, rankOf, xpForLevel, type BgKind } from "../core";
+import { ar, attendedDays, denseWeekRanking, denseXpRanking, DAYS, DAY_PARTS, levelInfo, MAX_LEVEL, rankOf, xpForLevel } from "../core";
+import { profileCardClass, profileCardIsDark, profileCardTopClass } from "../profileAppearance";
 import Avatar from "./Avatar";
 import StudentBag from "./Bag";
 import { StudentShop } from "./Store";
 import { CoinChip, heartFade, HeartsRow, Icon, LevelBadge, Modal, XpBar } from "./ui";
 import { sfx } from "../sound";
-
-/* ===== خلفيات بطاقة البروفايل وألوان النص المناسبة ===== */
-const BG_META: Record<string, { card: string; top: string; dark?: boolean }> = {
-  red: { card: "border-red-400 bg-gradient-to-b from-red-300 via-red-200 to-rose-100", top: "bg-gradient-to-b from-white/50 to-transparent" },
-  orange: { card: "border-orange-400 bg-gradient-to-b from-orange-300 via-orange-200 to-amber-100", top: "bg-gradient-to-b from-white/50 to-transparent" },
-  yellow: { card: "border-yellow-400 bg-gradient-to-b from-yellow-300 via-amber-200 to-yellow-100", top: "bg-gradient-to-b from-white/50 to-transparent" },
-  green: { card: "border-green-500 bg-gradient-to-b from-green-300 via-green-200 to-lime-100", top: "bg-gradient-to-b from-white/50 to-transparent" },
-  sky: { card: "border-sky-400 bg-gradient-to-b from-sky-300 via-sky-200 to-cyan-100", top: "bg-gradient-to-b from-white/50 to-transparent" },
-  blue: { card: "border-blue-500 bg-gradient-to-b from-blue-300 via-blue-200 to-sky-100", top: "bg-gradient-to-b from-white/50 to-transparent" },
-  purple: { card: "border-purple-500 bg-gradient-to-b from-purple-300 via-purple-200 to-fuchsia-100", top: "bg-gradient-to-b from-white/50 to-transparent" },
-  pink: { card: "border-pink-400 bg-gradient-to-b from-pink-300 via-pink-200 to-rose-100", top: "bg-gradient-to-b from-white/50 to-transparent" },
-  night: { card: "border-indigo-500 bg-gradient-to-b from-indigo-950 via-purple-950 to-slate-900", top: "bg-gradient-to-b from-white/10 to-transparent", dark: true },
-};
-const cardBgCls = (bg?: BgKind | null): string => (bg && BG_META[bg] ? BG_META[bg].card : "border-grape-200 bg-white");
-const cardTopCls = (bg?: BgKind | null): string => (bg && BG_META[bg] ? BG_META[bg].top : "bg-gradient-to-b from-grape-100 to-transparent");
-const cardIsDark = (bg?: BgKind | null): boolean => !!(bg && BG_META[bg]?.dark);
 
 /* ===== شريط المستوى ===== */
 function LevelTrack({ xp }: { xp: number }) {
@@ -102,7 +87,7 @@ export default function StudentView() {
   const weekRank = denseWeekRanking(sorted).find((entry) => entry.student.id === activeId)?.rank ?? 0;
   const checkedDays = s ? attendedDays(s) : 0;
   const checkedSlots = s ? DAYS.reduce((n, d) => n + DAY_PARTS.filter((p) => s.days[d.key][p.key]).length, 0) : 0;
-  const dark = s ? cardIsDark(s.cardBg) : false;
+  const dark = s ? profileCardIsDark(s.cardBg) : false;
 
   return (
     <div className="anim-fade">
@@ -136,8 +121,8 @@ export default function StudentView() {
       ) : (
         <div className="grid gap-5 lg:grid-cols-3">
           {/* البطاقة الشخصية */}
-          <div className={`card-shine relative overflow-hidden rounded-[28px] border-2 p-6 text-center lg:col-span-1 ${s.hearts === 0 ? "grayscale" : ""} ${cardBgCls(s.cardBg)}`}>
-            <div className={`pointer-events-none absolute inset-x-0 top-0 h-24 ${cardTopCls(s.cardBg)}`} />
+          <div className={`card-shine relative overflow-hidden rounded-[28px] border-2 p-6 text-center lg:col-span-1 ${s.hearts === 0 ? "grayscale" : ""} ${profileCardClass(s.cardBg)}`}>
+            <div className={`pointer-events-none absolute inset-x-0 top-0 h-24 ${profileCardTopClass(s.cardBg)}`} />
             <div className="relative flex flex-col items-center">
               <Avatar photo={s.photo} name={s.name} size={128} frame={s.frame} crown={s.crown} glow={s.glow} />
               <h2 className={`mt-3 font-display text-3xl font-extrabold ${dark ? "text-white" : "text-ink"}`}>{s.name}</h2>
