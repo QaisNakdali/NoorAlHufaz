@@ -1,11 +1,26 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
-import { addCalendarDays, formatHijriDate, formatTeachingWeek } from "../hijriDate";
+import { addCalendarDays, formatHijriDate, formatTeachingWeek, formatTeachingWeekRange } from "../hijriDate";
 import { ar, DAYS, emptyRecitationRatings, emptyWeeklyWard, emptyWeekDays, uid, type DayKey, type DayPart, type WeekLog, type WeekStudentRecord } from "../core";
 import Avatar from "./Avatar";
-import { SectionHead } from "./ui";
+import { Icon, Modal, SectionHead } from "./ui";
 
 const copy = <T,>(value: T): T => structuredClone(value);
+
+const normalizeSearch = (value: string): string => {
+  const arDigits = "٠١٢٣٤٥٦٧٨٩";
+  let s = value;
+  for (let i = 0; i < arDigits.length; i++) {
+    s = s.replaceAll(arDigits[i], String(i));
+  }
+  return s
+    .replace(/[ًٌٍَُِّْـ]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .trim()
+    .toLowerCase();
+};
 
 function StudentEditor({ record, update, remove, weekStartDateIso }: {
   record: WeekStudentRecord;
@@ -19,8 +34,10 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
     else days[day] = { ...days[day], [key]: checked, absent: false };
     update({ ...record, days });
   };
-  const setLines = (day: DayKey, key: "memorizationLines" | "reviewLines", value: number) => {
-    update({ ...record, ward: { ...record.ward, [day]: { ...record.ward[day], [key]: Math.max(0, value || 0) } } });
+  const updateWardField = (day: DayKey, field: keyof DailyWard, value: any) => {
+    const curWard = record.ward ?? emptyWeeklyWard();
+    const curDay = curWard[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
+    update({ ...record, ward: { ...curWard, [day]: { ...curDay, [field]: value } } });
   };
   return <article className="rounded-2xl border-2 border-grape-100 bg-white p-4">
     <div className="flex flex-wrap items-center gap-3">
@@ -30,52 +47,442 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
       <button type="button" className="rounded-xl bg-coral-50 px-3 py-2 text-xs font-bold text-coral-600" onClick={remove}>إزالة من هذا الأسبوع</button>
     </div>
     <div className="mt-3 grid gap-2 lg:grid-cols-2">
-      {DAYS.map((day) => <div key={day.key} className="rounded-xl bg-grape-50 p-3">
-        <p className="mb-2 font-display text-sm font-extrabold">{day.label}{weekStartDateIso ? <span className="ms-2 text-xs text-grape-400">{formatHijriDate(addCalendarDays(weekStartDateIso, DAYS.findIndex((item) => item.key === day.key)), { day: "numeric", month: "long" })}</span> : null}</p>
-        <div className="grid grid-cols-4 gap-1 text-xs">
-          {(["a", "h", "r"] as DayPart[]).map((part) => <label key={part} className="rounded-lg bg-white p-2 text-center font-bold"><input className="me-1" type="checkbox" disabled={!!record.days[day.key].absent} checked={record.days[day.key][part]} onChange={(e) => setDay(day.key, part, e.target.checked)} />{part === "a" ? "حضور" : part === "h" ? "حفظ" : "مراجعة"}</label>)}
-          <label className="rounded-lg bg-coral-50 p-2 text-center font-bold text-coral-600"><input className="me-1" type="checkbox" checked={!!record.days[day.key].absent} onChange={(e) => setDay(day.key, "absent", e.target.checked)} />غائب</label>
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <label className="text-xs font-bold text-grape-500">أسطر الحفظ<input className="field-control mt-1 w-full" type="number" min="0" step="0.5" value={record.ward[day.key].memorizationLines} onChange={(e) => setLines(day.key, "memorizationLines", Number(e.target.value))} /></label>
-          <label className="text-xs font-bold text-grape-500">أسطر المراجعة<input className="field-control mt-1 w-full" type="number" min="0" step="0.5" value={record.ward[day.key].reviewLines} onChange={(e) => setLines(day.key, "reviewLines", Number(e.target.value))} /></label>
-        </div>
-      </div>)}
+      {DAYS.map((day) => {
+        const ward = record.ward?.[day.key] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
+        const absent = !!record.days?.[day.key]?.absent;
+        return (
+          <div key={day.key} className="rounded-xl bg-grape-50 p-3">
+            <p className="mb-2 font-display text-sm font-extrabold">{day.label}{weekStartDateIso ? <span className="ms-2 text-xs text-grape-400">{formatHijriDate(addCalendarDays(weekStartDateIso, DAYS.findIndex((item) => item.key === day.key)), { day: "numeric", month: "long" })}</span> : null}</p>
+            <div className="grid grid-cols-4 gap-1 text-xs">
+              {(["a", "h", "r"] as DayPart[]).map((part) => <label key={part} className="rounded-lg bg-white p-2 text-center font-bold"><input className="me-1" type="checkbox" disabled={absent} checked={!!record.days?.[day.key]?.[part]} onChange={(e) => setDay(day.key, part, e.target.checked)} />{part === "a" ? "حضور" : part === "h" ? "حفظ" : "مراجعة"}</label>)}
+              <label className="rounded-lg bg-coral-50 p-2 text-center font-bold text-coral-600"><input className="me-1" type="checkbox" checked={absent} onChange={(e) => setDay(day.key, "absent", e.target.checked)} />غائب</label>
+            </div>
+            <div className="mt-2.5 space-y-2">
+              <div className="rounded-lg bg-white p-2 border border-grape-200/60">
+                <span className="text-[11px] font-extrabold text-grape-700">ورد الحفظ:</span>
+                <div className="mt-1 grid grid-cols-3 gap-1.5">
+                  <input disabled={absent} placeholder="السورة" className="field-control text-xs" value={ward.memorization} onChange={(e) => updateWardField(day.key, "memorization", e.target.value)} />
+                  <input disabled={absent} type="number" min="0" placeholder="الآيات" className="field-control text-xs text-center" value={ward.memorizationVerses || ""} onChange={(e) => updateWardField(day.key, "memorizationVerses", Number(e.target.value))} />
+                  <input disabled={absent} type="number" min="0" step="0.5" placeholder="الأسطر" className="field-control text-xs text-center" value={ward.memorizationLines || ""} onChange={(e) => updateWardField(day.key, "memorizationLines", Number(e.target.value))} />
+                </div>
+              </div>
+              <div className="rounded-lg bg-white p-2 border border-amber-200/60">
+                <span className="text-[11px] font-extrabold text-amber-800">ورد المراجعة:</span>
+                <div className="mt-1 grid grid-cols-3 gap-1.5">
+                  <input disabled={absent} placeholder="السورة" className="field-control text-xs border-amber-200" value={ward.review} onChange={(e) => updateWardField(day.key, "review", e.target.value)} />
+                  <input disabled={absent} type="number" min="0" placeholder="الآيات" className="field-control text-xs border-amber-200 text-center" value={ward.reviewVerses || ""} onChange={(e) => updateWardField(day.key, "reviewVerses", Number(e.target.value))} />
+                  <input disabled={absent} type="number" min="0" step="0.5" placeholder="الأسطر" className="field-control text-xs border-amber-200 text-center" value={ward.reviewLines || ""} onChange={(e) => updateWardField(day.key, "reviewLines", Number(e.target.value))} />
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   </article>;
 }
 
 export default function PastWeeks() {
-  const { weeksLog, updateWeekLog } = useApp();
-  const logs = useMemo(() => [...weeksLog].sort((a, b) => b.week - a.week), [weeksLog]);
+  const { weeksLog, updateWeekLog, removeWeekLog } = useApp();
+  const [dateSearch, setDateSearch] = useState("");
+
+  // ترتيب زمني تنازلي من الأحدث إلى الأقدم
+  const logs = useMemo(() => [...weeksLog].sort((a, b) => {
+    const time = (log: WeekLog): number => {
+      const primary = log.weekStartDateIso ? new Date(`${log.weekStartDateIso}T12:00:00`).getTime() : Number.NaN;
+      if (Number.isFinite(primary)) return primary;
+      const fallback = new Date(log.savedAtIso ?? log.savedAt).getTime();
+      return Number.isFinite(fallback) ? fallback : log.week;
+    };
+    return time(b) - time(a) || b.week - a.week;
+  }), [weeksLog]);
+
+  // البحث في التواريخ الهجرية الحقيقية المحفوظة للأسبوع (اليوم والشهر والسنة)
+  const filteredLogs = useMemo(() => {
+    const q = normalizeSearch(dateSearch);
+    if (!q) return logs;
+    return logs.filter((log) => {
+      const searchTargets: string[] = [
+        log.name ?? "",
+        `الأسبوع ${log.week}`,
+        String(log.week),
+      ];
+      if (log.weekStartDateIso) {
+        searchTargets.push(formatTeachingWeek(log.weekStartDateIso)); searchTargets.push(formatTeachingWeekRange(log.weekStartDateIso));
+        searchTargets.push(formatHijriDate(log.weekStartDateIso, { day: "numeric", month: "long", year: "numeric" }));
+        DAYS.forEach((_, idx) => {
+          const d = addCalendarDays(log.weekStartDateIso!, idx);
+          searchTargets.push(formatHijriDate(d, { day: "numeric", month: "long", year: "numeric" }));
+        });
+      }
+      if (log.savedAtIso) {
+        searchTargets.push(formatHijriDate(log.savedAtIso, { day: "numeric", month: "long", year: "numeric" }));
+      }
+      return searchTargets.some((target) => normalizeSearch(target).includes(q));
+    });
+  }, [logs, dateSearch]);
+
   const [week, setWeek] = useState<number | null>(logs[0]?.week ?? null);
-  const current = logs.find((item) => item.week === week) ?? null;
+  const current = (filteredLogs.find((item) => item.week === week) ?? filteredLogs[0] ?? logs.find((item) => item.week === week)) ?? null;
   const [draft, setDraft] = useState<WeekLog | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePin, setDeletePin] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+
+  const handleDeleteWeek = () => {
+    if (deletePin !== "911") {
+      setDeleteError("رمز الحذف غير صحيح. الرمز المطلوب هو 911");
+      return;
+    }
+    if (!current) return;
+    const targetWeek = current.week;
+    removeWeekLog(targetWeek);
+    setDeleteOpen(false);
+    setDeletePin("");
+    setDeleteError("");
+    setDraft(null);
+    const remaining = logs.filter((l) => l.week !== targetWeek);
+    setWeek(remaining[0]?.week ?? null);
+  };
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
   const shown = draft ?? current;
+
   const unlock = () => {
     if (!current || pin !== "911") return setError("الرمز غير صحيح");
     setDraft(copy(current)); setPin(""); setError("");
   };
+
   const addStudent = () => setDraft((log) => !log ? log : ({ ...log, records: [...(log.records ?? []), {
     id: `archive-${uid()}`, name: "طالب أضيف إلى السجل", photo: null, halaqaId: null,
     isTesting: false, days: emptyWeekDays(), recitationRatings: emptyRecitationRatings(),
     ward: emptyWeeklyWard(), hearts: 3, heartsLostWeek: 0, xp: 0, coins: 0,
   }] }));
+
   return <div className="anim-fade">
-    <SectionHead icon="calendar" title="الأسابيع الماضية" desc="المشاهدة متاحة للجميع، والتعديل المحمي يؤثر على السجل المحدد فقط" />
-    {!shown ? <div className="rounded-3xl border-2 border-dashed border-grape-200 bg-white p-12 text-center font-bold text-grape-500">لا توجد أسابيع مؤرشفة بعد.</div> : <div className="grid gap-4 lg:grid-cols-[270px_1fr]">
-      <aside className="space-y-2">{logs.map((log) => <button key={log.week} type="button" onClick={() => { setWeek(log.week); setDraft(null); }} className={`w-full rounded-2xl border-2 p-3 text-start ${week === log.week ? "border-grape-600 bg-grape-600 text-white" : "border-grape-100 bg-white"}`}><strong className="block">{log.name || `الأسبوع ${ar(log.week)}`}</strong><span className="text-xs opacity-70">{log.weekStartDateIso ? formatTeachingWeek(log.weekStartDateIso) : log.savedAtIso ? `المنتهي في ${formatHijriDate(log.savedAtIso)}` : "تاريخ محفوظ سابقًا"}</span></button>)}</aside>
-      <section className="rounded-3xl border-2 border-grape-100 bg-white p-5">
-        <div className="flex flex-wrap items-center gap-3"><div className="flex-1"><h3 className="font-display text-xl font-extrabold">{shown.name || `الأسبوع ${ar(shown.week)}`}</h3><p className="text-xs font-bold text-grape-500">{shown.weekStartDateIso ? formatTeachingWeek(shown.weekStartDateIso) : shown.savedAtIso ? formatHijriDate(shown.savedAtIso) : "تاريخ محفوظ سابقًا"}</p></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${draft ? "bg-coral-100 text-coral-600" : "bg-mint-100 text-mint-700"}`}>{draft ? "وضع التعديل" : "وضع المشاهدة"}</span></div>
-        {shown.weekStartDateIso && <div className="mt-3 flex flex-wrap gap-2">{DAYS.map((day, index) => <span key={day.key} className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700">{day.label} · {formatHijriDate(addCalendarDays(shown.weekStartDateIso!, index), { day: "numeric", month: "long" })}</span>)}</div>}
-        {!draft ? <div className="mt-4 flex flex-wrap gap-2"><input className="field-control w-40" type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="رمز التعديل" /><button type="button" onClick={unlock} className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-bold text-white">فتح التعديل</button>{error && <span className="self-center text-xs font-bold text-coral-600">{error}</span>}</div> : <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={addStudent} className="rounded-xl bg-mint-600 px-4 py-2 text-sm font-bold text-white">+ إضافة طالب للسجل</button><button type="button" onClick={() => setDraft(null)} className="rounded-xl bg-grape-100 px-4 py-2 text-sm font-bold text-grape-600">إلغاء</button><button type="button" onClick={() => { updateWeekLog(draft.week, draft); setDraft(null); }} className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-bold text-white">حفظ التغييرات</button></div>}
-        {shown.trip && <div className="mt-4 rounded-2xl bg-mint-50 p-4"><h4 className="font-display font-extrabold text-mint-700">طلاب الرحلة</h4><p className="mt-1 text-sm font-bold text-mint-700">{shown.trip.attendeeNames.join("، ") || "لم يُسجل مشاركون"}</p></div>}
-        {shown.awards.length > 0 && <div className="mt-4 rounded-2xl bg-gold-50 p-4"><h4 className="font-display font-extrabold">جوائز الحفل المعتمدة</h4><div className="mt-2 flex flex-wrap gap-2">{shown.awards.map((award, i) => <span key={i} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gold-700">{award.title}: {award.studentName}</span>)}</div></div>}
-        <div className="mt-5 space-y-3">{shown.records ? shown.records.map((record) => draft ? <StudentEditor key={record.id} record={record} weekStartDateIso={shown.weekStartDateIso} update={(next) => setDraft((log) => log ? { ...log, records: log.records?.map((r) => r.id === record.id ? next : r) } : log)} remove={() => setDraft((log) => log ? { ...log, records: log.records?.filter((r) => r.id !== record.id) } : log)} /> : <article key={record.id} className="flex items-center gap-3 rounded-2xl bg-grape-50 p-3"><Avatar photo={record.photo} name={record.name} size={42} /><div><p className="font-display font-extrabold">{record.name} {record.isTesting && <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] text-white">اختبار</span>}</p><p className="text-xs font-bold text-grape-500">حضور {ar(DAYS.filter((d) => record.days[d.key].a).length)} · غياب {ar(DAYS.filter((d) => record.days[d.key].absent).length)} · حفظ {ar(DAYS.filter((d) => record.days[d.key].h).length)} · مراجعة {ar(DAYS.filter((d) => record.days[d.key].r).length)}</p></div></article>) : (shown.students ?? shown.top).map((entry) => <article key={entry.id} className="flex items-center gap-3 rounded-2xl bg-grape-50 p-3"><Avatar photo={entry.photo} name={entry.name} size={42} /><div><p className="font-display font-extrabold">{entry.name}</p><p className="text-xs font-bold text-grape-500">{ar(entry.weekXp)} نقطة أسبوعية</p></div></article>)}</div>
-        {!shown.records && <p className="mt-4 rounded-xl bg-gold-50 p-3 text-xs font-bold text-gold-700">هذا سجل قديم لا يحتوي لقطة يومية كاملة؛ تُعرض معلوماته المحفوظة فقط دون اختراع بيانات.</p>}
-      </section>
-    </div>}
+    <SectionHead icon="calendar" title="الأسابيع الماضية / الأرشيف" desc="تصفح أرشيف الأسابيع والبحث حسب التاريخ الهجري المحفوظ مع الحفاظ على الترتيب الزمني" />
+    
+    {logs.length === 0 ? (
+      <div className="rounded-3xl border-2 border-dashed border-grape-200 bg-white p-12 text-center font-bold text-grape-500">
+        لا توجد أسابيع مؤرشفة بعد.
+      </div>
+    ) : (
+      <div className="grid gap-4 lg:grid-cols-[290px_1fr]">
+        <aside className="space-y-2">
+          {/* مربع البحث بالتاريخ في الأرشيف */}
+          <div className="relative mb-2">
+            <input
+              type="text"
+              value={dateSearch}
+              onChange={(e) => setDateSearch(e.target.value)}
+              placeholder="ابحث بالتاريخ (مثال: 3 ربيع الآخر 1448)..."
+              className="field-control w-full pe-8 text-xs font-bold"
+            />
+            {dateSearch && (
+              <button
+                type="button"
+                onClick={() => setDateSearch("")}
+                className="absolute inset-y-0 end-2 flex items-center text-xs font-extrabold text-grape-400 hover:text-coral-500"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {dateSearch && (
+            <p className="text-[11px] font-bold text-grape-500 px-1">
+              الأسابيع المطابقة: {ar(filteredLogs.length)}
+            </p>
+          )}
+
+          {filteredLogs.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-grape-200 bg-white p-6 text-center text-xs font-bold text-grape-400">
+              لا يوجد أسبوع يطابق البحث «{dateSearch}»
+            </div>
+          ) : (
+            filteredLogs.map((log) => (
+              <button
+                key={log.week}
+                type="button"
+                onClick={() => { setWeek(log.week); setDraft(null); setStudentSearch(""); }}
+                className={`w-full rounded-2xl border-2 p-3 text-start transition ${
+                  shown?.week === log.week ? "border-grape-600 bg-grape-600 text-white shadow" : "border-grape-100 bg-white hover:border-grape-300"
+                }`}
+              >
+                <strong className="block font-display">{log.weekStartDateIso ? formatTeachingWeekRange(log.weekStartDateIso) : (log.name || `الأسبوع ${ar(log.week)}`)}</strong>
+                <span className="text-xs opacity-75">
+                  {log.weekStartDateIso
+                    ? formatTeachingWeek(log.weekStartDateIso)
+                    : log.savedAtIso
+                    ? `المنتهي في ${formatHijriDate(log.savedAtIso)}`
+                    : "تاريخ محفوظ سابقًا"}
+                </span>
+              </button>
+            ))
+          )}
+        </aside>
+
+        {!shown ? (
+          <div className="rounded-3xl border-2 border-dashed border-grape-200 bg-white p-12 text-center font-bold text-grape-500">
+            اختر أسبوعًا من القائمة لعرض بياناته.
+          </div>
+        ) : (
+          <section className="rounded-3xl border-2 border-grape-100 bg-white p-5">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex-1">
+                <h3 className="font-display text-xl font-extrabold">{shown.weekStartDateIso ? formatTeachingWeekRange(shown.weekStartDateIso) : (shown.name || `الأسبوع ${ar(shown.week)}`)}</h3>
+                <p className="text-xs font-bold text-grape-500">
+                  {shown.weekStartDateIso ? formatTeachingWeek(shown.weekStartDateIso) : shown.savedAtIso ? formatHijriDate(shown.savedAtIso) : "تاريخ محفوظ سابقًا"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${draft ? "bg-coral-100 text-coral-600" : "bg-mint-100 text-mint-700"}`}>
+                  {draft ? "وضع التعديل" : "وضع المشاهدة"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setDeleteOpen(true); setDeletePin(""); setDeleteError(""); }}
+                  className="flex items-center gap-1 rounded-xl border border-coral-200 bg-coral-50 px-3 py-1.5 text-xs font-extrabold text-coral-600 transition hover:bg-coral-600 hover:text-white"
+                  title="حذف هذا الأسبوع من الأرشيف (يتطلب الرمز 911)"
+                >
+                  <Icon name="x" className="h-3.5 w-3.5" strokeWidth={2.8} />
+                  <span>حذف الأسبوع</span>
+                </button>
+              </div>
+            </div>
+
+            {shown.weekStartDateIso && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {DAYS.map((day, index) => (
+                  <span key={day.key} className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700">
+                    {day.label} · {formatHijriDate(addCalendarDays(shown.weekStartDateIso!, index), { day: "numeric", month: "long" })}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {!draft ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <input className="field-control w-40" type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="رمز التعديل" />
+                <button type="button" onClick={unlock} className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-bold text-white">فتح التعديل</button>
+                {error && <span className="self-center text-xs font-bold text-coral-600">{error}</span>}
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" onClick={addStudent} className="rounded-xl bg-mint-600 px-4 py-2 text-sm font-bold text-white">+ إضافة طالب للسجل</button>
+                <button type="button" onClick={() => setDraft(null)} className="rounded-xl bg-grape-100 px-4 py-2 text-sm font-bold text-grape-600">إلغاء</button>
+                <button type="button" onClick={() => { updateWeekLog(draft.week, draft); setDraft(null); }} className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-bold text-white">حفظ التغييرات</button>
+              </div>
+            )}
+
+            {shown.trip && (
+              <div className="mt-4 rounded-2xl bg-mint-50 p-4">
+                <h4 className="font-display font-extrabold text-mint-700">طلاب الرحلة</h4>
+                <p className="mt-1 text-sm font-bold text-mint-700">{shown.trip.attendeeNames.join("، ") || "لم يُسجل مشاركون"}</p>
+              </div>
+            )}
+
+            {shown.awards.length > 0 && (
+              <div className="mt-4 rounded-2xl bg-gold-50 p-4">
+                <h4 className="font-display font-extrabold">جوائز الحفل المعتمدة</h4>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {shown.awards.map((award, i) => (
+                    <span key={i} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gold-700">
+                      {award.title}: {award.studentName}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* خانة بحث عن الطالب بالاسم داخل هذا الأسبوع المحدد فقط */}
+            <div className="mt-4">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={studentSearch}
+                  onChange={(e) => setStudentSearch(e.target.value)}
+                  placeholder={`🔍 بحث عن طالب بالاسم في ${shown.name || `الأسبوع ${ar(shown.week)}`}...`}
+                  className="field-control w-full pe-9 text-xs"
+                />
+                {studentSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setStudentSearch("")}
+                    className="absolute inset-y-0 end-2.5 flex items-center text-xs font-extrabold text-grape-400 hover:text-coral-500"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {shown.records ? (
+                (() => {
+                  const q = normalizeSearch(studentSearch);
+                  const list = q ? shown.records.filter((r) => normalizeSearch(r.name).includes(q)) : shown.records;
+                  if (list.length === 0) {
+                    return (
+                      <div className="rounded-2xl border-2 border-dashed border-grape-200 bg-white p-8 text-center text-xs font-bold text-grape-400">
+                        لا يوجد طالب يطابق البحث «{studentSearch}» في هذا الأسبوع.
+                      </div>
+                    );
+                  }
+                  return list.map((record) => draft ? (
+                    <StudentEditor
+                      key={record.id}
+                      record={record}
+                      weekStartDateIso={shown.weekStartDateIso}
+                      update={(next) => setDraft((log) => log ? { ...log, records: log.records?.map((r) => r.id === record.id ? next : r) } : log)}
+                      remove={() => setDraft((log) => log ? { ...log, records: log.records?.filter((r) => r.id !== record.id) } : log)}
+                    />
+                  ) : (
+                <article key={record.id} className="rounded-2xl border-2 border-grape-100 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grape-100 pb-2.5">
+                    <div className="flex items-center gap-3">
+                      <Avatar photo={record.photo} name={record.name} size={42} />
+                      <div>
+                        <p className="font-display font-extrabold text-base text-ink">{record.name} {record.isTesting && <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] text-white">اختبار</span>}</p>
+                        <p className="text-xs font-bold text-grape-500">حضور {ar(DAYS.filter((d) => record.days?.[d.key]?.a).length)} · غياب {ar(DAYS.filter((d) => record.days?.[d.key]?.absent).length)} · حفظ {ar(DAYS.filter((d) => record.days?.[d.key]?.h).length)} · مراجعة {ar(DAYS.filter((d) => record.days?.[d.key]?.r).length)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {DAYS.map((d) => {
+                      const entry = record.days?.[d.key];
+                      const ward = record.ward?.[d.key];
+                      const isAbsent = entry?.absent;
+                      const hasH = entry?.h || Number(ward?.memorizationLines) > 0 || Number(ward?.memorizationVerses) > 0 || !!ward?.memorization?.trim();
+                      const hasR = entry?.r || Number(ward?.reviewLines) > 0 || Number(ward?.reviewVerses) > 0 || !!ward?.review?.trim();
+                      const memPages = (ward?.memorizationLines ? Number(ward.memorizationLines) / 15 : 0);
+                      const revPages = (ward?.reviewLines ? Number(ward.reviewLines) / 15 : 0);
+
+                      return (
+                        <div key={d.key} className="rounded-xl border border-grape-100 bg-grape-50/60 p-2.5 text-xs">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-extrabold text-grape-700">{d.label}</span>
+                            {isAbsent ? (
+                              <span className="rounded-md bg-coral-100 px-1.5 py-0.5 font-extrabold text-coral-600">غائب</span>
+                            ) : entry?.a ? (
+                              <span className="rounded-md bg-mint-100 px-1.5 py-0.5 font-extrabold text-mint-700">حاضر</span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-grape-400">لم يسجل</span>
+                            )}
+                          </div>
+
+                          {!isAbsent && (
+                            <div className="space-y-1 mt-1">
+                              {hasH && (
+                                <div className="rounded bg-white p-1.5 text-[11px] leading-tight text-grape-800 border border-grape-200/50">
+                                  <span className="font-extrabold text-grape-600">حفظ: </span>
+                                  {ward?.memorization ? <b>{ward.memorization} </b> : null}
+                                  {ward?.memorizationVerses ? <span>({ar(ward.memorizationVerses)} آية) </span> : null}
+                                  {ward?.memorizationLines ? <span>[{ar(ward.memorizationLines)} سطر ≈ {ar(Math.round(memPages * 10) / 10)} ص]</span> : null}
+                                  {!ward?.memorization && !ward?.memorizationLines && <span>تم التسميع</span>}
+                                </div>
+                              )}
+                              {hasR && (
+                                <div className="rounded bg-amber-50 p-1.5 text-[11px] leading-tight text-amber-900 border border-amber-200/50">
+                                  <span className="font-extrabold text-amber-700">مراجعة: </span>
+                                  {ward?.review ? <b>{ward.review} </b> : null}
+                                  {ward?.reviewVerses ? <span>({ar(ward.reviewVerses)} آية) </span> : null}
+                                  {ward?.reviewLines ? <span>[{ar(ward.reviewLines)} سطر ≈ {ar(Math.round(revPages * 10) / 10)} ص]</span> : null}
+                                  {!ward?.review && !ward?.reviewLines && <span>تمت المراجعة</span>}
+                                </div>
+                              )}
+                              {!hasH && !hasR && entry?.a && (
+                                <span className="text-[11px] text-grape-400">حضور فقط</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+                  ));
+                })()
+              ) : (
+                (() => {
+                  const rawEntries = shown.students ?? shown.top ?? [];
+                  const q = normalizeSearch(studentSearch);
+                  const list = q ? rawEntries.filter((e) => normalizeSearch(e.name).includes(q)) : rawEntries;
+                  if (list.length === 0) {
+                    return (
+                      <div className="rounded-2xl border-2 border-dashed border-grape-200 bg-white p-8 text-center text-xs font-bold text-grape-400">
+                        لا يوجد طالب يطابق البحث «{studentSearch}» في هذا الأسبوع.
+                      </div>
+                    );
+                  }
+                  return list.map((entry) => (
+                <article key={entry.id} className="flex items-center gap-3 rounded-2xl bg-grape-50 p-3">
+                  <Avatar photo={entry.photo} name={entry.name} size={42} />
+                  <div>
+                    <p className="font-display font-extrabold">{entry.name}</p>
+                    <p className="text-xs font-bold text-grape-500">{ar(entry.weekXp)} نقطة أسبوعية</p>
+                  </div>
+                </article>
+                  ));
+                })()
+              )}
+            </div>
+            {!shown.records && <p className="mt-4 rounded-xl bg-gold-50 p-3 text-xs font-bold text-gold-700">هذا سجل قديم لا يحتوي لقطة يومية كاملة؛ تُعرض معلوماته المحفوظة فقط دون اختراع بيانات.</p>}
+          </section>
+        )}
+      </div>
+    )}
+
+    <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+      <div className="p-6 text-right">
+        <div className="flex items-center gap-3 text-coral-600">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-coral-100 text-2xl">⚠️</span>
+          <div>
+            <h3 className="font-display text-xl font-extrabold text-ink">حذف الأسبوع من الأرشيف</h3>
+            <p className="text-xs font-bold text-grape-500">
+              {current?.name || `الأسبوع ${ar(current?.week ?? 0)}`}
+            </p>
+          </div>
+        </div>
+        <p className="mt-4 text-sm font-bold leading-6 text-grape-700">
+          سيتم حذف هذا الأسبوع المحدد فقط من أرشيف الأسابيع الماضية، وتحديث الإحصائيات التراكمية تلقائيًا بناءً على الأسابيع المتبقية. لن يتم حذف أي طالب، ولن تتأثر العملات أو القلوب أو المستويات أو الجوائز، ولن يتم حذف أي أسبوع آخر.
+        </p>
+        <div className="mt-4 rounded-2xl bg-grape-50 p-4">
+          <label className="block text-xs font-extrabold text-grape-700">
+            أدخل رمز الحذف لتأكيد العملية (الرمز هو 911):
+          </label>
+          <input
+            type="password"
+            inputMode="numeric"
+            autoFocus
+            value={deletePin}
+            onChange={(e) => { setDeletePin(e.target.value); setDeleteError(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleDeleteWeek(); }}
+            placeholder="أدخل رمز الحذف..."
+            className="field-control mt-2 w-full text-center text-lg font-extrabold tracking-widest"
+          />
+          {deleteError && (
+            <p className="mt-2 text-xs font-extrabold text-coral-600">{deleteError}</p>
+          )}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(false)}
+            className="rounded-xl bg-grape-100 px-4 py-2.5 text-xs font-extrabold text-grape-600 hover:bg-grape-200"
+          >
+            إلغاء
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteWeek}
+            className="rounded-xl bg-coral-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-sm hover:bg-coral-700"
+          >
+            تأكيد حذف الأسبوع
+          </button>
+        </div>
+      </div>
+    </Modal>
   </div>;
 }

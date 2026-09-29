@@ -15,8 +15,6 @@ import StoreTab from "./components/Store";
 import StudentView from "./components/StudentView";
 import TermFinale from "./components/TermFinale";
 import StatisticsPage from "./components/Statistics";
-import ParentPortal from "./components/ParentPortal";
-import ParentActivity from "./components/ParentActivity";
 import { Coin, HeartIcon, Icon } from "./components/ui";
 
 
@@ -29,7 +27,6 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "stats", label: "الإحصائيات", icon: "chart" },
   { id: "ceremony", label: "الحفل", icon: "sparkle" },
   { id: "past", label: "الأسابيع الماضية", icon: "calendar" },
-  { id: "parentActivity", label: "نشاط أولياء الأمور", icon: "users" },
   { id: "term", label: "ختام الترم", icon: "flag" },
 ];
 
@@ -213,27 +210,6 @@ function Toasts() {
 }
 
 
-
-function extractParentToken(): string | null {
-  if (typeof window === "undefined") return null;
-  // 1. مسار الرابط: /parent/TOKEN
-  const pathMatch = window.location.pathname.match(/\/parent\/([a-zA-Z0-9_-]+)/);
-  if (pathMatch) return pathMatch[1];
-
-  // 2. معلمات البحث: ?parent=TOKEN
-  try {
-    const searchParams = new URLSearchParams(window.location.search);
-    const qToken = searchParams.get("parent");
-    if (qToken) return qToken;
-  } catch {}
-
-  // 3. الهاش: #parent/TOKEN
-  const hashMatch = window.location.hash.match(/#\/?parent\/([a-zA-Z0-9_-]+)/);
-  if (hashMatch) return hashMatch[1];
-
-  return null;
-}
-
 function Shell() {
   const { mode, tab, showCeremony } = useApp();
   return (
@@ -257,8 +233,6 @@ function Shell() {
           <StatisticsPage />
         ) : tab === "term" ? (
           <TermFinale />
-        ) : tab === "parentActivity" ? (
-          <ParentActivity />
         ) : tab === "past" ? (
           <PastWeeks />
         ) : (
@@ -347,12 +321,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 }
 
 export default function App() {
-  const [parentToken] = useState(() => extractParentToken());
-
   return (
     <ErrorBoundary>
       <AppProvider>
-        {parentToken ? <ParentPortal token={parentToken} /> : <Shell />}
+        <Shell />
       </AppProvider>
     </ErrorBoundary>
   );

@@ -1,4 +1,4 @@
-import { DAYS, estimatedLinesFromVerses, levelInfo, type DayKey, type ParentContactRecord, type RecitationPart, type Student, type WeekLog, type WeekLogEntry } from "./core";
+import { DAYS, estimatedLinesFromVerses, levelInfo, type DayKey, type RecitationPart, type Student, type WeekLog, type WeekLogEntry } from "./core";
 import { pagesForAyahRange, parseQuranRange } from "./quranPages";
 
 export type WorkMeasure = {
@@ -103,9 +103,7 @@ export function measureStudentWork(student: Student, kind: "memorization" | "rev
   const part = kind === "memorization" ? "h" : "r";
   const completed = DAYS.filter((d) => {
     const entry = student.days?.[d.key];
-    if (!entry || entry.absent || !entry.a) return false;
-    const hasRating = student.recitationRatings?.[d.key]?.[part] === "excellent" || student.recitationRatings?.[d.key]?.[part] === "very-good";
-    return Boolean(entry[part] || hasRating);
+    return !!entry && !entry.absent && !!entry[part];
   });
   const verses = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationVerses : student.ward?.[d.key]?.reviewVerses) || 0), 0);
   const enteredLines = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationLines : student.ward?.[d.key]?.reviewLines) || 0), 0);
@@ -124,7 +122,7 @@ export function measureStudentWork(student: Student, kind: "memorization" | "rev
 }
 
 export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAnalysis {
-  const attendanceDays = DAYS.filter((d) => !!student.days?.[d.key]?.a && !student.days?.[d.key]?.absent).length;
+  const attendanceDays = DAYS.filter((d) => !!student.days?.[d.key]?.a).length;
   const absenceDays = DAYS.filter((d) => student.days?.[d.key]?.absent === true).length;
   const memorization = measureStudentWork(student, "memorization");
   const review = measureStudentWork(student, "review");
@@ -140,19 +138,27 @@ export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAn
   const history = weeksLog
     .map((w) => {
       const record = w.records?.find((r) => r.id === student.id || r.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
-      const entry = (w.students ?? w.top).find((e) => e.id === student.id || e.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
-      if (record || entry) {
-        const memRecord = record ? measureStudentWork(record as unknown as Student, "memorization") : null;
-        const revRecord = record ? measureStudentWork(record as unknown as Student, "review") : null;
-        const entryMemPages = entry?.memorizationPages ?? ((entry?.memorizationLines ?? 0) / 15);
-        const entryRevPages = entry?.reviewPages ?? ((entry?.reviewLines ?? 0) / 15);
+      if (record) {
+        const mem = measureStudentWork(record as unknown as Student, "memorization");
+        const rev = measureStudentWork(record as unknown as Student, "review");
         return {
-          id: record?.id ?? entry?.id ?? student.id,
-          name: record?.name ?? entry?.name ?? student.name,
-          memorizationPages: Math.max(memRecord?.pages ?? 0, entryMemPages || 0),
-          reviewPages: Math.max(revRecord?.pages ?? 0, entryRevPages || 0),
-          memorizationLines: Math.max(memRecord?.lines ?? 0, entry?.memorizationLines ?? 0),
-          reviewLines: Math.max(revRecord?.lines ?? 0, entry?.reviewLines ?? 0),
+          id: record.id,
+          name: record.name,
+          memorizationPages: mem.pages,
+          reviewPages: rev.pages,
+          memorizationLines: mem.lines,
+          reviewLines: rev.lines,
+        };
+      }
+      const entry = (w.students ?? w.top).find((e) => e.id === student.id || e.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
+      if (entry) {
+        return {
+          id: entry.id,
+          name: entry.name,
+          memorizationPages: entry.memorizationPages ?? ((entry.memorizationLines ?? 0) / 15),
+          reviewPages: entry.reviewPages ?? ((entry.reviewLines ?? 0) / 15),
+          memorizationLines: entry.memorizationLines ?? 0,
+          reviewLines: entry.reviewLines ?? 0,
         };
       }
       return null;
@@ -311,7 +317,7 @@ function consecutiveMisses(student: Student, kind: LearningTrack): number {
 
 /** مصدر موحّد للحضور: الغياب الصريح فقط، واليوم غير المحدد يبقى «غير مسجل». */
 export function analyzeAttendance(student: Student, weeksLog: WeekLog[]): AttendanceAnalysis {
-  const presentDays = DAYS.filter((day) => !!student.days[day.key]?.a && !student.days[day.key]?.absent).length;
+  const presentDays = DAYS.filter((day) => student.days[day.key].a).length;
   const absentDays = DAYS.filter((day) => student.days[day.key].absent === true).length;
   const evaluatedDays = presentDays + absentDays;
   const attendanceRate = evaluatedDays > 0 ? round((presentDays / evaluatedDays) * 100, 1) : null;
@@ -456,324 +462,4 @@ export function buildRegisterInsight(student: Student, weeksLog: WeekLog[]): Reg
   }
 
   return { attendance, memorization, review, advice };
-}
-
-
-export type StudentTrendResult = {
-  label: "تحسن بعد التواصل" | "يتحسن" | "مستقر" | "يتراجع" | "بحاجة إلى متابعة" | "منتظم";
-  tone: "mint" | "coral" | "gold" | "grape";
-  explanation: string;
-};
-
-export function analyzeStudentTrend(
-  student: Student,
-  weeksLog: WeekLog[] = [],
-  parentContacts: ParentContactRecord[] = []
-): StudentTrendResult {
-  const normTarget = student.name
-    .replace(/[ًٌٍَُِّْـ]/g, "")
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ة/g, "ه")
-    .replace(/ى/g, "ي")
-    .trim()
-    .toLowerCase();
-
-  const contacts = parentContacts
-    .filter((c) => c.studentId === student.id || c.studentName.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget)
-    .sort((a, b) => b.contactDateIso.localeCompare(a.contactDateIso));
-
-  const currPresent = DAYS.filter((d) => !!student.days?.[d.key]?.a && !student.days?.[d.key]?.absent).length;
-  const currAbsent = DAYS.filter((d) => student.days?.[d.key]?.absent === true).length;
-
-  // 1. إذا كان هناك تواصل سابق مسجل
-  if (contacts.length > 0) {
-    // الطالب حضر بشكل مستمر وبلا غياب في الأيام اللاحقة
-    if (currPresent >= 2 && currAbsent === 0) {
-      return {
-        label: "تحسن بعد التواصل",
-        tone: "mint",
-        explanation: "تحسن بالفعل وأصبح أكثر انتظامًا في الحضور بعد التواصل مع ولي الأمر",
-      };
-    }
-    // الطالب ما زال يغيب بعد التواصل
-    if (currAbsent >= 2) {
-      return {
-        label: "بحاجة إلى متابعة",
-        tone: "coral",
-        explanation: "تكرر الغياب مجددًا بعد التواصل مع ولي الأمر ويتطلب متابعة مستمرة",
-      };
-    }
-  }
-
-  // 2. تحليل السجلات عبر الأسابيع التاريخية
-  const chronologicalWeeks = [...weeksLog]
-    .filter((w) => w && w.week != null)
-    .sort((a, b) => Number(a.week) - Number(b.week));
-
-  const weekHist: { present: number; absent: number }[] = [];
-  for (const w of chronologicalWeeks) {
-    const record = w.records?.find((r) => r.id === student.id || r.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
-    const entry = (w.students ?? w.top)?.find((e) => e.id === student.id || e.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
-    if (record && record.days) {
-      const p = DAYS.filter((d) => !!record.days?.[d.key]?.a && !record.days?.[d.key]?.absent).length;
-      const ab = DAYS.filter((d) => record.days?.[d.key]?.absent === true).length;
-      weekHist.push({ present: p, absent: ab });
-    } else if (entry) {
-      weekHist.push({ present: entry.attendanceDays ?? 0, absent: entry.absenceDays ?? 0 });
-    }
-  }
-
-  if (currPresent > 0 || currAbsent > 0) {
-    weekHist.push({ present: currPresent, absent: currAbsent });
-  }
-
-  if (weekHist.length >= 2) {
-    const mid = Math.floor(weekHist.length / 2);
-    const earlier = weekHist.slice(0, mid);
-    const recent = weekHist.slice(mid);
-
-    const earlierAbsent = earlier.reduce((acc, w) => acc + w.absent, 0);
-    const recentAbsent = recent.reduce((acc, w) => acc + w.absent, 0);
-    const recentPresent = recent.reduce((acc, w) => acc + w.present, 0);
-
-    // تحسن مدعوم بالبيانات عبر عدة فترات
-    if (earlierAbsent >= 2 && recentAbsent === 0 && recentPresent >= 2) {
-      return {
-        label: "يتحسن",
-        tone: "mint",
-        explanation: "تحسن ملحوظ وانخفاض واضح في الغياب مقارنة بالفترات السابقة",
-      };
-    }
-
-    // تراجع في الحضور
-    if (earlierAbsent <= 1 && recentAbsent >= 2) {
-      return {
-        label: "يتراجع",
-        tone: "coral",
-        explanation: "تراجع في معدل الحضور وزيادة في الغيابات بالفترة الأخيرة",
-      };
-    }
-  }
-
-  if (currAbsent >= 3) {
-    return {
-      label: "بحاجة إلى متابعة",
-      tone: "coral",
-      explanation: "تكرار ملحوظ في الغياب يستدعي المتابعة المباشرة",
-    };
-  }
-
-  if (currPresent >= 3 && currAbsent === 0) {
-    return {
-      label: "مستقر",
-      tone: "mint",
-      explanation: "حضور منتظم وأداء مستقر بدون انقطاع",
-    };
-  }
-
-  return {
-    label: "مستقر",
-    tone: "grape",
-    explanation: "سجل الحضور في المستوى الطبيعي والمستقر",
-  };
-}
-export type ParentRecommendation = {
-  id: string;
-  category: "spaced-repetition" | "active-recall" | "routine" | "encouragement" | "adjustment" | "exam-prep";
-  title: string;
-  body: string;
-  badge: string;
-  tone: "mint" | "grape" | "gold" | "coral";
-  educationalPrinciple: string;
-};
-
-export type ParentGuidanceReport = {
-  headline: string;
-  summary: string;
-  overallStatus: "excellent" | "improving" | "stable" | "needs-attention";
-  comparisonText: string;
-  recommendations: ParentRecommendation[];
-};
-
-/**
- * محرك النصائح التربوية والتعليمية الذكية لولي الأمر
- * مبني على تحليل بيانات الطالب الفعلية التراكمية عبر الأسابيع والمبادئ التعليمية المعتمدة
- */
-export function generateParentAIGuidance(
-  student: Student,
-  weeksLog: WeekLog[] = [],
-  parentContacts: ParentContactRecord[] = []
-): ParentGuidanceReport {
-  const normTarget = student.name
-    .replace(/[ًٌٍَُِّْـ]/g, "")
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ة/g, "ه")
-    .replace(/ى/g, "ي")
-    .trim()
-    .toLowerCase();
-
-  // 1. حسابات الأسبوع الحالي
-  const currPresent = DAYS.filter((d) => !!student.days?.[d.key]?.a && !student.days?.[d.key]?.absent).length;
-  const currAbsent = DAYS.filter((d) => student.days?.[d.key]?.absent === true).length;
-  
-  let currExcellent = 0;
-  let currVeryGood = 0;
-  let currMemSessions = 0;
-  let currRevSessions = 0;
-
-  for (const d of DAYS) {
-    const st = student.days?.[d.key];
-    const rt = student.recitationRatings?.[d.key];
-    if (st?.a && !st.absent) {
-      if (st.h || rt?.h === "excellent" || rt?.h === "very-good") {
-        currMemSessions += 1;
-        if (rt?.h === "excellent") currExcellent += 1;
-        if (rt?.h === "very-good") currVeryGood += 1;
-      }
-      if (st.r || rt?.r === "excellent" || rt?.r === "very-good") {
-        currRevSessions += 1;
-        if (rt?.r === "excellent") currExcellent += 1;
-        if (rt?.r === "very-good") currVeryGood += 1;
-      }
-    }
-  }
-
-  // 2. تحليل الأسابيع السابقة المتراكمة
-  const pastRecords = weeksLog
-    .map((log) => {
-      const rec = log.records?.find((r) => r.id === student.id || r.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
-      if (rec) return rec;
-      const topEntry = (log.students ?? log.top ?? []).find((e) => e.id === student.id || e.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
-      return topEntry ? (topEntry as any) : null;
-    })
-    .filter(Boolean);
-
-  let pastPresentSum = 0;
-  let pastAbsentSum = 0;
-  let pastExcSum = 0;
-  let pastVgSum = 0;
-  let pastWeeksCount = pastRecords.length;
-
-  for (const pr of pastRecords) {
-    if (pr.days) {
-      const p = DAYS.filter((d) => !!pr.days?.[d.key]?.a && !pr.days?.[d.key]?.absent).length;
-      const a = DAYS.filter((d) => pr.days?.[d.key]?.absent === true).length;
-      pastPresentSum += p;
-      pastAbsentSum += a;
-      for (const d of DAYS) {
-        if (pr.recitationRatings?.[d.key]?.h === "excellent") pastExcSum += 1;
-        if (pr.recitationRatings?.[d.key]?.h === "very-good") pastVgSum += 1;
-        if (pr.recitationRatings?.[d.key]?.r === "excellent") pastExcSum += 1;
-        if (pr.recitationRatings?.[d.key]?.r === "very-good") pastVgSum += 1;
-      }
-    } else {
-      pastPresentSum += pr.attendanceDays ?? 0;
-      pastAbsentSum += pr.absenceDays ?? 0;
-      pastExcSum += (pr.memorizationExcellent ?? 0) + (pr.reviewExcellent ?? 0);
-      pastVgSum += (pr.memorizationVeryGood ?? 0) + (pr.reviewVeryGood ?? 0);
-    }
-  }
-
-  const avgPastAbsence = pastWeeksCount > 0 ? pastAbsentSum / pastWeeksCount : 0;
-  const isAbsenceSpike = currAbsent > avgPastAbsence + 0.5 && currAbsent >= 1;
-  const isRecovering = pastWeeksCount > 0 && avgPastAbsence >= 1 && currAbsent === 0 && currPresent >= 2;
-  const isHighPerformer = currPresent >= 3 && currAbsent === 0 && currExcellent >= currVeryGood && (student.heartsLostWeek ?? 0) === 0;
-  const hasTesting = student.isTesting === true;
-
-  // تحديد الحالة العامة ومقارنة التاريخ
-  let overallStatus: "excellent" | "improving" | "stable" | "needs-attention" = "stable";
-  let headline = "مستوى الطالب مستقر مع مؤشرات إيجابية";
-  let summary = `تظهر السجلات التراكمية استقرارًا في التسميع والحضور خلال الفترة الحالية.`;
-  let comparisonText = `مقارنة بالأسابيع السابقة: الطالب يحافظ على وتيرة ثابتة بمعدل حضور ${currPresent} أيام هذا الأسبوع.`;
-
-  if (isRecovering) {
-    overallStatus = "improving";
-    headline = "تطور ملحوظ وتحسن في الانتظام والتسميع";
-    summary = `أظهر الطالب تحسنًا إيجابيًا في التقييم والحضور خلال الأيام الأخيرة مقارنة بالفترة السابقة، ومن المفيد الحفاظ على هذا النمط.`;
-    comparisonText = `مقارنة بالأسابيع السابقة: انخفضت أيام الغياب وعاد الطالب للالتزام التام بحضور الجلسات.`;
-  } else if (isHighPerformer) {
-    overallStatus = "excellent";
-    headline = "أداء متميز وتفوق في الحفظ والمراجعة";
-    summary = `يواصل الطالب تحقيق تقييمات ممتازة مع التزام كامل بالحضور والمحافظة على القلوب ومكافآت الأسبوع.`;
-    comparisonText = `مقارنة بالأسابيع السابقة: استمرار في أعلى درجات التقييم دون تسجيل أي غياب.`;
-  } else if (isAbsenceSpike) {
-    overallStatus = "needs-attention";
-    headline = "تراجع طفيف يرتبط بالغياب وتفاوت الحضور";
-    summary = `تظهر البيانات انخفاضًا في وتيرة التسميع خلال الفترة الأخيرة مقارنة بالأسابيع السابقة، مع تسجيل أيام غياب أكثر من المعتاد. قد يكون من المفيد مساعدة الطالب على تثبيت روتين الحضور اليومي.`;
-    comparisonText = `مقارنة بالأسابيع السابقة: ارتفع معدل الغياب هذا الأسبوع إلى (${currAbsent}) يوم، مما أثر على فرص التسميع اليومية.`;
-  } else if (currVeryGood > currExcellent && currVeryGood >= 2) {
-    overallStatus = "needs-attention";
-    headline = "الحفظ منجز ولكن بحاجة إلى تعزيز الإتقان والمراجعة";
-    summary = `الطالب منتظم في التسميع، لكن تكررت درجات (جيد جدًا)، مما يشير إلى الحاجة للتركيز على جودة الحفظ والمراجعة الذهنية المسبقة.`;
-    comparisonText = `مقارنة بالأسابيع السابقة: التسميع حاضر ولكن درجات الإتقان تتطلب تثبيتًا أكبر للمحفوظ القديم.`;
-  }
-
-  // بناء التوصيات المستندة إلى المبادئ التعليمية
-  const recs: ParentRecommendation[] = [];
-
-  // 1. التكرار المتباعد (Spaced Repetition)
-  recs.push({
-    id: "spaced-rep",
-    category: "spaced-repetition",
-    badge: "مبدأ التكرار المتباعد",
-    title: "توزيع المراجعة على مدار الأسبوع",
-    body: "تقسيم السور المحفوظة إلى مقاطع ومراجعتها على فترات زمنية متفرقة (بدل مراجعتها دفعة واحدة في يوم واحد) يرسخ الآيات في الذاكرة طويلة المدى ويمنع تفلتها.",
-    tone: "grape",
-    educationalPrinciple: "التكرار المتباعد (Spaced Repetition) يعزز بقاء المعلومات بنسبة تتجاوز 70% مقارنة بالمراجعة المركزة بيوم واحد.",
-  });
-
-  // 2. الاسترجاع النشط (Active Recall)
-  recs.push({
-    id: "active-recall",
-    category: "active-recall",
-    badge: "الاسترجاع النشط",
-    title: "التسميع الذاتي والمراجعة الغيبية",
-    body: "اطلب من ابنك قراءة الآيات غيبًا في المنزل قبل موعد الحلقة، ومحاولة تذكر بدايات ونهايات الآيات دون النظر في المصحف إلا عند الحاجة للتصحيح.",
-    tone: "mint",
-    educationalPrinciple: "الاسترجاع النشط (Active Recall) يجبر الذهن على استخراج المحفوظ مما يقوي الروابط العصبية للآيات.",
-  });
-
-  // 3. ضبط الكمية أو تثبيت الروتين
-  if (isAbsenceSpike || currVeryGood > currExcellent) {
-    recs.push({
-      id: "quantity-adjustment",
-      category: "adjustment",
-      badge: "ضبط وتدرج الأهداف",
-      title: "التركيز على إتقان نصف صفحة بجودة عالية",
-      body: "عند وجود انشغال أو تراجع مؤقت، تقليل مقدار الحفظ اليومي قليلًا مع إتقانه التام أفضل تربويًا من حفظ مقدار كبير غير متقن، مما يرفع ثقة الطالب بنفسه.",
-      tone: "coral",
-      educationalPrinciple: "الواقعية في الهدف التعليمي تحمي الطالب من الإحباط وتعزز ثبات الإنجاز التراكمي.",
-    });
-  } else {
-    recs.push({
-      id: "positive-reinforce",
-      category: "encouragement",
-      badge: "التعزيز الإيجابي",
-      title: "تقدير الجهد والمثابرة اليومية",
-      body: "امتدح حرص ابنك على الحضور ومحافظته على عملاته وقلوبه في المنصة؛ فمكافأة الاستمرار والجهد تبني دافعية ذاتية قوية ومستدامة.",
-      tone: "gold",
-      educationalPrinciple: "التعزيز المعنوي المستمر يرسخ العلاقة الوجدانية الإيجابية مع كتاب الله.",
-    });
-  }
-
-  // 4. في حال وجود اختبار قادم
-  if (hasTesting) {
-    recs.push({
-      id: "exam-readiness",
-      category: "exam-prep",
-      badge: "استعداد للاختبار",
-      title: "خطة مراجعة مركزة للسور المطلوبة",
-      body: "الطالب مسجل لديه اختبار قريب؛ قسّم السور المحددة للاختبار إلى أجزاء صغيرة مع تسميع كل جزء مرتين يوميًا حتى موعد الاختبار لضمان الطمأنينة والإتقان.",
-      tone: "gold",
-      educationalPrinciple: "التحضير الموزع المبكر يزيل قلق الاختبارات ويثبت جودة الأداء.",
-    });
-  }
-
-  return {
-    headline,
-    summary,
-    overallStatus,
-    comparisonText,
-    recommendations: recs,
-  };
 }

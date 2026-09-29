@@ -25,10 +25,7 @@ import {
   equipOn,
   findItem,
   DEFAULT_HEART_PRICE,
-  calculateStudentTotals,
-  getWeekDayKey,
   levelInfo,
-  normalizeArabic,
   LEVEL_COIN_REWARD,
   MAX_HEARTS,
   seedStudents,
@@ -47,10 +44,6 @@ import {
   type DailyWard,
   type Mode,
   type ShopItem,
-  type ParentContactRecord,
-  type PurchaseOrder,
-  type ParentAccessLog,
-  generateParentToken,
   type Student,
   type RewardSettings,
   type RewardKey,
@@ -75,15 +68,6 @@ import {
 
 export type ToastKind = "xp" | "coin" | "level" | "award" | "error" | "success" | "heart";
 export type Toast = { id: number; kind: ToastKind; msg: string };
-
-export const DEFAULT_ABSENCE_MESSAGE = `السلام عليكم ورحمة الله وبركاته،
-نود التواصل معكم بخصوص غياب الطالب {اسم الطالب} عن الحلقة.
-نأمل الاطمئنان عليه ومعرفة سبب الغياب، شاكرين لكم تعاونكم.`;
-
-export const DEFAULT_NOT_HEARD_MESSAGE = `السلام عليكم ورحمة الله وبركاته،
-نود التواصل معكم بخصوص تسميع الطالب {اسم الطالب} اليوم، حيث لم يتم تسميع {نوع التسميع}.
-نأمل متابعة الطالب وتشجيعه على الاستعداد للحلقة القادمة، بارك الله فيكم.`;
-
 
 /* حالة المزامنة السحابية كما تظهر في الشريط العلوي */
 export type CloudInfo = {
@@ -114,14 +98,6 @@ type State = {
   tripDay: TripDay | null;
   tripAttendees: string[];
   rewardSettings: RewardSettings;
-  parentContacts: ParentContactRecord[];
-  contactMessages?: {
-    absence: string;
-    notHeard: string;
-  };
-  parentStoreOpen: boolean;
-  orders: PurchaseOrder[];
-  parentLogs: ParentAccessLog[];
 };
 
 type Ctx = State & {
@@ -141,8 +117,8 @@ type Ctx = State & {
   clearCeremonyReward: (reward: PerHalaqaRewardKey, halaqaId?: string) => void;
   setHeartPrice: (price: number) => void;
 
-  addStudent: (name: string, photo: string | null, halaqaId?: string | null, guardianPhone?: string) => void;
-  updateStudentProfile: (id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null; guardianPhone?: string; parentAccessToken?: string | null }) => void;
+  addStudent: (name: string, photo: string | null, halaqaId?: string | null) => void;
+  updateStudentProfile: (id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null }) => void;
   toggleStudentTesting: (id: string) => void;
   removeStudent: (id: string) => void;
   addHalaqa: (name: string, teacherNames?: string[]) => void;
@@ -178,20 +154,6 @@ type Ctx = State & {
   saveProduct: (p: ShopItem) => void;
   removeProduct: (id: string) => void;
   restockProduct: (id: string, amount: number) => void;
-  parentContacts: ParentContactRecord[];
-  recordParentContact: (record: Omit<ParentContactRecord, "id">) => void;
-  removeParentContact: (id: string) => void;
-  contactMessages: { absence: string; notHeard: string };
-  setContactMessage: (type: "absence" | "notHeard", message: string) => void;
-  resetContactMessage: (type: "absence" | "notHeard") => void;
-  parentStoreOpen: boolean;
-  toggleParentStore: (open?: boolean) => void;
-  orders: PurchaseOrder[];
-  deliverOrder: (orderId: string) => void;
-  undeliverOrder: (orderId: string) => void;
-  parentLogs: ParentAccessLog[];
-  logParentAccess: (studentId: string, enteredStore?: boolean, purchased?: boolean) => void;
-  checkoutParentCart: (studentId: string, items: { itemId: string; qty: number }[]) => { success: boolean; error?: string };
 
   grantAward: (id: string, title: string, coins?: number, xp?: number, uniqueKey?: string) => void;
   setCeremonyPick: (key: keyof CeremonyPicks, id: string | null) => void;
@@ -223,13 +185,11 @@ function normStudent(s: Student): Student {
     if (typeof v === "boolean") out[d.key] = { a: v, h: v, r: false };
     else if (v && typeof v === "object") {
       const e = v as Record<string, unknown>;
-      out[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined };
+      out[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true };
     }
   }
   return {
     ...s,
-    guardianPhone: typeof s.guardianPhone === "string" ? s.guardianPhone.trim() : undefined,
-    parentAccessToken: typeof s.parentAccessToken === "string" && s.parentAccessToken.trim() ? s.parentAccessToken.trim() : generateParentToken(),
     days: out,
     recitationRatings: (() => {
       const ratings = emptyRecitationRatings();
@@ -289,9 +249,6 @@ function normStudent(s: Student): Student {
     highestRewardedLevel: typeof s.highestRewardedLevel === "number" ? s.highestRewardedLevel : levelInfo(typeof s.xp === "number" ? Math.max(0, s.xp) : 0).level,
     dailyRecitedDate: typeof s.dailyRecitedDate === "string" ? s.dailyRecitedDate : null,
     dailyAbsentDate: typeof s.dailyAbsentDate === "string" ? s.dailyAbsentDate : null,
-    manualXpAdjust: typeof s.manualXpAdjust === "number" ? s.manualXpAdjust : 0,
-    manualCoinsAdjust: typeof s.manualCoinsAdjust === "number" ? s.manualCoinsAdjust : 0,
-    coinsSpent: typeof s.coinsSpent === "number" ? s.coinsSpent : undefined,
   };
 }
 
@@ -303,7 +260,7 @@ function normWeekRecord(r: any): WeekStudentRecord {
     if (typeof v === "boolean") days[d.key] = { a: v, h: v, r: false };
     else if (v && typeof v === "object") {
       const e = v as Record<string, unknown>;
-      days[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined };
+      days[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true };
     }
   }
   const ward = emptyWeeklyWard();
@@ -325,8 +282,6 @@ function normWeekRecord(r: any): WeekStudentRecord {
     id: String(r?.id ?? ""),
     name: String(r?.name ?? ""),
     photo: r?.photo ?? null,
-    guardianPhone: typeof r?.guardianPhone === "string" ? r.guardianPhone.trim() : undefined,
-    parentAccessToken: typeof r?.parentAccessToken === "string" && r.parentAccessToken.trim() ? r.parentAccessToken.trim() : undefined,
     halaqaId: typeof r?.halaqaId === "string" ? r.halaqaId : null,
     isTesting: r?.isTesting === true,
     days,
@@ -355,23 +310,7 @@ function normWeekLog(log: any): WeekLog {
 /** تطبيع حزمة البيانات المحفوظة — تُستخدم للحفظ المحلي وللقادم من السحابة معًا */
 function stateFromPartial(p: Partial<State> | null | undefined): State {
   if (!p || typeof p !== "object") p = {};
-  const currentWeekNum = typeof p.week === "number" ? p.week : 1;
-  const currentWeeksLog = Array.isArray(p.weeksLog) ? (p.weeksLog as WeekLog[]).map(normWeekLog) : [];
-  const currentProducts = Array.isArray(p.products) && p.products.length ? (p.products as ShopItem[]) : DEFAULT_SHOP_ITEMS;
-  const currentHeartPrice = typeof p.heartPrice === "number" && Number.isFinite(p.heartPrice) ? Math.max(0, Math.round(p.heartPrice)) : DEFAULT_HEART_PRICE;
-
-  const rawStudents = Array.isArray(p.students) ? (p.students as Student[]).map(normStudent) : seedStudents();
-  const students = rawStudents.map((s) => {
-    const totals = calculateStudentTotals(s, currentWeeksLog, currentWeekNum, currentProducts, currentHeartPrice);
-    return {
-      ...s,
-      xp: totals.xp,
-      weekXp: totals.weekXp,
-      coins: totals.coins,
-      weekCoins: totals.weekCoins,
-      highestRewardedLevel: totals.highestRewardedLevel,
-    };
-  });
+  const students = Array.isArray(p.students) ? (p.students as Student[]).map(normStudent) : seedStudents();
   return {
     students,
     halaqas: Array.isArray(p.halaqas)
@@ -444,44 +383,6 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
     heartPrice: typeof p.heartPrice === "number" && Number.isFinite(p.heartPrice)
       ? Math.max(0, Math.round(p.heartPrice))
       : DEFAULT_HEART_PRICE,
-    parentContacts: Array.isArray(p.parentContacts) ? (p.parentContacts as ParentContactRecord[]) : [],
-    contactMessages: {
-      absence: typeof p.contactMessages?.absence === "string" && p.contactMessages.absence.trim() ? p.contactMessages.absence : DEFAULT_ABSENCE_MESSAGE,
-      notHeard: typeof p.contactMessages?.notHeard === "string" && p.contactMessages.notHeard.trim() ? p.contactMessages.notHeard : DEFAULT_NOT_HEARD_MESSAGE,
-    },
-    parentStoreOpen: p.parentStoreOpen !== false,
-    // توحيد ومزامنة مشتريات الحقيبة القديمة مع سجل أوامر التسليم الفريدة
-    orders: (() => {
-      const existing = Array.isArray(p.orders) ? (p.orders as PurchaseOrder[]) : [];
-      const list = [...existing];
-      for (const s of students) {
-        for (const b of s.bag ?? []) {
-          if (b.qty <= 0) continue;
-          const matching = list.filter((o) => o.studentId === s.id && o.itemId === b.itemId);
-          const totalMatchingQty = matching.reduce((sum, o) => sum + (o.qty ?? 1), 0);
-          if (totalMatchingQty < b.qty) {
-            const prod = currentProducts.find((p) => p.id === b.itemId);
-            const remainingQty = b.qty - totalMatchingQty;
-            list.push({
-              id: `bag-${s.id}-${b.itemId}`,
-              studentId: s.id,
-              studentName: s.name,
-              itemId: b.itemId,
-              itemName: prod?.name || "جائزة",
-              itemKind: "physical",
-              itemImage: prod?.image ?? null,
-              itemIcon: prod?.icon || "gift",
-              price: prod?.price || 0,
-              qty: remainingQty,
-              purchasedAt: new Date(0).toISOString(),
-              status: b.receivedQty >= b.qty ? "delivered" : "pending",
-            });
-          }
-        }
-      }
-      return list;
-    })(),
-    parentLogs: Array.isArray(p.parentLogs) ? (p.parentLogs as ParentAccessLog[]) : [],
   };
 }
 
@@ -670,16 +571,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [ceremonyPicks, setCeremonyPicks] = useState<CeremonyPicks>(init.ceremonyPicks);
   const [products, setProducts] = useState<ShopItem[]>(init.products);
   const [heartPrice, setHeartPriceState] = useState(init.heartPrice);
-  const [parentContacts, setParentContacts] = useState<ParentContactRecord[]>(init.parentContacts ?? []);
-  const [parentStoreOpen, setParentStoreOpen] = useState(init.parentStoreOpen !== false);
-  const [orders, setOrders] = useState<PurchaseOrder[]>(init.orders ?? []);
-  const [parentLogs, setParentLogs] = useState<ParentAccessLog[]>(init.parentLogs ?? []);
-  const [contactMessages, setContactMessages] = useState<{ absence: string; notHeard: string }>(() => ({
-    absence: init.contactMessages?.absence || DEFAULT_ABSENCE_MESSAGE,
-    notHeard: init.contactMessages?.notHeard || DEFAULT_NOT_HEARD_MESSAGE,
-  }));
-
-
   const [showNewProducts, setShowNewProducts] = useState(init.showNewProducts);
   const [ceremonyProductIds, setCeremonyProductIds] = useState<string[]>(init.ceremonyProductIds);
   const [tripOn, setTripOn] = useState(init.tripOn);
@@ -698,221 +589,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const t = window.setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== id)), 3200);
     timers.current.push(t);
   }, []);
-
-  const setContactMessage = useCallback((type: "absence" | "notHeard", message: string) => {
-    setContactMessages((prev) => ({
-      ...prev,
-      [type]: message,
-    }));
-    toast("success", "تم حفظ نص الرسالة بنجاح");
-  }, [toast]);
-
-  const resetContactMessage = useCallback((type: "absence" | "notHeard") => {
-    setContactMessages((prev) => ({
-      ...prev,
-      [type]: type === "absence" ? DEFAULT_ABSENCE_MESSAGE : DEFAULT_NOT_HEARD_MESSAGE,
-    }));
-    toast("info", "تمت استعادة الرسالة الافتراضية");
-  }, [toast]);
-
-  const recordParentContact = useCallback((rec: Omit<ParentContactRecord, "id">) => {
-    const newRec: ParentContactRecord = {
-      ...rec,
-      id: uid(),
-    };
-    setParentContacts((prev) => [newRec, ...prev]);
-    toast("success", `تم تسجيل التواصل مع ولي أمر ${rec.studentName} بنجاح`);
-  }, [toast]);
-
-  const removeParentContact = useCallback((id: string) => {
-    setParentContacts((prev) => prev.filter((r) => r.id !== id));
-    toast("success", "تم حذف سجل التواصل من الأرشيف");
-  }, [toast]);
-
-  /* ===== بوابة ومتجر أولياء الأمور ===== */
-  const toggleParentStore = useCallback((open?: boolean) => {
-    setParentStoreOpen((prev) => (typeof open === "boolean" ? open : !prev));
-  }, []);
-
-  const deliverOrder = useCallback((orderId: string) => {
-    let targetStudentId = "";
-    let targetItemId = "";
-    setOrders((os) =>
-      os.map((o) => {
-        if (o.id === orderId && o.status !== "delivered") {
-          targetStudentId = o.studentId;
-          targetItemId = o.itemId;
-          return { ...o, status: "delivered", deliveredAt: new Date().toISOString() };
-        }
-        return o;
-      })
-    );
-    if (targetStudentId && targetItemId) {
-      setStudents((ss) =>
-        ss.map((s) => {
-          if (s.id !== targetStudentId) return s;
-          const bag = [...(s.bag ?? [])];
-          const idx = bag.findIndex((b) => b.itemId === targetItemId && b.receivedQty < b.qty);
-          if (idx >= 0) bag[idx] = { ...bag[idx], receivedQty: bag[idx].receivedQty + 1 };
-          return { ...s, bag };
-        })
-      );
-      toast("success", "تم تأكيد تسليم الجائزة للطالب بنجاح");
-    }
-  }, [toast]);
-
-  const undeliverOrder = useCallback((orderId: string) => {
-    let targetStudentId = "";
-    let targetItemId = "";
-    setOrders((os) =>
-      os.map((o) => {
-        if (o.id === orderId && o.status === "delivered") {
-          targetStudentId = o.studentId;
-          targetItemId = o.itemId;
-          const { deliveredAt, ...rest } = o;
-          return { ...rest, status: "pending" };
-        }
-        return o;
-      })
-    );
-    if (targetStudentId && targetItemId) {
-      setStudents((ss) =>
-        ss.map((s) => {
-          if (s.id !== targetStudentId) return s;
-          const bag = [...(s.bag ?? [])];
-          const idx = bag.findIndex((b) => b.itemId === targetItemId && b.receivedQty > 0);
-          if (idx >= 0) bag[idx] = { ...bag[idx], receivedQty: Math.max(0, bag[idx].receivedQty - 1) };
-          return { ...s, bag };
-        })
-      );
-      toast("info", "تم التراجع عن تسليم الجائزة");
-    }
-  }, [toast]);
-
-  const logParentAccess = useCallback((studentId: string, enteredStore?: boolean, purchased?: boolean) => {
-    const st = students.find((s) => s.id === studentId);
-    if (!st) return;
-    const now = new Date().toISOString();
-    setParentLogs((prev) => {
-      const copy = [...prev];
-      const recentIdx = copy.findIndex((l) => l.studentId === studentId && (Date.now() - new Date(l.lastActiveAt).getTime() < 30 * 60 * 1000));
-      if (recentIdx >= 0) {
-        copy[recentIdx] = {
-          ...copy[recentIdx],
-          lastActiveAt: now,
-          enteredStore: copy[recentIdx].enteredStore || !!enteredStore,
-          purchased: copy[recentIdx].purchased || !!purchased,
-        };
-        return copy;
-      }
-      return [
-        {
-          id: uid(),
-          studentId: st.id,
-          studentName: st.name,
-          enteredAt: now,
-          lastActiveAt: now,
-          enteredStore: !!enteredStore,
-          purchased: !!purchased,
-        },
-        ...copy.slice(0, 99),
-      ];
-    });
-  }, [students]);
-
-  const checkoutParentCart = useCallback((studentId: string, items: { itemId: string; qty: number }[]) => {
-    if (!parentStoreOpen) {
-      return { success: false, error: "المتجر مغلق حاليًا من قِبل إدارة الحلقة" };
-    }
-    const st = students.find((s) => s.id === studentId);
-    if (!st) return { success: false, error: "لم يتم العثور على الطالب" };
-
-    if (!items || items.length === 0) return { success: false, error: "السلة فارغة" };
-
-    let totalCost = 0;
-    const lvl = levelInfo(st.xp).level;
-    const resolvedItems: { item: ShopItem; qty: number }[] = [];
-
-    for (const it of items) {
-      const product = products.find((p) => p.id === it.itemId);
-      if (!product) return { success: false, error: `المنتج غير متوفر` };
-      if (lvl < product.minLevel) return { success: false, error: `المنتج «${product.name}» يتطلب المستوى ${product.minLevel}` };
-      if (typeof product.stock === "number" && product.stock < it.qty) {
-        return { success: false, error: "عذرًا، يبدو أن المنتج أصبح غير متوفر. حاول اختيار منتج آخر." };
-      }
-      const isCosmetic = product.kind === "cosmetic";
-      const ownedQty = isCosmetic ? (st.inventory.includes(product.id) ? 1 : 0) : bagQty(st, product.id);
-      if (isCosmetic && ownedQty > 0) return { success: false, error: `الطالب يملك «${product.name}» بالفعل` };
-      if (!isCosmetic && !product.repeatable && ownedQty > 0) return { success: false, error: `تم شراء «${product.name}» مسبقًا` };
-
-      totalCost += product.price * it.qty;
-      resolvedItems.push({ item: product, qty: it.qty });
-    }
-
-    if (st.coins < totalCost) {
-      return { success: false, error: `رصيد العملات غير كافٍ. المطلوب: ${totalCost}، المتوفر: ${st.coins}` };
-    }
-
-    const now = new Date().toISOString();
-    const newOrders: PurchaseOrder[] = [];
-
-    setProducts((ps) =>
-      ps.map((p) => {
-        const found = resolvedItems.find((r) => r.item.id === p.id);
-        if (found && typeof p.stock === "number") {
-          return { ...p, stock: Math.max(0, p.stock - found.qty) };
-        }
-        return p;
-      })
-    );
-
-    setStudents((ss) =>
-      ss.map((s) => {
-        if (s.id !== studentId) return s;
-        let next: Student = { ...s, coinsSpent: (s.coinsSpent ?? 0) + totalCost, coins: Math.max(0, s.coins - totalCost) };
-        const bag = [...(s.bag ?? [])];
-        const inv = [...(s.inventory ?? [])];
-
-        for (const r of resolvedItems) {
-          const isCosmetic = r.item.kind === "cosmetic";
-          newOrders.push({
-            id: uid(),
-            studentId: s.id,
-            studentName: s.name,
-            itemId: r.item.id,
-            itemName: r.item.name,
-            itemKind: isCosmetic ? "cosmetic" : "physical",
-            itemImage: r.item.image ?? null,
-            itemIcon: r.item.icon,
-            price: r.item.price * r.qty,
-            qty: r.qty,
-            purchasedAt: now,
-            status: "pending",
-          });
-
-          if (isCosmetic) {
-            if (!inv.includes(r.item.id)) inv.push(r.item.id);
-            next = equipOn(next, r.item);
-          } else {
-            const bIdx = bag.findIndex((b) => b.itemId === r.item.id);
-            if (bIdx >= 0) bag[bIdx] = { ...bag[bIdx], qty: bag[bIdx].qty + r.qty };
-            else bag.push({ itemId: r.item.id, qty: r.qty, receivedQty: 0 });
-          }
-        }
-        next.inventory = inv;
-        next.bag = bag;
-        return next;
-      })
-    );
-
-    setOrders((os) => [...newOrders, ...os]);
-    logParentAccess(studentId, true, true);
-
-    sfx.coin();
-    setTimeout(() => sfx.sparkle(), 250);
-    toast("success", `تمت عملية الشراء بنجاح! خصم ${totalCost} عملة`);
-    return { success: true };
-  }, [parentStoreOpen, students, products, logParentAccess, toast]);
 
   /* ===== المزامنة السحابية ===== */
   const cloudEnabled = isCloudEnabled();
@@ -1106,8 +782,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       tripDay,
       tripAttendees,
       rewardSettings,
-      parentContacts,
-      contactMessages,
     };
 
     // النسخة السحابية: تُحذف الصور إن طُلب ذلك للتقليل من الحجم
@@ -1201,14 +875,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ===== الطلاب ===== */
   const addStudent = useCallback(
-    (name: string, photo: string | null, halaqaId: string | null = null, guardianPhone?: string) => {
+    (name: string, photo: string | null, halaqaId: string | null = null) => {
       setStudents((ss) => [
         ...ss,
         {
           id: uid(),
           name,
           photo,
-          guardianPhone: typeof guardianPhone === "string" ? guardianPhone.trim() || undefined : undefined,
           halaqaId,
           hearts: MAX_HEARTS,
           heartsLostWeek: 0,
@@ -1237,11 +910,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [toast]
   );
 
-  const updateStudentProfile = useCallback((id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null; guardianPhone?: string; parentAccessToken?: string | null }) => {
+  const updateStudentProfile = useCallback((id: string, changes: { name?: string; photo?: string | null; coins?: number; xp?: number; hearts?: number; halaqaId?: string | null }) => {
     setStudents((ss) => ss.map((s) => s.id === id ? {
       ...s,
-      ...(changes.guardianPhone !== undefined ? { guardianPhone: changes.guardianPhone.trim() || undefined } : {}),
-      ...(changes.parentAccessToken !== undefined ? { parentAccessToken: changes.parentAccessToken ? changes.parentAccessToken.trim() : undefined } : {}),
       ...(changes.name !== undefined ? { name: changes.name.trim() || s.name } : {}),
       ...(changes.photo !== undefined ? { photo: changes.photo } : {}),
       ...(changes.coins !== undefined ? { coins: Math.max(0, Math.floor(changes.coins)) } : {}),
@@ -1462,7 +1133,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return ss;
         }
 
-        const prevLevel = levelInfo(target.xp).level;
+        const noHearts = target.hearts <= 0;
+        const xpDelta = turningOn && !noHearts ? def.xp : turningOn ? 0 : -Math.min(def.xp, target.xp);
+        const coinDelta = turningOn ? def.coins : -def.coins;
 
         const nextList = ss.map((s) => {
           if (s.id !== id) return s;
@@ -1475,6 +1148,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
             },
           } : s.recitationRatings;
 
+          const newXp = Math.max(0, s.xp + xpDelta);
+          const newLvl = levelInfo(newXp).level;
+          const highestRewarded = s.highestRewardedLevel ?? levelInfo(s.xp).level;
+          let levelCoins = 0;
+          let nextHighest = highestRewarded;
+
+          // مكافأة ارتقاء المستوى: تُمنح مرة واحدة فقط لكل مستوى (+5 عملات لكل مستوى)
+          if (turningOn && newLvl > highestRewarded) {
+            const levelsUp = newLvl - highestRewarded;
+            levelCoins = levelsUp * LEVEL_COIN_REWARD;
+            nextHighest = newLvl;
+            leveledName = s.name;
+            leveledTo = newLvl;
+          }
+
           const dayLabel = DAYS.find((d) => d.key === day)?.label ?? "";
           const ward = s.ward?.[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
           const lastHeard = turningOn && (part === "h" || part === "r")
@@ -1485,42 +1173,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
               }
             : s.lastHeard;
 
-          const studentUpdated: Student = {
+          return {
             ...s,
             days,
             recitationRatings,
             lastHeard,
-          };
-
-          const totals = calculateStudentTotals(studentUpdated, weeksLog, week, products, heartPrice);
-
-          if (totals.level > prevLevel) {
-            leveledName = s.name;
-            leveledTo = totals.level;
-          }
-
-          return {
-            ...studentUpdated,
-            xp: totals.xp,
-            weekXp: totals.weekXp,
-            coins: totals.coins,
-            weekCoins: totals.weekCoins,
-            highestRewardedLevel: totals.highestRewardedLevel,
+            xp: newXp,
+            highestRewardedLevel: nextHighest,
+            weekXp: weekXpOf(days),
+            weekCoins: weekCoinsOf(days),
+            coins: Math.max(0, s.coins + coinDelta + levelCoins),
           };
         });
 
         if (turningOn) {
           shouldPlayPop = true;
-          if (target.hearts <= 0) {
+          if (noHearts) {
             msgKind = "coin";
             msgText = `${target.name}: +${def.coins} عملات (مستواه متوقف حتى يشتري قلبًا)`;
           } else {
             msgKind = "xp";
             msgText = `${target.name}: +${def.xp} نقاط ${def.label === "حضور" ? "حضور" : "تسميع " + def.label}`;
           }
-        } else {
-          msgKind = "coin";
-          msgText = `${target.name}: أُلغي تسجيل ${def.label === "حضور" ? "الحضور" : "تسميع " + def.label}`;
         }
 
         return nextList;
@@ -1536,7 +1210,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         timers.current.push(t);
       }
     },
-    [heartPrice, products, toast, week, weeksLog]
+    [toast]
   );
 
   /** الغياب حالة وصفية مستقلة ولا يضيف أو يخصم نقاطًا أو عملات. */
@@ -1549,41 +1223,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toast("error", `${st.name}: توجد بيانات مسجلة لهذا اليوم؛ ألغِها يدويًا قبل تحديده كغائب حتى لا نفقد أي سجل`);
       return;
     }
-    const dayIndex = DAYS.findIndex((d) => d.key === day);
-    const dayDate = localDateKey(addCalendarDays(weekStartDateIso, dayIndex >= 0 ? dayIndex : 0));
-    const today = localDateKey(new Date());
-
-    setStudents((ss) => ss.map((s) => {
-      if (s.id !== id) return s;
-      const updatedDays: WeekDays = {
-        ...s.days,
-        [day]: {
-          ...s.days[day],
-          absent: turningOn,
-          date: turningOn ? dayDate : undefined,
-          a: turningOn ? false : s.days[day].a,
-          h: turningOn ? false : s.days[day].h,
-          r: turningOn ? false : s.days[day].r,
-        },
-      };
-      const studentUpdated: Student = {
-        ...s,
-        days: updatedDays,
-        dailyAbsentDate: dayDate === today ? (turningOn ? today : null) : s.dailyAbsentDate,
-        dailyRecitedDate: dayDate === today && turningOn && s.dailyRecitedDate === today ? null : s.dailyRecitedDate,
-      };
-      const totals = calculateStudentTotals(studentUpdated, weeksLog, week, products, heartPrice);
-      return {
-        ...studentUpdated,
-        xp: totals.xp,
-        weekXp: totals.weekXp,
-        coins: totals.coins,
-        weekCoins: totals.weekCoins,
-        highestRewardedLevel: totals.highestRewardedLevel,
-      };
-    }));
-    toast(turningOn ? "success" : "xp", turningOn ? `سُجّل ${st.name} غائبًا ليوم ${DAYS.find((d) => d.key === day)?.label}` : `أُلغي غياب ${st.name} ليوم ${DAYS.find((d) => d.key === day)?.label}`);
-  }, [heartPrice, products, students, toast, week, weekStartDateIso, weeksLog]);
+    setStudents((ss) => ss.map((s) => s.id === id
+      ? { ...s, days: { ...s.days, [day]: { ...s.days[day], absent: turningOn } } }
+      : s));
+    toast(turningOn ? "success" : "xp", turningOn ? `سُجّل ${st.name} غائبًا دون تقييم الحفظ والمراجعة` : `أُلغيت حالة الغياب عن ${st.name}`);
+  }, [students, toast]);
 
   const updateWard = useCallback((id: string, day: DayKey, ward: DailyWard) => {
     setStudents((ss) => ss.map((s) => s.id === id
@@ -1601,58 +1245,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /** تبديل حالة تم التسميع اليومية للطالب */
   const toggleDailyRecitation = useCallback((id: string, targetDateKey?: string) => {
-    const today = targetDateKey || localDateKey(new Date());
+    const today = targetDateKey || localDateKey();
     setStudents((ss) => ss.map((s) => {
       if (s.id !== id) return s;
       const isRecited = s.dailyRecitedDate === today;
-      const turningOn = !isRecited;
       return {
         ...s,
-        dailyRecitedDate: turningOn ? today : null,
-        dailyAbsentDate: turningOn && s.dailyAbsentDate === today ? null : s.dailyAbsentDate,
+        dailyRecitedDate: isRecited ? null : today,
+        dailyAbsentDate: !isRecited && s.dailyAbsentDate === today ? null : s.dailyAbsentDate,
       };
     }));
   }, []);
 
-  /** تبديل حالة الغياب اليومية للطالب مع ربطه باليوم والتاريخ الحقيقي */
+  /** تبديل حالة الغياب اليومية للطالب */
   const toggleDailyAbsent = useCallback((id: string, targetDateKey?: string) => {
-    const today = targetDateKey || localDateKey(new Date());
-    const dayKey = getWeekDayKey(today, weekStartDateIso);
+    const today = targetDateKey || localDateKey();
     setStudents((ss) => ss.map((s) => {
       if (s.id !== id) return s;
-      const entry = s.days[dayKey];
-      const isAbsent = s.dailyAbsentDate === today || (entry?.absent === true && (entry.date === today || !entry.date));
-      const turningOn = !isAbsent;
-
-      const updatedDays: WeekDays = {
-        ...s.days,
-        [dayKey]: {
-          ...s.days[dayKey],
-          absent: turningOn,
-          date: turningOn ? today : undefined,
-          a: turningOn ? false : s.days[dayKey].a,
-          h: turningOn ? false : s.days[dayKey].h,
-          r: turningOn ? false : s.days[dayKey].r,
-        },
-      };
-
-      const studentUpdated: Student = {
-        ...s,
-        dailyAbsentDate: turningOn ? today : null,
-        dailyRecitedDate: turningOn && s.dailyRecitedDate === today ? null : s.dailyRecitedDate,
-        days: updatedDays,
-      };
-      const totals = calculateStudentTotals(studentUpdated, weeksLog, week, products, heartPrice);
+      const isAbsent = s.dailyAbsentDate === today;
       return {
-        ...studentUpdated,
-        xp: totals.xp,
-        weekXp: totals.weekXp,
-        coins: totals.coins,
-        weekCoins: totals.weekCoins,
-        highestRewardedLevel: totals.highestRewardedLevel,
+        ...s,
+        dailyAbsentDate: isAbsent ? null : today,
+        dailyRecitedDate: !isAbsent && s.dailyRecitedDate === today ? null : s.dailyRecitedDate,
       };
     }));
-  }, [heartPrice, products, week, weekStartDateIso, weeksLog]);
+  }, []);
 
   /* ===== الخبرة والعملات اليدوية ===== */
   const addXp = useCallback(
@@ -1811,7 +1428,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       // نفاد الكمية لدى المعلم يمنع الشراء (للنوعين)
       if (typeof item.stock === "number" && item.stock <= 0) {
-        toast("error", "عذرًا، يبدو أن المنتج أصبح غير متوفر. حاول اختيار منتج آخر.");
+        toast("error", `نفدت كمية «${item.name}» — بانتظار أن يزيدها المعلم`);
         sfx.error();
         return;
       }
@@ -1831,12 +1448,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ps.map((x) => (x.id === itemId && typeof x.stock === "number" ? { ...x, stock: Math.max(0, x.stock - 1) } : x))
         );
       }
-      const now = new Date().toISOString();
-      const buyOrderId = uid();
       setStudents((ss) =>
         ss.map((s) => {
           if (s.id !== id) return s;
-          const next: Student = { ...s, coins: s.coins - item.price, coinsSpent: (s.coinsSpent ?? 0) + item.price };
+          const next: Student = { ...s, coins: s.coins - item.price };
           if (isCosmetic) {
             next.inventory = [...s.inventory, itemId];
             return equipOn(next, item); // تُلبس الخاصية فور شرائها
@@ -1850,25 +1465,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return next;
         })
       );
-      if (!isCosmetic) {
-        setOrders((os) => [
-          {
-            id: buyOrderId,
-            studentId: st.id,
-            studentName: st.name,
-            itemId: item.id,
-            itemName: item.name,
-            itemKind: "physical",
-            itemImage: item.image ?? null,
-            itemIcon: item.icon,
-            price: item.price,
-            qty: 1,
-            purchasedAt: now,
-            status: "pending",
-          },
-          ...os,
-        ]);
-      }
       sfx.coin();
       const t = window.setTimeout(() => sfx.sparkle(), 200);
       timers.current.push(t);
@@ -1923,24 +1519,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...s,
         bag: (s.bag ?? []).map((b) => (b.itemId === itemId ? { ...b, receivedQty: nowReceived } : b)),
       }));
-
-      // مزامنة حالة الطلب في orders
-      setOrders((os) => {
-        const idx = os.findIndex((o) => o.studentId === id && o.itemId === itemId && o.status !== "delivered");
-        if (idx >= 0) {
-          const updated = [...os];
-          updated[idx] = { ...updated[idx], status: "delivered", deliveredAt: new Date().toISOString() };
-          return updated;
-        }
-        return os;
-      });
-
       if (nowReceived >= entry.qty) {
         sfx.sparkle();
-        toast("success", `استلم ${st.name} «${findItem(products, itemId)?.name ?? "الجائزة"}» بالكامل ✓`);
+        toast("success", `استلم ${st.name} «${findItem(products, itemId)?.name ?? "الجائزة"}» بالكامل`);
       } else {
         sfx.pop();
-        toast("success", `سُلّمت قطعة من «${findItem(products, itemId)?.name ?? "الجائزة"}» لـ${st.name}`);
       }
     },
     [products, students, toast, update]
@@ -1957,23 +1540,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           b.itemId === itemId && b.receivedQty > 0 ? { ...b, receivedQty: b.receivedQty - 1 } : b
         ),
       }));
-
-      setOrders((os) => {
-        const idx = os.findIndex((o) => o.studentId === id && o.itemId === itemId && o.status === "delivered");
-        if (idx >= 0) {
-          const updated = [...os];
-          const { deliveredAt, ...rest } = updated[idx];
-          updated[idx] = { ...rest, status: "pending" };
-          return updated;
-        }
-        return os;
-      });
       sfx.click();
-      toast("info", "تم التراجع عن تسليم الجائزة");
     },
-    [students, update, toast]
+    [students, update]
   );
 
+  /** منح منتج من المتجر لطالب مجانًا (صلاحية المعلم) — يخصم من الكمية أيضًا */
   const grantItem = useCallback(
     (studentId: string, itemId: string) => {
       const item = findItem(products, itemId);
@@ -2121,107 +1693,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const updateWeekLog = useCallback((targetWeek: number, next: WeekLog) => {
-    const updatedEntries = next.records ? next.records.map((r) => {
-      const mockStudent = r as unknown as Student;
-      const mem = measureStudentWork(mockStudent, "memorization");
-      const rev = measureStudentWork(mockStudent, "review");
-      return {
-        id: r.id,
-        name: r.name,
-        photo: r.photo,
-        xp: r.xp,
-        weekXp: weekXpOf(r.days),
-        level: levelInfo(r.xp).level,
-        coins: r.coins,
-        hearts: r.hearts,
-        attendanceDays: DAYS.filter((d) => r.days[d.key].a).length,
-        absenceDays: DAYS.filter((d) => r.days[d.key].absent === true).length,
-        evaluatedDays: DAYS.filter((d) => r.days[d.key].a || r.days[d.key].absent === true).length,
-        memorizationLines: mem.lines,
-        reviewLines: rev.lines,
-        memorizationVerses: mem.verses,
-        reviewVerses: rev.verses,
-        memorizationPages: mem.pages,
-        reviewPages: rev.pages,
-        memorizationDays: mem.sessions,
-        reviewDays: rev.sessions,
-        isTesting: r.isTesting === true,
-        halaqaId: r.halaqaId ?? null,
-      };
-    }) : (next.students ?? []);
-
-    const updatedLog: WeekLog = {
-      ...next,
-      week: targetWeek,
-      students: updatedEntries,
-      top: [...updatedEntries].sort((a, b) => (b.weekXp ?? 0) - (a.weekXp ?? 0) || (b.xp ?? 0) - (a.xp ?? 0)).slice(0, 10),
-    };
-
-    const nextWeeksLog = weeksLog.map((log) => log.week === targetWeek ? updatedLog : log);
-    setWeeksLog(nextWeeksLog);
-
-    // تحديث وإعادة احتساب نقاط وعملات جميع الطلاب النشطين استنادًا إلى سجلات الأسبوع المعدل
-    setStudents((ss) => {
-      let updatedStudents = ss.map((s) => {
-        const totals = calculateStudentTotals(s, nextWeeksLog, week, products, heartPrice);
-        return {
-          ...s,
-          xp: totals.xp,
-          weekXp: totals.weekXp,
-          coins: totals.coins,
-          weekCoins: totals.weekCoins,
-          highestRewardedLevel: totals.highestRewardedLevel,
-        };
-      });
-
-      // إذا أُضيف طالب في الأسبوع السابق ولم يكن موجودًا بعد في كشف الطلاب العام، يُضاف تلقائيًا
-      if (next.records) {
-        for (const r of next.records) {
-          const exists = updatedStudents.some((s) => s.id === r.id || normalizeArabic(s.name) === normalizeArabic(r.name));
-          if (!exists && r.name && r.name !== "طالب أضيف إلى السجل") {
-            const newSt: Student = {
-              id: r.id.startsWith("archive-") ? uid() : r.id,
-              name: r.name,
-              photo: r.photo,
-              halaqaId: r.halaqaId ?? null,
-              hearts: MAX_HEARTS,
-              heartsLostWeek: 0,
-              xp: 0,
-              weekXp: 0,
-              weekCoins: 0,
-              coins: 0,
-              highestRewardedLevel: 1,
-              isTesting: r.isTesting === true,
-              createdAt: Date.now(),
-              days: emptyWeekDays(),
-              ward: emptyWeeklyWard(),
-              inventory: [],
-              bag: [],
-              frame: null,
-              crown: null,
-              glow: null,
-              cardBg: null,
-              awards: [],
-              memorizationRecords: [],
-            };
-            const totals = calculateStudentTotals(newSt, nextWeeksLog, week, products, heartPrice);
-            updatedStudents.push({
-              ...newSt,
-              xp: totals.xp,
-              weekXp: totals.weekXp,
-              coins: totals.coins,
-              weekCoins: totals.weekCoins,
-              highestRewardedLevel: totals.highestRewardedLevel,
-            });
-          }
-        }
-      }
-
-      return updatedStudents;
-    });
-
-    toast("success", "تم حفظ تعديلات الأسبوع وتحديث نقاط وعملات الطلاب");
-  }, [heartPrice, products, toast, week, weeksLog]);
+    setWeeksLog((logs) => logs.map((log) => log.week === targetWeek ? { ...next, week: targetWeek } : log));
+    // حفظ هادئ
+  }, [toast]);
 
   /* ===== الرحلة الأسبوعية ===== */
   const setTrip = useCallback((on: boolean, day?: TripDay | null) => {
@@ -2313,7 +1787,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .slice(0, 10)
         ,
       awards,
-      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, guardianPhone: s.guardianPhone, parentAccessToken: s.parentAccessToken, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins, dailyRecitedDate: s.dailyRecitedDate ?? null, dailyAbsentDate: s.dailyAbsentDate ?? null })),
+      records: students.map((s) => ({ id: s.id, name: s.name, photo: s.photo, halaqaId: s.halaqaId ?? null, isTesting: s.isTesting === true, days: structuredClone(s.days), recitationRatings: structuredClone(s.recitationRatings ?? emptyRecitationRatings()), ward: structuredClone(s.ward), hearts: s.hearts, heartsLostWeek: s.heartsLostWeek, xp: s.xp, coins: s.coins, dailyRecitedDate: s.dailyRecitedDate ?? null, dailyAbsentDate: s.dailyAbsentDate ?? null })),
       ceremonyPicks: structuredClone(ceremonyPicks),
       rewardSettings: structuredClone(rewardSettings),
       tripAttendeeIds: [...tripAttendees],
@@ -2326,13 +1800,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : null,
     };
     setWeeksLog((logs) => [log, ...logs.filter((l) => l.week !== week)]);
-    // لا يُوسم المنتج بأنه عُرض إلا بعد إكمال الحفل. المنتجات المعروضة تُستبعد من الحفلات القادمة.
-    if (showNewProducts) {
+    // لا يُوسم المنتج بأنه عُرض إلا بعد إكمال الحفل. غير المحدد يبقى متاحًا للحفلات القادمة.
+    if (showNewProducts && ceremonyProductIds.length > 0) {
       const selected = new Set(ceremonyProductIds);
-      const toMark = ceremonyProductIds.length > 0 ? selected : new Set(products.filter((p) => p.showInCeremony !== false && p.shownInCeremonyWeek == null && !p.shownInCeremony).map((p) => p.id));
-      if (toMark.size > 0) {
-        setProducts((items) => items.map((item) => toMark.has(item.id) ? { ...item, shownInCeremonyWeek: week, shownInCeremony: true, ceremonyPending: false } : item));
-      }
+      setProducts((items) => items.map((item) => selected.has(item.id) && item.shownInCeremonyWeek == null ? { ...item, shownInCeremonyWeek: week, ceremonyPending: false } : item));
     }
     // أسبوع جديد: كشف نظيف — والقلوب تبقى كما هي (تُستعاد بالشراء أو بمنحة المعلم فقط)
     setWeek((w) => w + 1);
@@ -2451,20 +1922,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     closeCeremony,
     cloud,
     syncNow,
-    parentContacts,
-    recordParentContact,
-    removeParentContact,
-    contactMessages,
-    setContactMessage,
-    resetContactMessage,
-    parentStoreOpen,
-    toggleParentStore,
-    orders,
-    deliverOrder,
-    undeliverOrder,
-    parentLogs,
-    logParentAccess,
-    checkoutParentCart,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

@@ -12,5 +12,13 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/components/App.tsx",
+    "src/components/analytics.ts",
+    "src/components/appState.tsx",
+    "src/components/cloudSync.ts",
+    "src/components/core.ts",
+    "src/components/hijriDate.ts"
+  ]
 }

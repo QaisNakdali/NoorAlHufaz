@@ -1,18 +1,9 @@
 /* الأنواع والبيانات والمنطق الأساسي للمنصة */
-import { addCalendarDays, currentHijriMonthBounds, dateFromLocalKey, localDateKey } from "./hijriDate";
+import { currentHijriMonthBounds } from "./hijriDate";
 
 /* ---------- أدوات ---------- */
 export const ar = (n: number | string): string =>
   String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
-
-export function generateParentToken(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  let token = "";
-  for (let i = 0; i < 24; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return token;
-}
 
 export const uid = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -101,7 +92,7 @@ export type DayPart = "a" | "h" | "r"; // حضور | تسميع حفظ | تسم�
 export type RecitationPart = "h" | "r";
 export type RecitationRating = "excellent" | "very-good";
 /** absent حالة مستقلة اختيارية؛ غيابها في البيانات القديمة يعني أن اليوم غير محدد، لا أنه غياب. */
-export type DayEntry = Record<DayPart, boolean> & { absent?: boolean; date?: string };
+export type DayEntry = Record<DayPart, boolean> & { absent?: boolean };
 export type WeekDays = Record<DayKey, DayEntry>;
 export type RecitationRatings = Record<DayKey, Partial<Record<RecitationPart, RecitationRating>>>;
 
@@ -114,8 +105,6 @@ export type DailyWard = {
   reviewVerses: number;
   memorizationLines: number;
   reviewLines: number;
-  memorizationPages?: number;
-  reviewPages?: number;
   memorizationFromVerse?: number;
   memorizationToVerse?: number;
   reviewFromVerse?: number;
@@ -149,21 +138,6 @@ export function emptyWeekDays(): WeekDays {
   return { sun: mk(), mon: mk(), tue: mk(), wed: mk() };
 }
 
-export function getWeekDayKey(dateKey: string, weekStartDateIso?: string): DayKey {
-  if (weekStartDateIso) {
-    for (let i = 0; i < DAYS.length; i++) {
-      const d = addCalendarDays(weekStartDateIso, i);
-      if (localDateKey(d) === dateKey) return DAYS[i].key;
-    }
-  }
-  const d = dateFromLocalKey(dateKey) ?? new Date();
-  const dayIdx = d.getDay(); // 0 = sun, 1 = mon, 2 = tue, 3 = wed
-  if (dayIdx >= 0 && dayIdx < DAYS.length) {
-    return DAYS[dayIdx].key;
-  }
-  return "wed";
-}
-
 export function emptyRecitationRatings(): RecitationRatings {
   return { sun: {}, mon: {}, tue: {}, wed: {} };
 }
@@ -178,31 +152,25 @@ export const estimatedLinesFromVerses = (verses: number): number =>
   Math.max(0, Math.round((Number(verses) || 0) * 1.45));
 
 /** نقاط الأسبوع = مجموع نقاط كل الخانات المسجلة */
-export function weekXpOf(days?: WeekDays | null): number {
-  if (!days || typeof days !== "object") return 0;
+export function weekXpOf(days: WeekDays): number {
   let total = 0;
   for (const d of DAYS) {
     const e = days[d.key];
-    if (e && !e.absent) {
-      if (e.a) total += ATTEND_XP;
-      if (e.h) total += RECITE_XP;
-      if (e.r) total += RECITE_XP;
-    }
+    if (e.a) total += ATTEND_XP;
+    if (e.h) total += RECITE_XP;
+    if (e.r) total += RECITE_XP;
   }
   return total;
 }
 
 /** عملات الأسبوع = مجموع عملات كل الخانات المسجلة */
-export function weekCoinsOf(days?: WeekDays | null): number {
-  if (!days || typeof days !== "object") return 0;
+export function weekCoinsOf(days: WeekDays): number {
   let total = 0;
   for (const d of DAYS) {
     const e = days[d.key];
-    if (e && !e.absent) {
-      if (e.a) total += ATTEND_COINS;
-      if (e.h) total += RECITE_COINS;
-      if (e.r) total += RECITE_COINS;
-    }
+    if (e.a) total += ATTEND_COINS;
+    if (e.h) total += RECITE_COINS;
+    if (e.r) total += RECITE_COINS;
   }
   return total;
 }
@@ -223,32 +191,10 @@ export type MemorizationRecord = {
   createdAt: number;        // timestamp للإضافة
 };
 
-export type ParentContactType = "absence" | "notHeard";
-
-export type ParentContactRecord = {
-  id: string;
-  studentId: string;
-  studentName: string;
-  studentPhoto?: string | null;
-  guardianPhone?: string;
-  type: ParentContactType;
-  contactDateIso: string;
-  contactDateHijri: string;
-  absenceCountAtContact?: number;
-  notHeardMemAtContact?: number;
-  notHeardRevAtContact?: number;
-  notHeardBothAtContact?: number;
-  statusText: string;
-};
-
 export type Student = {
   id: string;
   name: string;
   photo: string | null;
-  /** رقم ولي الأمر للتواصل عبر واتساب (اختياري) */
-  guardianPhone?: string;
-  /** رمز وصول فريد وآمن لبوابة ولي الأمر (قراءة فقط) */
-  parentAccessToken?: string;
   /** حلقة واحدة فقط. null يحافظ على الطلاب القدامى بلا تعيين إجباري. */
   halaqaId?: string | null;
   hearts: number;
@@ -276,9 +222,6 @@ export type Student = {
   /** أعلى مستوى استلم الطالب مكافأته بالفعل لمنع تكرار مكافأة المستوى */
   highestRewardedLevel?: number;
   memorizationRecords?: MemorizationRecord[]; // سجل الحفظ التفصيلي (جديد)
-  manualXpAdjust?: number;
-  manualCoinsAdjust?: number;
-  coinsSpent?: number;
 };
 
 export type ShopItem = {
@@ -300,7 +243,6 @@ export type ShopItem = {
   ceremonyPending?: boolean;
   /** خيار التحكم في ظهور المنتج في الحفل الأسبوعي */
   showInCeremony?: boolean;
-  shownInCeremony?: boolean;
   stock?: number | null; // الكمية المتوفرة لدى المعلم (null = غير محدودة) — للنوعين
 };
 
@@ -600,7 +542,7 @@ export type WeekLogEntry = {
 };
 
 export type WeekStudentRecord = {
-  id: string; name: string; photo: string | null; guardianPhone?: string; parentAccessToken?: string; halaqaId?: string | null; isTesting?: boolean;
+  id: string; name: string; photo: string | null; halaqaId?: string | null; isTesting?: boolean;
   days: WeekDays; recitationRatings: RecitationRatings; ward: WeeklyWard;
   hearts: number; heartsLostWeek: number; xp: number; coins: number;
   dailyRecitedDate?: string | null;
@@ -613,12 +555,8 @@ export type WeekLog = {
   savedAt: string;
   /** تاريخ قابل للحساب للإحصائيات الجديدة؛ السجلات القديمة تبقى كما هي. */
   savedAtIso?: string;
-  /** بداية أسبوع الكشف (الأحد) كمفتاح تقني مستقل عن معرف الأسبوع. */
+  /** بداية أسبوع الكشف (الأحد) كمفتاح تقني؛ العرض للمستخدم هجري دائمًا. */
   weekStartDateIso?: string;
-  /** نهاية أسبوع الكشف (الأربعاء) */
-  weekEndDateIso?: string;
-  displayStartDate?: string;
-  displayEndDate?: string;
   top: WeekLogEntry[];
   /** لقطة آمنة لكل الطلاب من هذا الأسبوع؛ top يبقى للتوافق مع الأرشيف القديم. */
   students?: WeekLogEntry[];
@@ -630,159 +568,8 @@ export type WeekLog = {
   tripAttendeeIds?: string[];
 };
 
-export const normalizeArabic = (text: string): string => {
-  return (text ?? "")
-    .replace(/[ًٌٍَُِّْـ]/g, "")
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ة/g, "ه")
-    .replace(/ى/g, "ي")
-    .trim()
-    .toLowerCase();
-};
-
-/**
- * حساب حتمي ومطلق لنقاط وعملات ومستوى الطالب من السجلات الفعلية:
- * السجلات الفعلية في الأسابيع الحالية والماضية -> استخراج الأنشطة -> تحديد الإجمالي الصحيح بدقة 100%.
- */
-export function calculateStudentTotals(
-  student: Student,
-  weeksLog: WeekLog[] = [],
-  currentWeek: number = 1,
-  products?: ShopItem[],
-  heartPrice: number = DEFAULT_HEART_PRICE
-): {
-  xp: number;
-  weekXp: number;
-  coins: number;
-  weekCoins: number;
-  level: number;
-  highestRewardedLevel: number;
-} {
-  if (!student) {
-    return { xp: 0, weekXp: 0, coins: 0, weekCoins: 0, level: 1, highestRewardedLevel: 1 };
-  }
-
-  // 1. الأسبوع الحالي: محسوب بأمان تام من days
-  const days = student.days ?? emptyWeekDays();
-  const weekXp = weekXpOf(days);
-  const weekCoins = weekCoinsOf(days);
-
-  // 2. الأسابيع السابقة المؤرشفة في weeksLog
-  let pastXp = 0;
-  let pastCoins = 0;
-  const normName = normalizeArabic(student.name ?? "");
-
-  const uniqueWeeks = new Map<number, WeekLog>();
-  if (Array.isArray(weeksLog)) {
-    for (const log of weeksLog) {
-      if (log && log.week != null && Number(log.week) !== Number(currentWeek)) {
-        uniqueWeeks.set(Number(log.week), log);
-      }
-    }
-  }
-
-  for (const log of uniqueWeeks.values()) {
-    if (!log) continue;
-    let matchedRecord: WeekStudentRecord | undefined;
-    if (Array.isArray(log.records) && log.records.length > 0) {
-      matchedRecord = log.records.find((r) => r && (r.id === student.id || (r.name && normalizeArabic(r.name) === normName)));
-    }
-    if (matchedRecord && matchedRecord.days) {
-      pastXp += weekXpOf(matchedRecord.days);
-      pastCoins += weekCoinsOf(matchedRecord.days);
-    } else {
-      const entryList = Array.isArray(log.students) ? log.students : Array.isArray(log.top) ? log.top : [];
-      const entry = entryList.find((e) => e && (e.id === student.id || (e.name && normalizeArabic(e.name) === normName)));
-      if (entry) {
-        pastXp += typeof entry.weekXp === "number" ? entry.weekXp : 0;
-        pastCoins += typeof (entry as any).weekCoins === "number" ? (entry as any).weekCoins : 0;
-      }
-    }
-  }
-
-  // 3. الجوائز المستحقة والمسجلة
-  let awardsCoins = 0;
-  let awardsXp = 0;
-  if (Array.isArray(student.awards)) {
-    for (const a of student.awards) {
-      if (!a) continue;
-      awardsCoins += Math.max(0, a.coins ?? 0);
-      awardsXp += Math.max(0, a.xp ?? 0);
-    }
-  }
-
-  // 4. إجمالي النقاط
-  const manualXp = typeof student.manualXpAdjust === "number" ? student.manualXpAdjust : 0;
-  const totalXp = Math.max(0, pastXp + weekXp + awardsXp + manualXp);
-
-  // 5. المستوى = دالة رياضية حتمية ناتجة عن إجمالي النقاط
-  const lvlInfo = levelInfo(totalXp);
-  const level = lvlInfo.level;
-
-  // 6. مكافأة ارتقاء المستوى (+5 لكل مستوى أعلى من المستوى 1)
-  const levelRewardCoins = Math.max(0, level - 1) * LEVEL_COIN_REWARD;
-
-  // 7. العملات المصروفة
-  let spent = typeof student.coinsSpent === "number" ? student.coinsSpent : 0;
-  if (spent <= 0 && Array.isArray(products) && products.length > 0) {
-    if (Array.isArray(student.inventory)) {
-      for (const itemId of student.inventory) {
-        const item = findItem(products, itemId);
-        if (item && typeof item.price === "number") spent += item.price;
-      }
-    }
-    if (Array.isArray(student.bag)) {
-      for (const b of student.bag) {
-        if (!b) continue;
-        const item = findItem(products, b.itemId);
-        if (item && typeof item.price === "number") spent += (b.qty ?? 1) * item.price;
-      }
-    }
-  }
-
-  // 8. إجمالي العملات
-  const manualCoins = typeof student.manualCoinsAdjust === "number" ? student.manualCoinsAdjust : 0;
-  const totalCoins = Math.max(0, pastCoins + weekCoins + awardsCoins + levelRewardCoins + manualCoins - spent);
-
-  return {
-    xp: totalXp,
-    weekXp,
-    coins: totalCoins,
-    weekCoins,
-    level,
-    highestRewardedLevel: level,
-  };
-}
-
 /* ---------- الواجهات ---------- */
-/** سجل طلب شراء من المتجر */
-export type PurchaseOrder = {
-  id: string;
-  studentId: string;
-  studentName: string;
-  itemId: string;
-  itemName: string;
-  itemKind: "cosmetic" | "physical";
-  itemImage?: string | null;
-  itemIcon?: string;
-  price: number;
-  purchasedAt: string;
-  status: "pending" | "delivered";
-  deliveredAt?: string;
-};
-
-/** سجل جلسة نشاط ولي الأمر في البوابة */
-export type ParentAccessLog = {
-  id: string;
-  studentId: string;
-  studentName: string;
-  enteredAt: string;
-  lastActiveAt: string;
-  enteredStore: boolean;
-  purchased: boolean;
-};
-
-export type Tab = "register" | "lessons" | "store" | "deliveries" | "board" | "ceremony" | "past" | "term" | "stats" | "parentActivity";
+export type Tab = "register" | "lessons" | "store" | "deliveries" | "board" | "ceremony" | "past" | "term" | "stats";
 export type Mode = "teacher" | "student";
 
 /* ========== دوال مساعدة لسجل الحفظ والتحليلات ========== */
@@ -1008,28 +795,4 @@ export function seedStudents(): Student[] {
     mk("عمر", 140, 30, 0b011011011011),
     mk("سارة", 70, 20, 0b010010010010),
   ];
-}
-/**
- * الحصول على التسمية المعتمدة للأسبوع وفق التاريخ الفعلي
- * مثال: "الأحد ٢٨ سبتمبر – الأربعاء ١ أكتوبر"
- * مع الحفاظ التام على weekId داخلياً دون المساس بالبيانات
- */
-export function getWeekDisplayName(weekNum: number, startDateIso?: string, customName?: string): string {
-  if (customName && customName.trim() && !customName.startsWith("الأسبوع ")) {
-    return customName.trim();
-  }
-  if (startDateIso) {
-    const start = dateFromLocalKey(startDateIso);
-    if (start && !Number.isNaN(start.getTime())) {
-      const end = addCalendarDays(start, 3);
-      const fmtDay = (d: Date) => {
-        const weekday = new Intl.DateTimeFormat("ar", { weekday: "long" }).format(d);
-        const day = ar(d.getDate());
-        const month = new Intl.DateTimeFormat("ar", { month: "long" }).format(d);
-        return `${weekday} ${day} ${month}`;
-      };
-      return `${fmtDay(start)} – ${fmtDay(end)}`;
-    }
-  }
-  return `الأسبوع ${ar(weekNum)}`;
 }

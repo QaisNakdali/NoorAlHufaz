@@ -14,13 +14,28 @@ const parseDateKey = (value: string): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const daysBetween = (from: string, to: string): number => {
+/** الخميس والجمعة والسبت لا تغيّر التوزيع؛ تعرض آخر توزيع للأربعاء. */
+const effectiveTeachingDate = (date: Date): Date => {
+  const out = new Date(date);
+  const day = out.getDay();
+  if (day >= 4) out.setDate(out.getDate() - (day - 3));
+  return out;
+};
+
+const teachingDaysBetween = (from: string, to: string): number => {
   const a = parseDateKey(from);
   const b = parseDateKey(to);
   if (!a || !b) return 0;
-  const utcA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
-  const utcB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
-  return Math.max(0, Math.floor((utcB - utcA) / 86_400_000));
+  const start = effectiveTeachingDate(a);
+  const end = effectiveTeachingDate(b);
+  if (end <= start) return 0;
+  let count = 0;
+  const cursor = new Date(start);
+  while (cursor < end) {
+    cursor.setDate(cursor.getDate() + 1);
+    if (cursor.getDay() <= 3) count += 1;
+  }
+  return count;
 };
 
 const hash = (value: string): number => {
@@ -65,6 +80,7 @@ export type HalaqaDistribution = {
 export function distributionForHalaqa(halaqa: Halaqa, students: Student[], date = new Date()): HalaqaDistribution {
   const teachers = halaqa.teachers ?? [];
   const dateKey = localDateKey(date);
+  const effectiveDateKey = localDateKey(effectiveTeachingDate(date));
   const byTeacher = Object.fromEntries(teachers.map((teacher) => [teacher.id, [] as Student[]]));
   const teacherForStudent: Record<string, string> = {};
   const enabled = halaqa.randomDistribution === true && teachers.length > 1;
@@ -77,7 +93,7 @@ export function distributionForHalaqa(halaqa: Halaqa, students: Student[], date 
     return { enabled: false, date: dateKey, cycleIndex: 0, dayInCycle: 0, cycleLength: teachers.length, byTeacher, teacherForStudent };
   }
 
-  const elapsed = daysBetween(halaqa.rotationAnchorDate ?? dateKey, dateKey);
+  const elapsed = teachingDaysBetween(halaqa.rotationAnchorDate ?? effectiveDateKey, effectiveDateKey);
   const cycleLength = teachers.length;
   const cycleIndex = Math.floor(elapsed / cycleLength);
   const dayInCycle = elapsed % cycleLength;

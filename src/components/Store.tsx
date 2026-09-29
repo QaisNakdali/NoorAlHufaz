@@ -23,14 +23,16 @@ function KindBadge({ p }: { p: ShopProduct }) {
 /* صورة المنتج: صورة المعلم إن وُجدت، وإلا رسم تلقائي لخصائص البروفايل */
 function ProductImage({ p, dimmed = false }: { p: ShopProduct; dimmed?: boolean }) {
   return (
-    <div className={`h-24 overflow-hidden rounded-xl ${dimmed ? "opacity-45 grayscale" : ""}`}>
+    <div className={`h-36 sm:h-40 w-full overflow-hidden rounded-xl bg-slate-50 flex items-center justify-center p-2 border border-slate-100/80 transition group-hover:bg-white ${dimmed ? "opacity-45 grayscale" : ""}`}>
       {p.image ? (
-        <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
+        <img src={p.image} alt={p.name} className="max-h-full max-w-full object-contain drop-shadow-xs transition duration-200 group-hover:scale-105" />
       ) : p.kind === "cosmetic" ? (
-        <CosmeticThumb slot={p.slot} value={p.value} />
+        <div className="h-full w-full flex items-center justify-center">
+          <CosmeticThumb slot={p.slot} value={p.value} />
+        </div>
       ) : (
-        <div className="grid h-full w-full place-items-center bg-grape-100 text-grape-500">
-          <Icon name={p.icon} className="h-10 w-10" strokeWidth={1.8} />
+        <div className="grid h-full w-full place-items-center text-grape-400">
+          <Icon name={p.icon || "gift"} className="h-10 w-10" strokeWidth={1.8} />
         </div>
       )}
     </div>
@@ -244,7 +246,7 @@ export function StudentShop({ s, canGrant = false }: { s: Student; canGrant?: bo
               )}
               <span className="ms-auto text-xs font-bold text-grape-700/50">{ar(items.length)} منتج</span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
               {items.map((p, i) => (
                 <BuyCard key={p.id} s={s} p={p} delay={i * 40} canGrant={canGrant} />
               ))}
@@ -291,6 +293,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
   const [minLevel, setMinLevel] = useState(initial?.minLevel ?? 1);
   const [image, setImage] = useState<string | null>(initial?.image ?? null);
   const [kind, setKind] = useState<"cosmetic" | "external">(initial?.kind ?? "external");
+  const [showInCeremony, setShowInCeremony] = useState(initial?.showInCeremony !== false);
   const [cosmeticOpt, setCosmeticOpt] = useState(
     initial?.kind === "cosmetic" && initial.slot && initial.value ? `${initial.slot}|${initial.value}` : "frame|silver"
   );
@@ -333,6 +336,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
       value: kind === "cosmetic" ? value : undefined,
       repeatable: kind === "external" ? true : undefined,
       stock: stockStr.trim() === "" ? (initial?.stock ?? null) : Math.max(0, Number(stockStr) || 0),
+      showInCeremony: showInCeremony !== false,
     };
     saveProduct(item);
     toast("success", initial ? "تم تحديث المنتج" : "أُضيف المنتج للمتجر");
@@ -452,6 +456,23 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
           </button>
         )}
 
+        <div className="mt-4">
+          <label className="flex cursor-pointer items-center gap-3 rounded-2xl border-2 border-grape-200 bg-grape-50/60 p-3 text-sm font-extrabold text-ink transition hover:border-grape-300">
+            <input
+              type="checkbox"
+              checked={showInCeremony}
+              onChange={(e) => setShowInCeremony(e.target.checked)}
+              className="h-5 w-5 rounded accent-violet-600 cursor-pointer"
+            />
+            <div className="flex-1">
+              <span className="block font-display font-extrabold text-sm">عرض في الحفل الأسبوعي</span>
+              <span className="block text-xs font-bold text-grape-500">
+                {showInCeremony ? "☑ سيظهر هذا المنتج في خيارات الحفل الأسبوعي" : "☐ غير معروض في الحفل (سيبقى متاحًا في المتجر فقط)"}
+              </span>
+            </div>
+          </label>
+        </div>
+
         <div className="mt-5 flex gap-2.5">
           <BigBtn className="flex-1" onClick={save} color="bg-mint-600 hover:brightness-110 shadow-[0_5px_0_#0a7a50]">
             <Icon name="check" className="h-5 w-5" strokeWidth={3} />
@@ -468,7 +489,8 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
 
 /* ===== تبويب المتجر (المعلم) ===== */
 export default function StoreTab() {
-  const { sorted, products, removeProduct, heartPrice, setHeartPrice } = useApp();
+  const { sorted = [], products = [], removeProduct, heartPrice = 10, setHeartPrice, parentStoreOpen = true, toggleParentStore } = useApp();
+  const [notifyModalOpen, setNotifyModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ShopProduct | null>(null);
   const [buyerId, setBuyerId] = useState<string | null>(null);
@@ -500,6 +522,55 @@ export default function StoreTab() {
         }
       />
 
+      {/* شريط التحكم بمتجر أولياء الأمور وإشعار الواتساب */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-grape-200 bg-white p-3.5 shadow-xs">
+        <div className="flex items-center gap-3">
+          <span className={`grid h-10 w-10 place-items-center rounded-xl text-lg font-black ${
+            parentStoreOpen ? "bg-mint-100 text-mint-700" : "bg-amber-100 text-amber-800"
+          }`}>
+            {parentStoreOpen ? "🛒" : "🔒"}
+          </span>
+          <div>
+            <h4 className="font-display text-sm font-extrabold text-ink flex items-center gap-2">
+              <span>متجر أولياء الأمور:</span>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${
+                parentStoreOpen ? "bg-mint-100 text-mint-800" : "bg-amber-100 text-amber-800"
+              }`}>
+                {parentStoreOpen ? "مفتوح للشراء الآن ✓" : "مغلق حاليًا 🔒"}
+              </span>
+            </h4>
+            <p className="text-xs font-bold text-grape-400">
+              {parentStoreOpen
+                ? "يستطيع أولياء الأمور الدخول وشراء الجوائز لأبنائهم باستخدام عملاتهم"
+                : "لا يمكن لأولياء الأمور الشراء وتظهر لهم رسالة إغلاق المتجر"}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 ms-auto sm:ms-0">
+          <button
+            type="button"
+            onClick={() => toggleParentStore()}
+            className={`rounded-xl px-4 py-2 font-display text-xs font-black transition ${
+              parentStoreOpen
+                ? "border-2 border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                : "bg-mint-600 text-white hover:bg-mint-700 shadow-xs"
+            }`}
+          >
+            {parentStoreOpen ? "إغلاق المتجر للأولياء" : "فتح المتجر للأولياء"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setNotifyModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-grape-600 px-4 py-2 font-display text-xs font-black text-white hover:bg-grape-700 transition shadow-xs"
+          >
+            <Icon name="sparkle" className="h-3.5 w-3.5" />
+            <span>إبلاغ أولياء الأمور بفتح المتجر</span>
+          </button>
+        </div>
+      </div>
+
       <div className="mb-6 rounded-[24px] border-2 border-coral-200 bg-white p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[190px] flex-1">
@@ -520,51 +591,69 @@ export default function StoreTab() {
       {/* إدارة المنتجات */}
       <div className="mb-6 rounded-[24px] border-2 border-grape-200 bg-white p-4">
         <p className="mb-3 font-display text-base font-extrabold text-ink">منتجات المتجر ({ar(products.length)})</p>
-        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
           {products.map((p) => (
-            <div key={p.id} className="flex items-center gap-3 rounded-2xl border-2 border-grape-100 bg-grape-50/50 p-2.5">
-              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl">
-                {p.image ? (
-                  <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
-                ) : p.kind === "cosmetic" ? (
-                  <CosmeticThumb slot={p.slot} value={p.value} />
-                ) : (
-                  <div className="grid h-full w-full place-items-center bg-grape-100 text-grape-500">
-                    <Icon name={p.icon} className="h-6 w-6" strokeWidth={1.8} />
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-display text-sm font-extrabold text-ink">{p.name}</p>
-                <p className="flex flex-wrap items-center gap-x-2 text-xs font-bold text-grape-700/60">
-                  <span className="flex items-center gap-0.5"><Coin className="h-3 w-3" />{ar(p.price)}</span>
-                  <span>م{ar(p.minLevel)}</span>
-                  <span className={p.kind === "cosmetic" ? "text-grape-500" : "text-mint-600"}>
+            <div key={p.id} className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border-2 border-grape-200 bg-white p-3 shadow-xs hover:border-grape-400 hover:shadow-md transition">
+              <div className="relative">
+                <div className="h-32 sm:h-36 w-full overflow-hidden rounded-xl bg-slate-50 flex items-center justify-center p-2 border border-slate-100/80 mb-2">
+                  {p.image ? (
+                    <img src={p.image} alt={p.name} className="max-h-full max-w-full object-contain drop-shadow-xs transition duration-200 group-hover:scale-105" />
+                  ) : p.kind === "cosmetic" ? (
+                    <div className="h-full w-full flex items-center justify-center">
+                      <CosmeticThumb slot={p.slot} value={p.value} />
+                    </div>
+                  ) : (
+                    <div className="grid h-full w-full place-items-center text-grape-400">
+                      <Icon name={p.icon || "gift"} className="h-10 w-10" strokeWidth={1.8} />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <p className="truncate font-display text-sm font-extrabold text-ink">{p.name}</p>
+                  <span className="rounded-full bg-gold-400/25 px-2 py-0.5 text-xs font-extrabold text-gold-700 whitespace-nowrap">
+                    {ar(p.price)} 🪙
+                  </span>
+                </div>
+                <p className="text-[11px] font-bold text-grape-500 line-clamp-2 min-h-7 leading-4">{p.desc}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold text-grape-600">
+                  <span className="rounded-md bg-grape-50 px-1.5 py-0.5 border border-grape-200/50">م{ar(p.minLevel)}</span>
+                  <span className={`rounded-md px-1.5 py-0.5 border ${p.kind === "cosmetic" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-mint-50 text-mint-700 border-mint-200"}`}>
                     {p.kind === "cosmetic" ? "خاصية" : "خارجية"}
                   </span>
                   {typeof p.stock === "number" && (
-                    <span className={p.stock <= 0 ? "text-coral-500" : "text-gold-600"}>
-                      {p.stock <= 0 ? "نفدت" : `متبقي ${ar(p.stock)}`}
+                    <span className={`rounded-md px-1.5 py-0.5 border ${p.stock <= 0 ? "bg-red-50 text-red-600 border-red-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                      {p.stock <= 0 ? "نفدت" : `باقٍ ${ar(p.stock)}`}
                     </span>
                   )}
-                </p>
+                </div>
               </div>
-              <div className="flex shrink-0 gap-1">
+              
+              <div className="mt-3 pt-2 border-t border-grape-100 flex items-center justify-between gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => saveProduct({ ...p, showInCeremony: p.showInCeremony === false ? true : false })}
+                  className={`rounded-lg px-2 py-1 text-[10px] font-extrabold transition flex-1 text-center ${
+                    p.showInCeremony !== false ? "bg-mint-100 text-mint-700 hover:bg-mint-200" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  }`}
+                  title="التحكم في ظهور المنتج في الحفل"
+                >
+                  {p.showInCeremony !== false ? "في الحفل ✓" : "المتجر فقط"}
+                </button>
                 <button
                   type="button"
                   onClick={() => { setEditing(p); setEditorOpen(true); }}
-                  title="تعديل"
-                  className="grid h-8 w-8 place-items-center rounded-lg bg-grape-600/12 text-grape-600 transition hover:bg-grape-600 hover:text-white active:scale-90"
+                  title="تعديل المنتج"
+                  className="grid h-7 w-7 place-items-center rounded-lg bg-grape-100 text-grape-600 hover:bg-grape-600 hover:text-white transition"
                 >
-                  <Icon name="pencil" className="h-3.5 w-3.5" strokeWidth={2.4} />
+                  <Icon name="pencil" className="h-3.5 w-3.5" />
                 </button>
                 <button
                   type="button"
                   onClick={() => removeProduct(p.id)}
-                  title="حذف"
-                  className="grid h-8 w-8 place-items-center rounded-lg bg-coral-500/12 text-coral-500 transition hover:bg-coral-500 hover:text-white active:scale-90"
+                  title="حذف المنتج"
+                  className="grid h-7 w-7 place-items-center rounded-lg bg-coral-50 text-coral-600 hover:bg-coral-600 hover:text-white transition"
                 >
-                  <Icon name="x" className="h-3.5 w-3.5" strokeWidth={3} />
+                  <Icon name="x" className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
@@ -601,6 +690,99 @@ export default function StoreTab() {
 
       {editorOpen && <ProductModal initial={editing} onClose={() => setEditorOpen(false)} />}
       {awardsOpen && <WeeklyAwards onClose={() => setAwardsOpen(false)} />}
-    </div>
+    
+      {/* نافذة إبلاغ أولياء الأمور بفتح المتجر */}
+      {notifyModalOpen && (
+        <Modal open onClose={() => setNotifyModalOpen(false)} wide>
+          <div className="p-6 space-y-4" dir="rtl">
+            <div className="flex items-center justify-between border-b border-grape-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-grape-100 text-grape-700 text-lg">
+                  📢
+                </span>
+                <div>
+                  <h3 className="font-display text-base font-extrabold text-ink">
+                    إبلاغ أولياء الأمور بفتح متجر الجوائز
+                  </h3>
+                  <p className="text-xs font-bold text-grape-500">
+                    تجهيز روابط واتساب المباشرة لكل ولي أمر لفتح المتجر والشراء
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNotifyModalOpen(false)}
+                className="rounded-full p-2 text-grape-400 hover:bg-grape-100 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-grape-200 bg-grape-50/50 p-3.5 text-xs font-bold text-grape-600">
+              <p className="font-extrabold text-grape-800 mb-1">نموذج الرسالة المجهزة تلقائيًا:</p>
+              <p className="leading-relaxed bg-white p-2.5 rounded-xl border border-grape-100 font-mono text-gray-700">
+                السلام عليكم ورحمة الله وبركاته،<br />
+                تم فتح متجر الطالب {"{اسم الطالب}"}، ويمكنه الآن الدخول إلى بوابته والاطلاع على المنتجات المتاحة والشراء باستخدام عملاته.<br />
+                رابط بوابة الطالب: {"{رابط الطالب}"}<br />
+                بارك الله فيكم.
+              </p>
+            </div>
+
+            <div className="max-h-[360px] overflow-y-auto space-y-2 pe-1">
+              {sorted.map((s) => {
+                const hasPhone = Boolean(s.guardianPhone?.trim());
+                const cleanPhone = (s.guardianPhone ?? "").replace(/[^0-9+]/g, "").replace(/^00/, "+").replace(/^0/, "966");
+                const portalLink = `${typeof window !== "undefined" ? window.location.origin : ""}/parent/${s.parentAccessToken}`;
+                const msg = `السلام عليكم ورحمة الله وبركاته،\nتم فتح متجر الطالب ${s.name}، ويمكنه الآن الدخول إلى بوابته والاطلاع على المنتجات المتاحة والشراء باستخدام عملاته.\nرابط بوابة الطالب:\n${portalLink}\nبارك الله فيكم.`;
+                const waUrl = hasPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}` : "";
+
+                return (
+                  <div
+                    key={s.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-grape-100 bg-white p-3 hover:border-grape-200 transition"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Avatar photo={s.photo} name={s.name} size={36} />
+                      <div className="min-w-0">
+                        <span className="font-display text-sm font-black text-ink truncate block">{s.name}</span>
+                        {hasPhone ? (
+                          <span className="text-xs font-mono text-grape-500">📱 {s.guardianPhone}</span>
+                        ) : (
+                          <span className="text-xs font-bold text-coral-500">(لا يوجد رقم مسجل)</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 ms-auto sm:ms-0">
+                      {hasPhone ? (
+                        <button
+                          type="button"
+                          onClick={() => window.open(waUrl, "_blank")}
+                          className="flex items-center gap-1.5 rounded-xl bg-mint-600 px-3 py-1.5 text-xs font-extrabold text-white hover:bg-mint-700 transition"
+                        >
+                          <span>فتح واتساب 💬</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs font-bold text-grape-400">غير متاح</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end border-t border-grape-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setNotifyModalOpen(false)}
+                className="rounded-xl bg-grape-100 px-5 py-2 text-xs font-extrabold text-grape-700 hover:bg-grape-200 transition"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+</div>
   );
 }
