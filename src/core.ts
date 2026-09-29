@@ -769,7 +769,7 @@ export type PurchaseOrder = {
   studentName: string;
   itemId: string;
   itemName: string;
-  itemKind: "cosmetic" | "physical";
+  itemKind: "cosmetic" | "physical" | "heart";
   itemImage?: string | null;
   itemIcon?: string;
   price: number;
