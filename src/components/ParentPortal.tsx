@@ -2,13 +2,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../appState";
 import { analyzeStudentTrend, pagesForWardDay } from "../analytics";
-import { ar, bagQty, DAYS, levelInfo, type ShopItem, type Student } from "../core";
+import { ar, bagQty, DAYS, levelInfo, MAX_HEARTS, type Student } from "../core";
 import Avatar from "./Avatar";
 import CosmeticThumb from "./CosmeticThumb";
 import { Icon } from "./ui";
 import { formatHijriDate, addCalendarDays, formatTeachingWeek, hijriMonthKey, localDateKey } from "../hijriDate";
 import { roundUpToQuarter } from "../statisticsNumber";
-import { parseStoredCart, removeCartLine } from "../cart";
+import { HEART_ITEM_ID } from "../checkoutTransaction";
 
 const n = (value: number) => ar(roundUpToQuarter(value));
 
@@ -21,6 +21,7 @@ export default function ParentPortal({ token }: { token: string }) {
     weekStartDateIso = "",
     parentContacts = [],
     products = [],
+    heartPrice,
     parentStoreOpen,
     orders = [],
     logParentAccess,
@@ -30,11 +31,7 @@ export default function ParentPortal({ token }: { token: string }) {
 
   const [activeTab, setActiveTab] = useState<"progress" | "store" | "purchases">("progress");
   const [progressPeriod, setProgressPeriod] = useState<"day" | "week" | "month">("week");
-  const cartKey = `noor-parent-cart:${token}`;
-  const [cart, setCart] = useState<{ itemId: string; qty: number }[]>(() =>
-    typeof window === "undefined" ? [] : parseStoredCart(window.sessionStorage.getItem(cartKey))
-  );
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [purchasingId, setPurchasingId] = useState<string | null>(null);
 
   // البحث الدائم عن الطالب المطابق لرمز الوصول المشفر
   const student = useMemo(() => {
@@ -57,21 +54,12 @@ export default function ParentPortal({ token }: { token: string }) {
     return orders.filter((order) => order.studentId === student.id);
   }, [orders, student]);
 
-  const cartTotal = useMemo(() => cart.reduce((sum, line) => {
-    const product = products.find((item) => item.id === line.itemId);
-    return sum + (product ? product.price * line.qty : 0);
-  }, 0), [cart, products]);
-
   // تسجيل جلسة النشاط عند الدخول
   useEffect(() => {
     if (student) {
       logParentAccess(student.id, activeTab === "store");
     }
   }, [student, activeTab, logParentAccess]);
-
-  useEffect(() => {
-    window.sessionStorage.setItem(cartKey, JSON.stringify(cart));
-  }, [cart, cartKey]);
 
   // حالة الرابط غير الصالح أو عند حذف الطالب
   if (!student) {
@@ -244,51 +232,13 @@ export default function ParentPortal({ token }: { token: string }) {
     .filter((w): w is NonNullable<typeof w> => !!w)
     .sort((a, b) => b.week - a.week);
 
-  // إدارة السلة
-  const addToCart = (product: ShopItem) => {
-    if (student.coins < product.price) {
-      toast("error", "لا توجد عملات كافية لشراء هذا المنتج");
-      return;
-    }
-    setCart((prev) => {
-      const idx = prev.findIndex((c) => c.itemId === product.id);
-      if (idx >= 0) {
-        if (!product.repeatable && product.kind !== "cosmetic") {
-          toast("error", "هذا المنتج لا يمكن شراؤه أكثر من مرة");
-          return prev;
-        }
-        const updated = [...prev];
-        updated[idx] = { ...updated[idx], qty: updated[idx].qty + 1 };
-        toast("success", `تمت إضافة نسخة أخرى من «${product.name}» للسلة`);
-        return updated;
-      }
-      toast("success", `تمت إضافة «${product.name}» إلى السلة`);
-      return [...prev, { itemId: product.id, qty: 1 }];
-    });
-  };
-
-  const removeFromCart = (itemId: string) => {
-    setCart((prev) => removeCartLine(prev, itemId));
-  };
-
-  const handleCheckout = async () => {
-    if (isSubmitting) return;
-    if (cart.length === 0) return;
-    if (student.coins < cartTotal) {
-      toast("error", "رصيد عملات الطالب لا يكفي لإتمام الشراء");
-      return;
-    }
-
-    setIsSubmitting(true);
-    const res = await checkoutParentCart(student.id, cart);
-    setIsSubmitting(false);
-
-    if (res.success) {
-      setCart([]);
-      setActiveTab("purchases");
-    } else {
-      toast("error", res.error || "تعذر إتمام العملية");
-    }
+  const purchaseNow = async (itemId: string) => {
+    if (purchasingId) return;
+    setPurchasingId(itemId);
+    const res = await checkoutParentCart(student.id, [{ itemId, qty: 1 }]);
+    setPurchasingId(null);
+    if (res.success) setActiveTab("purchases");
+    else toast("error", res.error || "تعذر إتمام عملية الشراء");
   };
 
   return (
@@ -635,6 +585,38 @@ export default function ParentPortal({ token }: { token: string }) {
                   </div>
                 </div>
 
+                {student.hearts <= 0 && (
+                  <div className="rounded-3xl border-2 border-coral-300 bg-gradient-to-l from-coral-50 to-white p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-coral-500 text-2xl text-white">♡</span>
+                      <div>
+                        <h3 className="font-display text-base font-black text-coral-900">نفدت قلوب الطالب</h3>
+                        <p className="mt-1 text-xs font-bold leading-5 text-coral-700">يجب استعادة قلب واحد أولًا قبل شراء أي جائزة أخرى من المتجر.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {student.hearts < MAX_HEARTS && (
+                  <div className="rounded-3xl border-2 border-coral-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-coral-100 text-3xl text-coral-600">♥</span>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-display text-base font-black text-ink">استعادة قلب جديد</h3>
+                        <p className="mt-0.5 text-xs font-bold text-grape-500">القلوب الحالية: {ar(student.hearts)} من {ar(MAX_HEARTS)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={purchasingId !== null || student.coins < heartPrice}
+                        onClick={() => void purchaseNow(HEART_ITEM_ID)}
+                        className="min-h-11 rounded-xl bg-coral-500 px-4 text-xs font-black text-white transition hover:bg-coral-600 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        {purchasingId === HEART_ITEM_ID ? "جاري الاستعادة..." : student.coins < heartPrice ? `تحتاج ${ar(heartPrice)} عملة` : `شراء بـ ${ar(heartPrice)} عملة`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 gap-2.5 min-[390px]:grid-cols-2 sm:gap-3">
                   {products.map((p) => {
                     const isCosmetic = p.kind === "cosmetic";
@@ -645,7 +627,8 @@ export default function ParentPortal({ token }: { token: string }) {
                     const soldOut = owned && (isCosmetic || !p.repeatable);
                     const hasStockLimit = typeof p.stock === "number";
                     const outOfStock = hasStockLimit && (p.stock ?? 0) <= 0;
-                    const cantBuy = locked || poor || soldOut || outOfStock;
+                    const noHearts = student.hearts <= 0;
+                    const cantBuy = locked || poor || soldOut || outOfStock || noHearts || purchasingId !== null;
 
                     return (
                       <div
@@ -685,64 +668,16 @@ export default function ParentPortal({ token }: { token: string }) {
                           <button
                             type="button"
                             disabled={cantBuy}
-                            onClick={() => addToCart(p)}
+                            onClick={() => void purchaseNow(p.id)}
                             className="rounded-xl bg-grape-600 px-3 py-1.5 text-xs font-black text-white hover:bg-grape-700 transition disabled:opacity-40 disabled:pointer-events-none"
                           >
-                            {locked ? "مغلق" : soldOut ? "تم الشراء" : outOfStock ? "نفدت الكمية" : poor ? "الرصيد لا يكفي" : "+ أضف للسلة"}
+                            {purchasingId === p.id ? "جاري الشراء..." : noHearts ? "استعد قلبًا أولًا" : locked ? "مغلق" : soldOut ? "تم الشراء" : outOfStock ? "نفدت الكمية" : poor ? "الرصيد لا يكفي" : "شراء الآن"}
                           </button>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-
-                {/* شريط السلة العائم */}
-                {cart.length > 0 && (
-                  <div className="fixed inset-x-3 bottom-[max(.75rem,env(safe-area-inset-bottom))] z-30 mx-auto max-w-2xl rounded-2xl border-2 border-grape-300 bg-white p-3 shadow-xl sm:inset-x-4 sm:p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-display text-sm font-black text-ink">سلة المشتريات ({ar(cart.length)} عناصر)</span>
-                          <span className="font-display text-xs font-black text-gold-800 bg-gold-50 px-2 py-0.5 rounded-lg border border-gold-200">
-                            الإجمالي: {ar(cartTotal)} 🪙
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {cart.map((c) => {
-                            const p = products.find((x) => x.id === c.itemId);
-                            if (!p) return null;
-                            return (
-                              <span
-                                key={c.itemId}
-                                className="inline-flex items-center gap-1 rounded-lg bg-grape-50 border border-grape-200 px-2 py-0.5 text-[10px] font-bold text-grape-700"
-                              >
-                                <span>{p.name} {c.qty > 1 ? `(${ar(c.qty)})` : ""}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => removeFromCart(c.itemId)}
-                                  className="text-coral-500 hover:text-coral-700 font-black ms-1"
-                                >
-                                  ×
-                                </button>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 ms-auto sm:ms-0">
-                        <button
-                          type="button"
-                          disabled={isSubmitting || student.coins < cartTotal}
-                          onClick={handleCheckout}
-                          className="rounded-xl bg-gold-500 px-4 py-2 text-xs font-black text-ink shadow-sm hover:bg-gold-600 transition disabled:opacity-40"
-                        >
-                          {isSubmitting ? "جاري الشراء..." : "إتمام الشراء ✓"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
