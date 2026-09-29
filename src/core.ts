@@ -2,10 +2,8 @@
 import { addCalendarDays, currentHijriMonthBounds, dateFromLocalKey, localDateKey } from "./hijriDate";
 
 /* ---------- أدوات ---------- */
-export const ar = (n?: number | string | null): string => {
-  if (n === undefined || n === null || (typeof n === 'number' && Number.isNaN(n))) return '';
-  return String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
-};
+export const ar = (n: number | string): string =>
+  String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
 
 export function generateParentToken(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
