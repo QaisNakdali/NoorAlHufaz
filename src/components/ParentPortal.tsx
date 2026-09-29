@@ -1,12 +1,12 @@
 /* بوابة خاصة بأولياء الأمور — تصميم مودرن، فخم ومتجاوب بالكامل مع الجوال والحاسوب */
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../appState";
-import { generateParentAIGuidance, pagesForWardDay } from "../analytics";
-import { ar, bagQty, DAYS, getWeekDayKey, levelInfo, type ShopItem, type Student, uid } from "../core";
+import { analyzeStudentTrend, pagesForWardDay } from "../analytics";
+import { ar, bagQty, DAYS, levelInfo, type ShopItem, type Student, uid } from "../core";
 import Avatar from "./Avatar";
 import CosmeticThumb from "./CosmeticThumb";
 import { Coin, HeartsRow, Icon } from "./ui";
-import { formatHijriDate, addCalendarDays, formatTeachingWeekRange, localDateKey, dateFromLocalKey, hijriMonthKey, teachingWeekStart } from "../hijriDate";
+import { formatHijriDate, addCalendarDays } from "../hijriDate";
 import { roundUpToQuarter } from "../statisticsNumber";
 
 const n = (value: number) => ar(roundUpToQuarter(value));
@@ -34,51 +34,34 @@ export default function ParentPortal({ token }: { token: string }) {
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<"progress" | "store" | "purchases">("progress");
-  const [statsPeriod, setStatsPeriod] = useState<"today" | "week" | "month">("week");
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // العثور على الطالب بمرونة ودقة عبر رمز الوصول أو المعرف
+  // البحث الدائم عن الطالب المطابق لرمز الوصول أو المعرف
   const student = useMemo(() => {
     if (!token || !token.trim()) return null;
     const cleanToken = token.trim();
     return students.find((s) => s.parentAccessToken === cleanToken || s.id === cleanToken) || null;
   }, [students, token]);
 
-  // إدارة سلة المشتريات وحفظها محليًا
-  const [cart, setCart] = useState<CartItem[]>(() => {
-    if (!student) return [];
-    try {
-      const saved = localStorage.getItem(`noor_cart_${student.id}`);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [];
-  });
-
-  useEffect(() => {
-    if (student) {
-      try {
-        localStorage.setItem(`noor_cart_${student.id}`, JSON.stringify(cart));
-      } catch {}
-    }
-  }, [cart, student]);
-
   const halaqa = useMemo(() => {
     if (!student?.halaqaId) return null;
     return halaqas.find((h) => h.id === student.halaqaId) || null;
   }, [student, halaqas]);
 
-  // توليد التوجيهات التربوية الذكية بناءً على تاريخ الطالب
-  const guidance = useMemo(() => {
+  const trend = useMemo(() => {
     if (!student) return null;
-    return generateParentAIGuidance(student, weeksLog, parentContacts);
+    return analyzeStudentTrend(student, weeksLog, parentContacts);
   }, [student, weeksLog, parentContacts]);
 
+  // تسجيل جلسة النشاط عند الدخول
   useEffect(() => {
     if (student) {
       logParentAccess(student.id, activeTab === "store");
     }
   }, [student, activeTab, logParentAccess]);
 
+  // حالة الرابط غير الصالح أو عند حذف الطالب
   if (!student) {
     return (
       <div className="min-h-screen bg-[#f8f9fb] flex items-center justify-center p-4 text-center" dir="rtl">
@@ -90,10 +73,10 @@ export default function ParentPortal({ token }: { token: string }) {
             رابط المتابعة غير متاح
           </h2>
           <p className="mt-2 text-xs font-bold text-slate-500 leading-relaxed">
-            يرجى التأكد من الرابط أو التواصل مع معلم الحلقة للحصول على الرابط المحدّث للطالب.
+            يرجى التواصل مع إدارة الحلقة أو معلم الطالب للحصول على الرابط المحدّث للطالب.
           </p>
           <div className="mt-6 pt-4 border-t border-slate-100 text-[11px] font-bold text-slate-400">
-            منصة نور الحفّاظ &bull; متابعة القرآن الكريم
+            نور الحفّاظ &bull; منصة التحفيظ والمتابعة القرآنية
           </div>
         </div>
       </div>
@@ -107,124 +90,93 @@ export default function ParentPortal({ token }: { token: string }) {
   const safeNeed = Number.isFinite(need) && need > 0 ? need : 100;
   const safePct = Math.min(100, Math.max(0, Math.round((safeInto / safeNeed) * 100)));
 
-  // حساب يوم اليوم الفعلي في الأسبوع التعليمي (الأحد - الأربعاء)
-  const today = new Date();
-  const todayIso = localDateKey(today);
-  const todayDayKey = getWeekDayKey(todayIso, weekStartDateIso);
-  const activeDayIndex = Math.max(0, DAYS.findIndex((d) => d.key === todayDayKey));
+  // حسابات إحصائيات الأسبوع الحالي
+  const currPresent = DAYS.filter((d) => !!student.days?.[d.key]?.a && !student.days?.[d.key]?.absent).length;
+  const currAbsent = DAYS.filter((d) => student.days?.[d.key]?.absent === true).length;
+  const totalDaysEvaluated = currPresent + currAbsent;
+  const attendanceRate = totalDaysEvaluated > 0 ? Math.round((currPresent / totalDaysEvaluated) * 100) : 100;
 
-  const todayState = student.days?.[todayDayKey];
-  const todayWard = student.ward?.[todayDayKey];
-  const todayRating = student.recitationRatings?.[todayDayKey];
-  const todayDateStr = formatHijriDate(addCalendarDays(weekStartDateIso || localDateKey(teachingWeekStart()), activeDayIndex), { weekday: "long", day: "numeric", month: "long" });
+  const memSessions = DAYS.filter((d) => {
+    const st = student.days?.[d.key];
+    const rt = student.recitationRatings?.[d.key];
+    return !!st?.a && !st?.absent && (!!st?.h || rt?.h === "excellent" || rt?.h === "very-good");
+  }).length;
 
-  const isTodayAbsent = todayState?.absent === true || student.dailyAbsentDate === todayIso;
-  const isTodayRecited = (student.dailyRecitedDate === todayIso || (todayState?.a === true && (todayState?.h || todayState?.r))) && !isTodayAbsent;
+  const revSessions = DAYS.filter((d) => {
+    const st = student.days?.[d.key];
+    const rt = student.recitationRatings?.[d.key];
+    return !!st?.a && !st?.absent && (!!st?.r || rt?.r === "excellent" || rt?.r === "very-good");
+  }).length;
 
-  const hasTodayMem = isTodayRecited && Boolean(todayState?.h || todayRating?.h === "excellent" || todayRating?.h === "very-good" || todayWard?.memorization?.trim());
-  const hasTodayRev = isTodayRecited && Boolean(todayState?.r || todayRating?.r === "excellent" || todayRating?.r === "very-good" || todayWard?.review?.trim());
-
-  const todayMemPages = hasTodayMem ? pagesForWardDay(student, todayDayKey, "memorization").pages : 0;
-  const todayRevPages = hasTodayRev ? pagesForWardDay(student, todayDayKey, "review").pages : 0;
-
-  // البحث عن آخر يوم تسميع نشط في الأسبوع لإظهاره لولي الأمر في حال لم تبدأ جلسة اليوم بعد
-  const latestActiveDay = useMemo(() => {
-    for (let i = DAYS.length - 1; i >= 0; i--) {
-      const dKey = DAYS[i].key;
-      const st = student.days?.[dKey];
-      const rt = student.recitationRatings?.[dKey];
-      if (st?.a && !st.absent && (st.h || st.r || rt?.h || rt?.r)) {
-        return {
-          dayLabel: DAYS[i].label,
-          dayKey: dKey,
-          ward: student.ward?.[dKey],
-          rating: rt,
-          memPages: pagesForWardDay(student, dKey, "memorization").pages,
-          revPages: pagesForWardDay(student, dKey, "review").pages,
-        };
-      }
-    }
-    return null;
-  }, [student]);
-
-  // إحصائيات الأسبوع الحالي
-  const currPresent = DAYS.filter((d) => (student.days?.[d.key]?.a || (d.key === todayDayKey && isTodayRecited)) && !student.days?.[d.key]?.absent).length;
-  const currAbsent = DAYS.filter((d) => student.days?.[d.key]?.absent === true || (d.key === todayDayKey && isTodayAbsent)).length;
-  
-  let currWeekMemPages = 0;
-  let currWeekRevPages = 0;
-  let currWeekExcellentCount = 0;
-  let currWeekVeryGoodCount = 0;
-
+  let memPages = 0;
+  let revPages = 0;
   for (const d of DAYS) {
     const st = student.days?.[d.key];
     const rt = student.recitationRatings?.[d.key];
-    const isDayRecited = (st?.a && !st.absent) || (d.key === todayDayKey && isTodayRecited);
-    if (isDayRecited) {
-      if (st?.h || rt?.h === "excellent" || rt?.h === "very-good" || student.ward?.[d.key]?.memorization?.trim()) {
-        currWeekMemPages += pagesForWardDay(student, d.key, "memorization").pages;
-        if (rt?.h === "very-good") currWeekVeryGoodCount++;
-        else currWeekExcellentCount++;
-      }
-      if (st?.r || rt?.r === "excellent" || rt?.r === "very-good" || student.ward?.[d.key]?.review?.trim()) {
-        currWeekRevPages += pagesForWardDay(student, d.key, "review").pages;
-        if (rt?.r === "very-good") currWeekVeryGoodCount++;
-        else currWeekExcellentCount++;
-      }
+    if (st?.a && !st.absent && (st.h || rt?.h === "excellent" || rt?.h === "very-good")) {
+      memPages += pagesForWardDay(student, d.key, "memorization").pages;
+    }
+    if (st?.a && !st.absent && (st.r || rt?.r === "excellent" || rt?.r === "very-good")) {
+      revPages += pagesForWardDay(student, d.key, "review").pages;
     }
   }
 
-  // حساب نسبة الانضباط الأسبوعية
-  const totalTrackedDays = Math.max(1, currPresent + currAbsent);
-  const disciplinePct = Math.min(100, Math.round((currPresent / totalTrackedDays) * 100));
+  // ملخص الأسابيع السابقة المحفوظة
+  const pastWeeksHistory = weeksLog
+    .map((log) => {
+      const record = log.records?.find((r) => r.id === student.id);
+      const studentEntries = [...(Array.isArray(log.students) ? log.students : []), ...(Array.isArray(log.top) ? log.top : [])];
+      const entry = studentEntries.find((e) => e.id === student.id);
+      if (!record && !entry) return null;
 
-  // إحصائيات الشهر الحالي
-  const currentMonthKey = hijriMonthKey(today);
-  const currentMonthName = new Intl.DateTimeFormat("ar", { month: "long" }).format(today);
+      let pCount = entry?.attendanceDays ?? 0;
+      let aCount = entry?.absenceDays ?? 0;
+      let mPages = entry?.memorizationPages ?? 0;
+      let rPages = entry?.reviewPages ?? 0;
 
-  const monthLogs = weeksLog.filter((log) => {
-    const d = log.weekStartDateIso ? dateFromLocalKey(log.weekStartDateIso) : log.savedAtIso ? new Date(log.savedAtIso) : null;
-    return d && hijriMonthKey(d) === currentMonthKey;
-  });
-
-  let monthPresent = currPresent;
-  let monthAbsent = currAbsent;
-  let monthMemPages = currWeekMemPages;
-  let monthRevPages = currWeekRevPages;
-  let monthExcCount = currWeekExcellentCount;
-  let monthVgCount = currWeekVeryGoodCount;
-
-  for (const log of monthLogs) {
-    if (log.week === week) continue;
-    const rec = log.records?.find((r) => r.id === student.id);
-    if (rec) {
-      monthPresent += DAYS.filter((d) => !!rec.days?.[d.key]?.a && !rec.days?.[d.key]?.absent).length;
-      monthAbsent += DAYS.filter((d) => rec.days?.[d.key]?.absent === true).length;
-      for (const d of DAYS) {
-        const st = rec.days?.[d.key];
-        const rt = rec.recitationRatings?.[d.key];
-        if (st?.a && !st.absent) {
-          if (st.h || rt?.h === "excellent" || rt?.h === "very-good") {
-            monthMemPages += pagesForWardDay(rec as unknown as Student, d.key, "memorization").pages;
-            if (rt?.h === "excellent") monthExcCount++;
-            if (rt?.h === "very-good") monthVgCount++;
+      if (record) {
+        pCount = DAYS.filter((d) => !!record.days?.[d.key]?.a && !record.days?.[d.key]?.absent).length;
+        aCount = DAYS.filter((d) => record.days?.[d.key]?.absent === true).length;
+        mPages = 0;
+        rPages = 0;
+        for (const d of DAYS) {
+          const st = record.days?.[d.key];
+          const rt = record.recitationRatings?.[d.key];
+          if (st?.a && !st.absent && (st.h || rt?.h === "excellent" || rt?.h === "very-good")) {
+            mPages += pagesForWardDay(record as unknown as Student, d.key, "memorization").pages;
           }
-          if (st.r || rt?.r === "excellent" || rt?.r === "very-good") {
-            monthRevPages += pagesForWardDay(rec as unknown as Student, d.key, "review").pages;
-            if (rt?.r === "excellent") monthExcCount++;
-            if (rt?.r === "very-good") monthVgCount++;
+          if (st?.a && !st.absent && (st.r || rt?.r === "excellent" || rt?.r === "very-good")) {
+            rPages += pagesForWardDay(record as unknown as Student, d.key, "review").pages;
           }
         }
       }
-    }
-  }
+
+      return {
+        week: log.week,
+        weekName: log.name || `الأسبوع ${ar(log.week)}`,
+        savedAt: log.savedAt,
+        present: pCount,
+        absent: aCount,
+        memPages: mPages,
+        revPages: rPages,
+      };
+    })
+    .filter(Boolean) as {
+    week: number;
+    weekName: string;
+    savedAt?: string;
+    present: number;
+    absent: number;
+    memPages: number;
+    revPages: number;
+  }[];
 
   // طلبات الشراء للطالب
   const studentOrders = useMemo(() => {
     return orders.filter((o) => o.studentId === student.id);
   }, [orders, student.id]);
 
-  // إضافة منتج للسلة
+  // إضافة منتج للسلة مع دعم التكرار والكميات
   const addToCart = (product: ShopItem) => {
     if (student.coins < product.price) {
       toast("error", "رصيد العملات لا يكفي لشراء هذا المنتج");
@@ -237,17 +189,16 @@ export default function ParentPortal({ token }: { token: string }) {
           toast("error", "هذا المنتج لا يمكن شراؤه أكثر من مرة");
           return prev;
         }
-        toast("success", `تمت زيادة كمية «${product.name}» في السلة`);
+        toast("success", `تمت إضافة نسخة أخرى من «${product.name}» للسلة`);
         return prev.map((c) => (c.itemId === product.id ? { ...c, qty: c.qty + 1 } : c));
       }
-      toast("success", `أُضيف «${product.name}» إلى السلة`);
+      toast("success", `تمت إضافة «${product.name}» إلى السلة`);
       return [...prev, { id: uid(), itemId: product.id, qty: 1 }];
     });
   };
 
-  // حذف عنصر محدد عبر ID المستقل
   const removeFromCart = (cartId: string) => {
-    setCart((prev) => prev.filter((c) => c.id !== cartId));
+    setCart((prev) => prev.filter((c) => c.id !== cartId && c.itemId !== cartId));
     toast("info", "تم حذف المنتج من السلة");
   };
 
@@ -274,53 +225,50 @@ export default function ParentPortal({ token }: { token: string }) {
       setCart([]);
       setActiveTab("purchases");
     } else {
-      toast("error", res.error || "تعذر إتمام عملية الشراء");
+      toast("error", res.error || "تعذر إتمام العملية");
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#f8f9fb] text-ink pb-24" dir="rtl">
-      {/* 1. الشريط العلوي — ناعم، فخم، وخالٍ من الحدود السوداء أو الداكنة */}
-      <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 backdrop-blur-md px-3 sm:px-4 py-2.5 shadow-2xs">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-2.5">
+    <div className="min-h-screen bg-[#f8f9fb] text-ink pb-20" dir="rtl">
+      {/* 1. الشريط العلوي — ناعم، فخم، وخالٍ من الحدود السوداء */}
+      <header className="sticky top-0 z-20 border-b border-slate-100 bg-white/95 backdrop-blur-md px-3 sm:px-4 py-2.5 shadow-2xs">
+        <div className="mx-auto flex max-w-2xl items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
-            <span className="grid h-8 w-8 sm:h-9 sm:w-9 place-items-center rounded-xl bg-gradient-to-tr from-grape-700 via-grape-600 to-indigo-500 text-white shadow-xs shrink-0">
-              <Icon name="book" className="h-4 w-4" />
+            <span className="grid h-8 w-8 sm:h-9 sm:w-9 place-items-center rounded-xl bg-grape-600 text-white font-black text-sm shadow-xs shrink-0">
+              📖
             </span>
             <div className="min-w-0">
               <h1 className="font-display text-xs sm:text-sm font-extrabold text-ink leading-tight truncate">
-                نور الحفّاظ <span className="text-[10px] sm:text-xs font-bold text-grape-600 font-sans">| ولي الأمر</span>
+                بوابة متابعة الطالب
               </h1>
-              <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 truncate">متابعة الإنجاز والتحفيز المستمر</p>
+              <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 truncate">نور الحفّاظ • متابعة حصرية لولي الأمر</p>
             </div>
           </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="rounded-lg bg-slate-50 border border-slate-100 px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-xs font-bold text-slate-600">
-              {formatTeachingWeekRange(weekStartDateIso || localDateKey(teachingWeekStart()))}
-            </span>
-          </div>
+          <span className="rounded-lg bg-slate-50 border border-slate-100 px-2 sm:px-2.5 py-1 text-[10px] sm:text-xs font-black text-grape-700 shrink-0">
+            الأسبوع {ar(week)}
+          </span>
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-3 sm:px-4 pt-3 sm:pt-4 space-y-3 sm:space-y-4">
+      <main className="mx-auto max-w-2xl px-3 sm:px-4 pt-3 sm:pt-4 space-y-3 sm:space-y-3.5">
         {/* 2. بطاقة الطالب العلوية (Hero Card) — مدمجة، فخمة، وبسطر إحصائيات ثلاثي متناسق */}
-        <section className="relative overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-sm">
+        <section className="rounded-2xl border border-slate-100 bg-white p-3.5 sm:p-5 shadow-sm">
           {/* صف بيانات الطالب الأساسية (صورة مدمجة وخطوط رشيقة) */}
-          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-            <Avatar photo={student.photo} name={student.name} size={46} frame={student.frame} crown={student.crown} glow={student.glow} />
+          <div className="flex items-center gap-3 min-w-0">
+            <Avatar photo={student.photo} name={student.name} size={48} frame={student.frame} crown={student.crown} glow={student.glow} />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
                 <h2 className="font-display text-sm sm:text-lg font-extrabold text-ink truncate">
                   {student.name}
                 </h2>
-                <span className="rounded-full bg-gradient-to-r from-grape-600 to-indigo-600 px-2 py-0.5 font-display text-[10px] sm:text-xs font-extrabold text-white shadow-2xs shrink-0">
+                <span className="rounded-full bg-grape-600 px-2 py-0.5 font-display text-[10px] sm:text-xs font-extrabold text-white shadow-2xs shrink-0">
                   المستوى {ar(safeLevel)}
                 </span>
               </div>
               <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-slate-500">
                 <span className="rounded-md bg-slate-50 border border-slate-100 px-1.5 py-0.5 truncate">
-                  {halaqa?.name || "حلقة القرآن الكريم"}
+                  {halaqa?.name || "حلقة التحفيظ"}
                 </span>
                 <span className="rounded-md bg-emerald-50/80 border border-emerald-100 text-emerald-700 px-1.5 py-0.5 shrink-0 font-mono">
                   #{student.parentAccessToken?.slice(0, 6) || "مفعّل"}
@@ -329,17 +277,19 @@ export default function ParentPortal({ token }: { token: string }) {
             </div>
           </div>
 
-          {/* سطر الإحصائيات الثلاثي في سطر واحد بنظام شبكي منظم (grid grid-cols-3 gap-2) وبأحجام متناسقة */}
-          <div className="grid grid-cols-3 gap-2 mt-2.5 pt-2.5 border-t border-slate-100/80">
-            <div className="rounded-xl border border-amber-100/80 bg-amber-50/30 p-1.5 sm:p-2 text-center shadow-2xs">
-              <span className="block text-[9px] sm:text-[10px] font-extrabold text-amber-700">العملات</span>
+          {/* سطر الإحصائيات الثلاثي في سطر واحد بنظام شبكي منظم (grid grid-cols-3 gap-2) وبأحجام متناسقة ودون أي حدود سوداء */}
+          <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-100/80">
+            {/* العملات الذهبية */}
+            <div className="rounded-xl border border-amber-100 bg-amber-50/30 p-2 text-center shadow-2xs">
+              <span className="block text-[9px] sm:text-[10px] font-extrabold text-amber-700">العملات الذهبية</span>
               <span className="flex items-center justify-center gap-1 font-display text-xs sm:text-base font-black text-amber-900 mt-0.5">
                 <Coin className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                 {ar(student.coins)}
               </span>
             </div>
 
-            <div className="rounded-xl border border-purple-100/80 bg-purple-50/30 p-1.5 sm:p-2 text-center shadow-2xs">
+            {/* النقاط */}
+            <div className="rounded-xl border border-purple-100 bg-purple-50/30 p-2 text-center shadow-2xs">
               <span className="block text-[9px] sm:text-[10px] font-extrabold text-purple-700">النقاط</span>
               <span className="flex items-center justify-center gap-1 font-display text-xs sm:text-base font-black text-purple-900 mt-0.5">
                 <Icon name="bolt" fill className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-purple-600" />
@@ -347,7 +297,8 @@ export default function ParentPortal({ token }: { token: string }) {
               </span>
             </div>
 
-            <div className="rounded-xl border border-rose-100/80 bg-rose-50/30 p-1.5 sm:p-2 text-center shadow-2xs">
+            {/* القلوب */}
+            <div className="rounded-xl border border-rose-100 bg-rose-50/30 p-2 text-center shadow-2xs">
               <span className="block text-[9px] sm:text-[10px] font-extrabold text-rose-700">القلوب</span>
               <div className="mt-0.5 flex justify-center">
                 <HeartsRow hearts={student.hearts} max={3} size="w-3 h-3 sm:w-3.5 sm:h-3.5" />
@@ -358,7 +309,7 @@ export default function ParentPortal({ token }: { token: string }) {
           {/* شريط تقدم المستوى — محمي من الـ NaN */}
           <div className="mt-2.5 pt-2 border-t border-slate-100/60">
             <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-bold text-slate-500 mb-1">
-              <span>تقدم المستوى الحالي ({ar(safeLevel)})</span>
+              <span>تقدم المستوى ({ar(safeLevel)})</span>
               <span className="font-extrabold text-slate-700">{ar(safeInto)} / {ar(safeNeed)} نقطة ({ar(safePct)}%)</span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
@@ -368,35 +319,21 @@ export default function ParentPortal({ token }: { token: string }) {
               />
             </div>
           </div>
-        </section>
 
-        {/* 3. تنبيه الاختبار القادم (إذا كان مجدولاً للطالب) */}
-        {student.isTesting && (
-          <section className="relative overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-l from-amber-500/10 via-amber-50 to-white p-3 sm:p-3.5 shadow-2xs">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-amber-500 text-white font-black text-sm shadow-xs">
-                  📝
-                </span>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="rounded-md bg-amber-500 text-white px-1.5 py-0.5 text-[9px] font-black">
-                      اختبار قادم
-                    </span>
-                    <h3 className="font-display text-xs sm:text-sm font-extrabold text-ink">
-                      الطالب مرشح لاختبار مرحلي في الحلقة
-                    </h3>
-                  </div>
-                  <p className="mt-0.5 text-[10px] sm:text-[11px] font-bold text-slate-600 leading-relaxed">
-                    يُرجى تشجيع الطالب على مراجعة السور المقررة والتسميع المسبق في المنزل لضمان الجاهزية والتميز.
-                  </p>
-                </div>
+          {/* ملاحظة الأداء والاتجاه (Trend) — ناعمة وبخلفية هادئة */}
+          {trend && (
+            <div className="mt-2.5 rounded-xl border border-slate-100 bg-slate-50/60 p-2 sm:p-2.5 text-[10px] sm:text-[11px] font-bold text-slate-600 flex items-center gap-2">
+              <span className="text-sm">
+                {trend.tone === "mint" ? "🌟" : trend.tone === "coral" ? "💡" : "✨"}
+              </span>
+              <div>
+                <strong className="text-ink">{trend.label}:</strong> {trend.explanation}
               </div>
             </div>
-          </section>
-        )}
+          )}
+        </section>
 
-        {/* 4. تبويبات التنقل الرئيسية — زوايا منحنية ناعمة (rounded-xl) وتبديل سلس */}
+        {/* 3. تبويبات التنقل الرئيسية — زوايا منحنية ناعمة (rounded-xl) وتبديل سلس */}
         <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200/60 bg-slate-100/70 p-1 shadow-2xs">
           <button
             type="button"
@@ -410,7 +347,6 @@ export default function ParentPortal({ token }: { token: string }) {
             <Icon name="chart" className="h-3.5 w-3.5" />
             <span>الحفظ والإنجاز</span>
           </button>
-
           <button
             type="button"
             onClick={() => setActiveTab("store")}
@@ -423,7 +359,6 @@ export default function ParentPortal({ token }: { token: string }) {
             <Icon name="store" className="h-3.5 w-3.5" />
             <span>متجر الطالب</span>
           </button>
-
           <button
             type="button"
             onClick={() => setActiveTab("purchases")}
@@ -433,349 +368,182 @@ export default function ParentPortal({ token }: { token: string }) {
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
-            <Icon name="gift" className="h-3.5 w-3.5" />
+            <Icon name="bag" className="h-3.5 w-3.5" />
             <span>المشتريات ({ar(studentOrders.length)})</span>
           </button>
         </div>
 
-        {/* 5. التبويب الأول: الحفظ والإنجاز (لوحة المتابعة اليومية وشبكة الإحصائيات) */}
+        {/* 4. القسم الأول: الحفظ والإنجاز (شبكة إحصائيات 2x2 مدمجة وسجل الأسبوع) */}
         {activeTab === "progress" && (
-          <div className="space-y-3 sm:space-y-4">
-            {/* أ) أداء اليوم */}
-            <section className="rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-sm space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 place-items-center rounded-lg bg-purple-50 text-purple-700 text-xs">
-                    📊
-                  </span>
-                  <div>
-                    <h3 className="font-display text-xs sm:text-sm font-extrabold text-ink">
-                      أداء اليوم · {todayDateStr}
-                    </h3>
-                    <p className="text-[9px] sm:text-[10px] font-bold text-slate-400">متابعة الحضور والتسميع المنجز</p>
-                  </div>
-                </div>
-
-                <div>
-                  {isTodayAbsent ? (
-                    <span className="rounded-md bg-rose-50 border border-rose-100 px-2 py-0.5 text-[10px] sm:text-xs font-black text-rose-700">
-                      غائب اليوم ✕
-                    </span>
-                  ) : isTodayRecited ? (
-                    <span className="rounded-md bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[10px] sm:text-xs font-black text-emerald-800">
-                      حاضر وتم التسميع ✓
-                    </span>
-                  ) : (
-                    <span className="rounded-md bg-slate-50 border border-slate-100 px-2 py-0.5 text-[10px] sm:text-xs font-bold text-slate-500">
-                      بانتظار بدء الجلسة
-                    </span>
-                  )}
-                </div>
+          <div className="space-y-3 sm:space-y-3.5">
+            {/* بطاقات الإحصاءات الأربعة بنظام كارتين في كل سطر (grid grid-cols-2 gap-2.5) وبلا أي حدود سوداء */}
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 anim-fade">
+              {/* 1. الحضور هذا الأسبوع */}
+              <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 sm:p-3 text-center shadow-2xs hover:shadow-sm transition">
+                <span className="mx-auto grid h-7 w-7 place-items-center rounded-lg bg-emerald-50 text-emerald-600 text-xs font-black mb-1">
+                  ✓
+                </span>
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-500">الحضور هذا الأسبوع</p>
+                <p className="mt-0.5 font-display text-base sm:text-lg font-black text-emerald-700">
+                  {ar(currPresent)} <span className="text-[10px] sm:text-xs font-bold text-emerald-600">أيام</span>
+                </p>
+                <p className="text-[9px] sm:text-[10px] font-extrabold text-slate-400 mt-0.5">
+                  {currAbsent > 0 ? `${ar(currAbsent)} غياب` : "بدون أي غياب 👏"}
+                </p>
               </div>
 
-              {/* بطاقات الحفظ والمراجعة لليوم */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
-                {/* ورد الحفظ */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 sm:p-3 space-y-1.5 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1 font-display text-[11px] sm:text-xs font-extrabold text-grape-800">
-                      <Icon name="book" className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-grape-600" />
-                      ورد الحفظ الجديد
-                    </span>
-                    {hasTodayMem ? (
-                      <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-black text-white">
-                        {todayRating?.h === "very-good" ? "جيد جدًا" : "ممتاز ✓"}
-                      </span>
-                    ) : (
-                      <span className="rounded bg-amber-50 border border-amber-100 text-amber-800 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold">
-                        {isTodayRecited ? "تم اعتماده" : "قيد المتابعة"}
-                      </span>
-                    )}
-                  </div>
-                  <p className="font-bold text-xs sm:text-sm text-ink truncate">
-                    {todayWard?.memorization?.trim() || latestActiveDay?.ward?.memorization?.trim() || "الورد المحدد قيد المتابعة"}
-                  </p>
-                  <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-extrabold text-slate-500 pt-1 border-t border-slate-200/50">
-                    <span>{ar(todayWard?.memorizationVerses || latestActiveDay?.ward?.memorizationVerses || 0)} آية</span>
-                    <span>&bull;</span>
-                    <span>{ar(todayWard?.memorizationLines || latestActiveDay?.ward?.memorizationLines || 0)} سطر</span>
-                    <span>&bull;</span>
-                    <span className="text-grape-800 font-black">{n(todayMemPages || latestActiveDay?.memPages || 0)} صفحة</span>
-                  </div>
-                </div>
-
-                {/* ورد المراجعة */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 sm:p-3 space-y-1.5 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1 font-display text-[11px] sm:text-xs font-extrabold text-amber-900">
-                      <Icon name="refresh" className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-600" />
-                      ورد المراجعة اليومي
-                    </span>
-                    {hasTodayRev ? (
-                      <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-black text-white">
-                        {todayRating?.r === "very-good" ? "جيد جدًا" : "ممتاز ✓"}
-                      </span>
-                    ) : (
-                      <span className="rounded bg-amber-50 border border-amber-100 text-amber-800 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold">
-                        {isTodayRecited ? "تم اعتماده" : "قيد المتابعة"}
-                      </span>
-                    )}
-                  </div>
-                  <p className="font-bold text-xs sm:text-sm text-ink truncate">
-                    {todayWard?.review?.trim() || latestActiveDay?.ward?.review?.trim() || "الورد المحدد قيد المتابعة"}
-                  </p>
-                  <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-extrabold text-slate-500 pt-1 border-t border-slate-200/50">
-                    <span>{ar(todayWard?.reviewVerses || latestActiveDay?.ward?.reviewVerses || 0)} آية</span>
-                    <span>&bull;</span>
-                    <span>{ar(todayWard?.reviewLines || latestActiveDay?.ward?.reviewLines || 0)} سطر</span>
-                    <span>&bull;</span>
-                    <span className="text-amber-900 font-black">{n(todayRevPages || latestActiveDay?.revPages || 0)} صفحة</span>
-                  </div>
-                </div>
+              {/* 2. نسبة الانضباط */}
+              <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 sm:p-3 text-center shadow-2xs hover:shadow-sm transition">
+                <span className="mx-auto grid h-7 w-7 place-items-center rounded-lg bg-purple-50 text-purple-600 text-xs font-black mb-1">
+                  📊
+                </span>
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-500">نسبة الانضباط</p>
+                <p className="mt-0.5 font-display text-base sm:text-lg font-black text-purple-700">
+                  {ar(attendanceRate)}٪
+                </p>
+                <p className="text-[9px] sm:text-[10px] font-extrabold text-slate-400 mt-0.5">
+                  مجموع الجلسات: {ar(totalDaysEvaluated)}
+                </p>
               </div>
 
-              {/* تنبيه ذكي عند عدم بدء جلسة اليوم يوضح آخر تسميع معتمد للطالب */}
-              {!isTodayRecited && !isTodayAbsent && latestActiveDay && (
-                <div className="rounded-xl bg-purple-50/50 border border-purple-100/60 p-2 sm:p-2.5 text-[10px] sm:text-[11px] font-bold text-purple-900 flex items-center justify-between gap-1.5">
-                  <span className="truncate">📌 آخر تسميع معتمد: يوم ({latestActiveDay.dayLabel}) — ورد: {latestActiveDay.ward?.memorization || "الورد اليومي"} ({n(latestActiveDay.memPages)} ص)</span>
-                  <span className="rounded bg-purple-200/60 px-1.5 py-0.5 text-[9px] font-black shrink-0">ممتاز ✓</span>
-                </div>
-              )}
-            </section>
-
-            {/* ب) شبكة الإحصائيات المدمجة بنظام كارتين في كل سطر (grid grid-cols-2 gap-3) على الجوال */}
-            <section className="rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-sm space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 place-items-center rounded-lg bg-amber-50 text-amber-700 text-xs">
-                    📈
-                  </span>
-                  <h3 className="font-display text-xs sm:text-sm font-extrabold text-ink">
-                    إحصائيات الإنجاز والتطور
-                  </h3>
-                </div>
-
-                <div className="flex rounded-lg bg-slate-100 p-0.5 border border-slate-200/60 text-[10px] sm:text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setStatsPeriod("today")}
-                    className={`rounded-md px-2 py-0.5 font-extrabold transition ${
-                      statsPeriod === "today" ? "bg-white text-grape-800 shadow-2xs font-black" : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    اليوم
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatsPeriod("week")}
-                    className={`rounded-md px-2 py-0.5 font-extrabold transition ${
-                      statsPeriod === "week" ? "bg-white text-grape-800 shadow-2xs font-black" : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    هذا الأسبوع
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatsPeriod("month")}
-                    className={`rounded-md px-2 py-0.5 font-extrabold transition ${
-                      statsPeriod === "month" ? "bg-white text-grape-800 shadow-2xs font-black" : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    الشهر
-                  </button>
-                </div>
+              {/* 3. صفحات الحفظ */}
+              <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 sm:p-3 text-center shadow-2xs hover:shadow-sm transition">
+                <span className="mx-auto grid h-7 w-7 place-items-center rounded-lg bg-amber-50 text-amber-600 text-xs font-black mb-1">
+                  📖
+                </span>
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-500">صفحات الحفظ</p>
+                <p className="mt-0.5 font-display text-base sm:text-lg font-black text-amber-800">
+                  {n(memPages)} <span className="text-[10px] sm:text-xs font-bold text-amber-600">صفحة</span>
+                </p>
+                <p className="text-[9px] sm:text-[10px] font-extrabold text-slate-400 mt-0.5">
+                  {ar(memSessions)} جلسات تسميع
+                </p>
               </div>
 
-              {/* كروت الإحصائيات الأربعة: (حضور الأسبوع، نسبة الانضباط، صفحات الحفظ، صفحات المراجعة) */}
-              <div className="grid grid-cols-2 gap-2.5 sm:gap-3 anim-fade">
-                {/* 1. صفحات الحفظ */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 sm:p-3 shadow-2xs">
-                  <div className="flex items-center gap-1.5 mb-1 text-slate-500">
-                    <span className="grid h-6 w-6 place-items-center rounded-lg bg-purple-50 text-purple-600">
-                      <Icon name="book" className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="text-[10px] sm:text-[11px] font-bold">
-                      {statsPeriod === "today" ? "حفظ اليوم" : statsPeriod === "week" ? "حفظ الأسبوع" : "حفظ الشهر"}
-                    </span>
-                  </div>
-                  <p className="font-display text-base sm:text-lg font-black text-ink">
-                    {n(statsPeriod === "today" ? (todayMemPages || latestActiveDay?.memPages || 0) : statsPeriod === "week" ? currWeekMemPages : monthMemPages)} ص
-                  </p>
-                  <p className="text-[9px] sm:text-[10px] font-extrabold text-slate-400 mt-0.5">
-                    {statsPeriod === "today" ? `${ar(todayWard?.memorizationVerses || latestActiveDay?.ward?.memorizationVerses || 0)} آية` : statsPeriod === "week" ? "إنجاز تراكمي" : `شهر ${currentMonthName}`}
-                  </p>
-                </div>
-
-                {/* 2. صفحات المراجعة */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 sm:p-3 shadow-2xs">
-                  <div className="flex items-center gap-1.5 mb-1 text-slate-500">
-                    <span className="grid h-6 w-6 place-items-center rounded-lg bg-amber-50 text-amber-600">
-                      <Icon name="refresh" className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="text-[10px] sm:text-[11px] font-bold">
-                      {statsPeriod === "today" ? "مراجعة اليوم" : statsPeriod === "week" ? "مراجعة الأسبوع" : "مراجعة الشهر"}
-                    </span>
-                  </div>
-                  <p className="font-display text-base sm:text-lg font-black text-ink">
-                    {n(statsPeriod === "today" ? (todayRevPages || latestActiveDay?.revPages || 0) : statsPeriod === "week" ? currWeekRevPages : monthRevPages)} ص
-                  </p>
-                  <p className="text-[9px] sm:text-[10px] font-extrabold text-slate-400 mt-0.5">
-                    {statsPeriod === "today" ? `${ar(todayWard?.reviewVerses || latestActiveDay?.ward?.reviewVerses || 0)} آية` : statsPeriod === "week" ? "تثبيت وضبط" : "مجموع تراكمي"}
-                  </p>
-                </div>
-
-                {/* 3. حضور الأسبوع */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 sm:p-3 shadow-2xs">
-                  <div className="flex items-center gap-1.5 mb-1 text-slate-500">
-                    <span className="grid h-6 w-6 place-items-center rounded-lg bg-emerald-50 text-emerald-600">
-                      <Icon name="check" className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="text-[10px] sm:text-[11px] font-bold">
-                      {statsPeriod === "today" ? "حضور اليوم" : statsPeriod === "week" ? "حضور الأسبوع" : "حضور الشهر"}
-                    </span>
-                  </div>
-                  <p className="font-display text-base sm:text-lg font-black text-emerald-700">
-                    {statsPeriod === "today" ? (isTodayAbsent ? "غياب ✕" : isTodayRecited ? "حاضر ✓" : "بانتظار الجلسة") : statsPeriod === "week" ? `${ar(currPresent)} / ٤ أيام` : `${ar(monthPresent)} يوم`}
-                  </p>
-                  <p className="text-[9px] sm:text-[10px] font-extrabold text-slate-400 mt-0.5">
-                    {statsPeriod === "today" ? "تسجيل مباشر" : statsPeriod === "week" ? (currAbsent > 0 ? `${ar(currAbsent)} غياب` : "انضباط كامل ✓") : (monthAbsent > 0 ? `${ar(monthAbsent)} غياب` : "التزام شهري")}
-                  </p>
-                </div>
-
-                {/* 4. نسبة الانضباط ومستوى الإتقان */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 sm:p-3 shadow-2xs">
-                  <div className="flex items-center gap-1.5 mb-1 text-slate-500">
-                    <span className="grid h-6 w-6 place-items-center rounded-lg bg-sky-50 text-sky-600">
-                      <Icon name="award" className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="text-[10px] sm:text-[11px] font-bold">نسبة الانضباط</span>
-                  </div>
-                  <p className="font-display text-base sm:text-lg font-black text-sky-800">
-                    {ar(disciplinePct)}%
-                  </p>
-                  <p className="text-[9px] sm:text-[10px] font-extrabold text-slate-400 mt-0.5 truncate">
-                    {currWeekExcellentCount >= currWeekVeryGoodCount ? "درجة إتقان: ممتاز" : "درجة إتقان: جيد جدًا"}
-                  </p>
-                </div>
+              {/* 4. صفحات المراجعة */}
+              <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 sm:p-3 text-center shadow-2xs hover:shadow-sm transition">
+                <span className="mx-auto grid h-7 w-7 place-items-center rounded-lg bg-sky-50 text-sky-600 text-xs font-black mb-1">
+                  🔄
+                </span>
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-500">صفحات المراجعة</p>
+                <p className="mt-0.5 font-display text-base sm:text-lg font-black text-sky-800">
+                  {n(revPages)} <span className="text-[10px] sm:text-xs font-bold text-sky-600">صفحة</span>
+                </p>
+                <p className="text-[9px] sm:text-[10px] font-extrabold text-slate-400 mt-0.5">
+                  {ar(revSessions)} جلسات مراجعة
+                </p>
               </div>
-            </section>
+            </div>
 
-            {/* ج) شريط الأيام الأربعة للأسبوع التعليمي (أحد - أربعاء) */}
-            <section className="rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-sm">
-              <h4 className="font-display text-[11px] sm:text-xs font-extrabold text-ink mb-2 flex items-center gap-1.5">
-                <span>📅</span>
-                <span>سجل الأيام الأسبوعي (الأحد إلى الأربعاء)</span>
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {DAYS.map((d, idx) => {
-                  const dayState = student.days?.[d.key];
-                  const dayRating = student.recitationRatings?.[d.key];
-                  const dayDate = addCalendarDays(weekStartDateIso || localDateKey(teachingWeekStart()), idx);
-                  const isPastOrToday = idx <= activeDayIndex;
-                  const isDayAbsent = dayState?.absent === true || (d.key === todayDayKey && isTodayAbsent);
-                  const isDayPresent = (dayState?.a === true || (d.key === todayDayKey && isTodayRecited)) && !isDayAbsent;
-                  const hasDoneMem = isDayPresent && (dayState?.h || dayRating?.h === "excellent" || dayRating?.h === "very-good" || student.ward?.[d.key]?.memorization?.trim());
-                  const hasDoneRev = isDayPresent && (dayState?.r || dayRating?.r === "excellent" || dayRating?.r === "very-good" || student.ward?.[d.key]?.review?.trim());
+            {/* الأسبوع الحالي يومًا بيوم */}
+            <section className="rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-sm space-y-2.5">
+              <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
+                <h3 className="font-display text-xs sm:text-sm font-extrabold text-ink flex items-center gap-1.5">
+                  <span>📅</span>
+                  <span>سجل الأسبوع الحالي يومًا بيوم</span>
+                </h3>
+                <span className="text-[10px] sm:text-xs font-bold text-slate-400">الأسبوع {ar(week)}</span>
+              </div>
+
+              <div className="space-y-2">
+                {DAYS.map((day, idx) => {
+                  const state = student.days?.[day.key];
+                  const ward = student.ward?.[day.key];
+                  const rating = student.recitationRatings?.[day.key];
+                  const dateStr = formatHijriDate(addCalendarDays(weekStartDateIso, idx), { day: "numeric", month: "long" });
+
+                  const isAbsent = state?.absent === true;
+                  const isPresent = !!state?.a && !isAbsent;
+                  const hasMem = isPresent && (!!state?.h || rating?.h === "excellent" || rating?.h === "very-good");
+                  const hasRev = isPresent && (!!state?.r || rating?.r === "excellent" || rating?.r === "very-good");
 
                   return (
                     <div
-                      key={d.key}
-                      className={`rounded-xl border p-2 flex flex-col justify-between transition ${
-                        isDayAbsent
-                          ? "border-rose-100 bg-rose-50/30"
-                          : hasDoneMem && hasDoneRev
-                          ? "border-emerald-100 bg-emerald-50/30"
-                          : isDayPresent
-                          ? "border-sky-100 bg-sky-50/30"
-                          : isPastOrToday
-                          ? "border-slate-100 bg-slate-50/40"
-                          : "border-slate-50 bg-white opacity-60"
-                      }`}
+                      key={day.key}
+                      className="rounded-xl border border-slate-100 bg-slate-50/40 p-2.5 hover:bg-slate-50/80 transition"
                     >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-display text-[11px] font-black text-ink">{d.label}</span>
-                        <span className="text-[9px] font-bold text-slate-400">
-                          {formatHijriDate(dayDate, { day: "numeric", month: "numeric" })}
-                        </span>
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-200/50 pb-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-display text-xs font-black text-ink">{day.label}</span>
+                          <span className="text-[10px] font-bold text-slate-400">&bull; {dateStr}</span>
+                        </div>
+
+                        {isAbsent ? (
+                          <span className="rounded-md bg-rose-50 border border-rose-100 px-2 py-0.5 text-[9px] font-black text-rose-700">
+                            غائب
+                          </span>
+                        ) : isPresent ? (
+                          <span className="rounded-md bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-800">
+                            حاضر ✓
+                          </span>
+                        ) : (
+                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500">
+                            لم يُسجّل بعد
+                          </span>
+                        )}
                       </div>
 
-                      <div className="space-y-0.5 text-[9px] sm:text-[10px] font-bold">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-400">حضور:</span>
-                          <span className={isDayAbsent ? "text-rose-600 font-black" : isDayPresent ? "text-emerald-700 font-black" : "text-slate-400"}>
-                            {isDayAbsent ? "غياب" : isDayPresent ? "حاضر ✓" : "—"}
-                          </span>
+                      {isPresent && (
+                        <div className="grid grid-cols-2 gap-2 mt-2 text-[10px] sm:text-[11px] font-bold">
+                          <div className="rounded-lg bg-white p-2 border border-slate-100">
+                            <div className="flex items-center justify-between gap-1 text-slate-500 mb-0.5">
+                              <span>ورد الحفظ</span>
+                              {hasMem && (
+                                <span className="rounded bg-emerald-600 px-1 py-0.2 text-[8px] font-black text-white">
+                                  {rating?.h === "very-good" ? "جيد جدًا" : "ممتاز"}
+                                </span>
+                              )}
+                            </div>
+                            <p className="font-bold text-ink truncate">{ward?.memorization?.trim() || "لم يُحدّد"}</p>
+                          </div>
+
+                          <div className="rounded-lg bg-white p-2 border border-slate-100">
+                            <div className="flex items-center justify-between gap-1 text-slate-500 mb-0.5">
+                              <span>ورد المراجعة</span>
+                              {hasRev && (
+                                <span className="rounded bg-emerald-600 px-1 py-0.2 text-[8px] font-black text-white">
+                                  {rating?.r === "very-good" ? "جيد جدًا" : "ممتاز"}
+                                </span>
+                              )}
+                            </div>
+                            <p className="font-bold text-ink truncate">{ward?.review?.trim() || "لم يُحدّد"}</p>
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-400">حفظ:</span>
-                          <span className={hasDoneMem ? "text-emerald-700 font-black" : "text-slate-400"}>
-                            {hasDoneMem ? "أنجز ✓" : "—"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-400">مراجعة:</span>
-                          <span className={hasDoneRev ? "text-emerald-700 font-black" : "text-slate-400"}>
-                            {hasDoneRev ? "أنجز ✓" : "—"}
-                          </span>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             </section>
 
-            {/* د) نصائح وتوجيهات الذكاء الاصطناعي التربوية */}
-            {guidance && (
-              <section className="rounded-2xl border border-purple-50 bg-white p-3 sm:p-4 shadow-sm space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-slate-100 pb-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="grid h-6 w-6 place-items-center rounded-lg bg-purple-50 text-purple-700 text-xs">
-                      💡
-                    </span>
-                    <div>
-                      <h3 className="font-display text-xs sm:text-sm font-extrabold text-ink">
-                        نصائح وتوجيهات لتطوير الطالب
-                      </h3>
-                      <p className="text-[9px] sm:text-[10px] font-bold text-slate-400">تحليل مبني على السجلات ومبادئ الحفظ المعتمدة</p>
-                    </div>
-                  </div>
-                  <span className={`rounded-full px-2 py-0.5 text-[9px] sm:text-[10px] font-black ${
-                    guidance.overallStatus === "excellent" ? "bg-emerald-50 text-emerald-800 border border-emerald-100" :
-                    guidance.overallStatus === "improving" ? "bg-sky-50 text-sky-800 border border-sky-100" :
-                    guidance.overallStatus === "needs-attention" ? "bg-amber-50 text-amber-800 border border-amber-100" : "bg-purple-50 text-purple-800 border border-purple-100"
-                  }`}>
-                    {guidance.headline}
-                  </span>
-                </div>
+            {/* سجل الأسابيع السابقة */}
+            {pastWeeksHistory.length > 0 && (
+              <section className="rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-sm space-y-2.5">
+                <h3 className="font-display text-xs sm:text-sm font-extrabold text-ink flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                  <span>📚</span>
+                  <span>أرشيف الأسابيع السابقة ({ar(pastWeeksHistory.length)} أسابيع)</span>
+                </h3>
 
-                <div className="rounded-xl bg-slate-50/70 border border-slate-100 p-2.5 sm:p-3 text-[11px] font-bold text-slate-600 leading-relaxed">
-                  <p className="font-display font-extrabold text-xs mb-0.5 text-ink">ملخص الملاحظات التراكمية:</p>
-                  {guidance.summary}
-                </div>
-
-                {/* كروت التوجيهات */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
-                  {guidance.recommendations.map((rec) => (
+                <div className="space-y-1.5">
+                  {pastWeeksHistory.map((item) => (
                     <div
-                      key={rec.id}
-                      className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 sm:p-3 flex flex-col justify-between space-y-1.5 shadow-2xs"
+                      key={item.week}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/40 p-2.5 hover:bg-slate-50/80 transition"
                     >
                       <div>
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <span className="rounded bg-white border border-slate-200/60 px-1.5 py-0.5 text-[9px] font-black text-slate-600">
-                            {rec.badge}
-                          </span>
-                        </div>
-                        <h4 className="font-display text-xs font-extrabold text-ink">
-                          {rec.title}
-                        </h4>
-                        <p className="mt-0.5 text-[10px] sm:text-[11px] font-bold text-slate-500 leading-relaxed">
-                          {rec.body}
+                        <h4 className="font-display text-xs font-black text-ink">{item.weekName}</h4>
+                        <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                          الحضور: {ar(item.present)} أيام &bull; الغياب: {ar(item.absent)}
                         </p>
                       </div>
-                      <div className="pt-1.5 border-t border-slate-200/40 text-[9px] font-bold text-slate-400">
-                        {rec.educationalPrinciple}
+
+                      <div className="flex items-center gap-1.5 text-[10px] font-black">
+                        <span className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-0.5 text-amber-900">
+                          حفظ: {n(item.memPages)} ص
+                        </span>
+                        <span className="rounded-lg border border-purple-100 bg-purple-50/50 px-2 py-0.5 text-purple-900">
+                          مراجعة: {n(item.revPages)} ص
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -785,9 +553,9 @@ export default function ParentPortal({ token }: { token: string }) {
           </div>
         )}
 
-        {/* 6. التبويب الثاني: متجر الطالب — 2-Column Grid على الجوال، صور مدمجة (h-32 إلى h-36) وتنظيم أنيق */}
+        {/* 5. القسم الثاني: متجر الطالب — 2-Column Grid على الجوال، صور مدمجة (h-32 إلى h-36) وتنظيم أنيق */}
         {activeTab === "store" && (
-          <div className="space-y-3 sm:space-y-4">
+          <div className="space-y-3 sm:space-y-3.5">
             {!parentStoreOpen ? (
               <div className="rounded-2xl border border-slate-100 bg-white p-6 sm:p-8 text-center shadow-sm">
                 <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-amber-50 text-amber-600 text-2xl mb-2">
@@ -795,7 +563,7 @@ export default function ParentPortal({ token }: { token: string }) {
                 </span>
                 <h3 className="font-display text-sm sm:text-base font-extrabold text-ink">متجر الجوائز مغلق حاليًا</h3>
                 <p className="mt-1 text-[11px] font-bold text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  يفتح المعلم المتجر في أوقات محددة لمكافأة الطلاب والشراء بعملاتهم المكتسبة من إنجاز الحفظ والمراجعة.
+                  سيتمكن الطالب من الشراء عند فتح المتجر من قِبل معلم الحلقة.
                 </p>
                 <div className="mt-3.5 inline-block rounded-xl border border-amber-100 bg-amber-50/50 px-3 py-1 text-xs font-black text-amber-900">
                   رصيد الطالب: {ar(student.coins)} 🪙
@@ -806,8 +574,8 @@ export default function ParentPortal({ token }: { token: string }) {
                 {/* شريط الرصيد */}
                 <div className="rounded-2xl border border-amber-100/80 bg-gradient-to-l from-amber-500/10 via-amber-50/30 to-white p-3 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
                   <div>
-                    <h3 className="font-display text-xs sm:text-sm font-extrabold text-amber-950">متجر الجوائز والمكافآت</h3>
-                    <p className="text-[10px] sm:text-[11px] font-bold text-amber-800">اشترِ لابنك الجوائز والهدايا باستخدام عملاته التي جمعها من الحفظ</p>
+                    <h3 className="font-display text-xs sm:text-sm font-extrabold text-amber-950">متجر الجوائز والخصائص</h3>
+                    <p className="text-[10px] sm:text-[11px] font-bold text-amber-800">يمكنك شراء الجوائز لابنك باستخدام عملاته المكتسبة</p>
                   </div>
                   <div className="rounded-xl bg-white px-2.5 py-1 font-display text-xs sm:text-sm font-black text-amber-950 border border-amber-200/60 shadow-2xs">
                     الرصيد: {ar(student.coins)} 🪙
@@ -815,7 +583,7 @@ export default function ParentPortal({ token }: { token: string }) {
                 </div>
 
                 {/* شبكة المنتجات: عمودين تماماً على الجوال بحجم مربعات متوسطة ومريحة للعين */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-3.5">
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 sm:grid-cols-3 md:grid-cols-4">
                   {products.map((p) => {
                     const isCosmetic = p.kind === "cosmetic";
                     const ownedQty = isCosmetic ? (student.inventory.includes(p.id) ? 1 : 0) : bagQty(student, p.id);
@@ -885,7 +653,7 @@ export default function ParentPortal({ token }: { token: string }) {
                             onClick={() => addToCart(p)}
                             className="w-full rounded-xl bg-grape-600 py-1.5 text-[11px] sm:text-xs font-black text-white hover:bg-grape-700 active:scale-95 transition disabled:opacity-35 disabled:pointer-events-none shadow-2xs"
                           >
-                            {locked ? `مقفل (م${ar(p.minLevel)})` : soldOut ? "مملوك مسبقًا" : outOfStock ? "نفدت الكمية" : poor ? "العملات لا تكفي" : "+ أضف للسلة"}
+                            {locked ? `مغلق (م${ar(p.minLevel)})` : soldOut ? "تم الشراء" : outOfStock ? "نفدت الكمية" : poor ? "الرصيد لا يكفي" : "+ أضف للسلة"}
                           </button>
                         </div>
                       </div>
@@ -895,16 +663,16 @@ export default function ParentPortal({ token }: { token: string }) {
 
                 {/* شريط السلة العائم */}
                 {cart.length > 0 && (
-                  <div className="fixed bottom-3 inset-x-3 sm:bottom-4 sm:inset-x-4 max-w-4xl mx-auto z-40 rounded-2xl border border-purple-100 bg-white/95 backdrop-blur-md p-3 shadow-xl anim-slide-up">
+                  <div className="fixed bottom-3 inset-x-3 sm:bottom-4 sm:inset-x-4 max-w-2xl mx-auto z-40 rounded-2xl border border-purple-100 bg-white/95 backdrop-blur-md p-3 shadow-xl anim-slide-up">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="font-display text-xs sm:text-sm font-extrabold text-ink">سلة المشتريات ({ar(cart.length)})</span>
                           <span className="font-display text-xs font-black text-amber-950 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
-                            المجموع: {ar(cartTotal)} 🪙
+                            الإجمالي: {ar(cartTotal)} 🪙
                           </span>
                         </div>
-                        {/* كل منتج بزر حذف مستقل */}
+                        {/* كل منتج زر مستقل */}
                         <div className="flex flex-wrap gap-1 mt-1.5 max-h-20 overflow-y-auto">
                           {cart.map((c) => {
                             const p = products.find((x) => x.id === c.itemId);
@@ -936,7 +704,7 @@ export default function ParentPortal({ token }: { token: string }) {
                           onClick={handleCheckout}
                           className="rounded-xl bg-amber-500 px-3.5 sm:px-4 py-2 font-display text-xs sm:text-sm font-black text-ink shadow-xs hover:bg-amber-600 transition active:translate-y-0.5 disabled:opacity-40"
                         >
-                          {isSubmitting ? "جارٍ الشراء..." : "تأكيد الشراء ✓"}
+                          {isSubmitting ? "جاري الشراء..." : "إتمام الشراء ✓"}
                         </button>
                       </div>
                     </div>
@@ -947,9 +715,9 @@ export default function ParentPortal({ token }: { token: string }) {
           </div>
         )}
 
-        {/* 7. التبويب الثالث: سجل المشتريات */}
+        {/* 6. القسم الثالث: سجل المشتريات */}
         {activeTab === "purchases" && (
-          <div className="space-y-3 sm:space-y-3.5">
+          <div className="space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h3 className="font-display text-xs sm:text-sm font-extrabold text-ink">
                 سجل المشتريات والجوائز ({ar(studentOrders.length)})
@@ -966,11 +734,11 @@ export default function ParentPortal({ token }: { token: string }) {
                 </span>
                 <p className="font-display text-xs sm:text-sm font-extrabold text-ink">لا توجد مشتريات مسجلة بعد</p>
                 <p className="mt-0.5 text-[11px] font-bold text-slate-400">
-                  عند شراء منتج أو جائزة من المتجر، ستظهر هنا فورًا مع حالة تسليمها.
+                  عند شراء منتج أو جائزة من المتجر، ستظهر تفاصيلها وحالة تسليمها هنا فورًا.
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
+              <div className="grid gap-2 sm:gap-2.5">
                 {studentOrders.map((order) => {
                   const isDone = order.status === "delivered";
                   const pDate = new Date(order.purchasedAt);
@@ -1006,11 +774,11 @@ export default function ParentPortal({ token }: { token: string }) {
                       <div className="shrink-0">
                         {isDone ? (
                           <span className="rounded-lg bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
-                            تم التسليم ✓
+                            تم التسليم بنجاح ✓
                           </span>
                         ) : (
                           <span className="rounded-lg bg-amber-50 border border-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-800">
-                            قيد التسليم ⏳
+                            بانتظار التسليم ⏳
                           </span>
                         )}
                       </div>
@@ -1021,11 +789,11 @@ export default function ParentPortal({ token }: { token: string }) {
             )}
           </div>
         )}
-      </main>
 
-      <footer className="text-center pt-6 text-[11px] font-bold text-slate-400">
-        منصة نور الحفّاظ &bull; متابعة حصرية للطالب {student.name}
-      </footer>
+        <footer className="text-center pt-6 text-[11px] font-bold text-slate-400">
+          منصة نور الحفّاظ &bull; متابعة حصرية للطالب {student.name}
+        </footer>
+      </main>
     </div>
   );
 }
