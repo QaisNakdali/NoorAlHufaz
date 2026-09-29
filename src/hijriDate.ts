@@ -69,6 +69,12 @@ export function dateFromLocalKey(value: string): Date | null {
   return Number.isNaN(date.getTime()) || localDateKey(date) !== value ? null : date;
 }
 
+/** يتحقق من أن مفتاح التاريخ صالح ويمثل يوم الأحد، بداية أسبوع الحلقة. */
+export function isTeachingWeekStart(value: string): boolean {
+  const date = dateFromLocalKey(value);
+  return !!date && date.getDay() === 0;
+}
+
 /** الأحد الذي يبدأ أسبوع الكشف الحالي. */
 export function teachingWeekStart(now = new Date()): Date {
   const start = new Date(now);

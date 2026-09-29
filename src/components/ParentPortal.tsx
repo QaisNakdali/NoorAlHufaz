@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../appState";
 import { analyzeStudentTrend, pagesForWardDay } from "../analytics";
-import { ar, bagQty, DAYS, levelInfo, MAX_HEARTS, type Student } from "../core";
+import { ar, bagQty, bagReceivedQty, DAYS, levelInfo, MAX_HEARTS, type Student } from "../core";
 import Avatar from "./Avatar";
 import CosmeticThumb from "./CosmeticThumb";
 import { HeartsRow, Icon } from "./ui";
@@ -27,12 +27,14 @@ export default function ParentPortal({ token }: { token: string }) {
     orders = [],
     logParentAccess,
     checkoutParentCart,
+    equipParentCosmetic,
     toast,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<"progress" | "store" | "purchases">("progress");
+  const [activeTab, setActiveTab] = useState<"progress" | "store" | "bag" | "purchases">("progress");
   const [progressPeriod, setProgressPeriod] = useState<"day" | "week" | "month">("week");
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
+  const [equippingId, setEquippingId] = useState<string | null>(null);
 
   // البحث الدائم عن الطالب المطابق لرمز الوصول المشفر
   const student = useMemo(() => {
@@ -245,8 +247,29 @@ export default function ParentPortal({ token }: { token: string }) {
     setPurchasingId(itemId);
     const res = await checkoutParentCart(student.id, [{ itemId, qty: 1 }]);
     setPurchasingId(null);
-    if (res.success) setActiveTab("purchases");
+    if (res.success) {
+      const product = products.find((item) => item.id === itemId);
+      setActiveTab(product?.kind === "cosmetic" ? "bag" : "purchases");
+    }
     else toast("error", res.error || "تعذر إتمام عملية الشراء");
+  };
+
+  const equipFromBag = async (itemId: string) => {
+    if (equippingId) return;
+    setEquippingId(itemId);
+    const result = await equipParentCosmetic(student.id, itemId);
+    setEquippingId(null);
+    if (!result.success) toast("error", result.error || "تعذر تفعيل الخاصية");
+  };
+
+  const ownedCosmetics = products.filter((item) => item.kind === "cosmetic" && student.inventory.includes(item.id));
+  const ownedPhysical = products.filter((item) => item.kind !== "cosmetic" && bagQty(student, item.id) > 0);
+  const isEquipped = (item: typeof products[number]): boolean => {
+    if (item.slot === "frame") return student.frame === item.value;
+    if (item.slot === "crown") return student.crown === item.value;
+    if (item.slot === "glow") return student.glow === item.value;
+    if (item.slot === "cardbg") return student.cardBg === item.value;
+    return false;
   };
 
   return (
@@ -342,7 +365,7 @@ export default function ParentPortal({ token }: { token: string }) {
         )}
 
         {/* أزرار التنقل بين أقسام البوابة */}
-        <div className="grid grid-cols-3 gap-1 rounded-2xl border border-grape-200 bg-white p-1 shadow-xs sm:gap-2 sm:p-1.5">
+        <div className="grid grid-cols-4 gap-1 rounded-2xl border border-grape-200 bg-white p-1 shadow-xs sm:gap-2 sm:p-1.5">
           <button
             type="button"
             onClick={() => setActiveTab("progress")}
@@ -354,6 +377,16 @@ export default function ParentPortal({ token }: { token: string }) {
           >
             <Icon name="chart" className="h-4 w-4" />
             <span className="truncate">المتابعة</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("bag")}
+            className={`min-w-0 flex items-center justify-center gap-1 rounded-xl px-1 py-2.5 font-display text-[11px] font-black transition sm:gap-1.5 sm:text-xs ${
+              activeTab === "bag" ? "bg-grape-600 text-white shadow-sm" : "text-grape-600 hover:bg-grape-50"
+            }`}
+          >
+            <Icon name="bag" className="h-4 w-4" />
+            <span className="truncate">الشنطة</span>
           </button>
           <button
             type="button"
@@ -376,8 +409,8 @@ export default function ParentPortal({ token }: { token: string }) {
                 : "text-grape-600 hover:bg-grape-50"
             }`}
           >
-            <Icon name="bag" className="h-4 w-4" />
-            <span className="truncate">المشتريات ({ar(studentOrders.length)})</span>
+            <Icon name="gift" className="h-4 w-4" />
+            <span className="truncate">السجل ({ar(studentOrders.length)})</span>
           </button>
         </div>
 
@@ -689,7 +722,55 @@ export default function ParentPortal({ token }: { token: string }) {
           </div>
         )}
 
-        {/* القسم الثالث: مشتريات الطالب السابقة */}
+        {/* شنطة الطالب: الملكيات الحالية وليست مجرد سجل شراء */}
+        {activeTab === "bag" && (
+          <div className="space-y-4">
+            <section className="rounded-3xl border-2 border-grape-200 bg-white p-4 shadow-sm">
+              <h3 className="font-display text-base font-black text-ink">خصائص البروفايل</h3>
+              <p className="mt-1 text-xs font-bold text-grape-500">اختر أي خاصية يملكها الطالب لتظهر في ملفه عند ولي الأمر والمعلم.</p>
+              {ownedCosmetics.length === 0 ? (
+                <p className="mt-4 rounded-2xl border border-dashed border-grape-200 p-6 text-center text-xs font-bold text-grape-400">لا توجد خصائص بروفايل في الشنطة حاليًا.</p>
+              ) : (
+                <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                  {ownedCosmetics.map((item) => {
+                    const active = isEquipped(item);
+                    return (
+                      <article key={item.id} className={`rounded-2xl border-2 p-3 ${active ? "border-mint-400 bg-mint-50" : "border-grape-100 bg-white"}`}>
+                        <div className="h-24 overflow-hidden rounded-xl bg-grape-50 p-2">
+                          {item.image ? <img src={item.image} alt={item.name} className="h-full w-full object-contain" /> : <CosmeticThumb slot={item.slot} value={item.value} />}
+                        </div>
+                        <h4 className="mt-2 truncate font-display text-xs font-black text-ink">{item.name}</h4>
+                        <button type="button" disabled={active || equippingId !== null} onClick={() => void equipFromBag(item.id)} className={`mt-2 min-h-9 w-full rounded-xl text-xs font-black ${active ? "bg-mint-100 text-mint-800" : "bg-grape-600 text-white disabled:opacity-50"}`}>
+                          {active ? "مفعّلة حاليًا ✓" : equippingId === item.id ? "جارٍ التفعيل..." : "استخدام"}
+                        </button>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-3xl border-2 border-gold-200 bg-white p-4 shadow-sm">
+              <h3 className="font-display text-base font-black text-ink">الجوائز المادية</h3>
+              {ownedPhysical.length === 0 ? (
+                <p className="mt-4 rounded-2xl border border-dashed border-gold-200 p-6 text-center text-xs font-bold text-grape-400">لا توجد جوائز مادية في الشنطة حاليًا.</p>
+              ) : (
+                <div className="mt-4 grid gap-2">
+                  {ownedPhysical.map((item) => {
+                    const qty = bagQty(student, item.id);
+                    const received = bagReceivedQty(student, item.id);
+                    return <article key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-gold-100 bg-gold-50/40 p-3">
+                      <div className="min-w-0"><h4 className="font-display text-sm font-black text-ink">{item.name}</h4><p className="text-[11px] font-bold text-grape-500">الكمية: {ar(qty)} · تم التسليم: {ar(received)}</p></div>
+                      <span className={`shrink-0 rounded-xl px-2.5 py-1 text-[11px] font-black ${received >= qty ? "bg-mint-100 text-mint-800" : "bg-gold-100 text-gold-800"}`}>{received >= qty ? "تم التسليم ✓" : `بانتظار ${ar(qty - received)}`}</span>
+                    </article>;
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        {/* القسم الرابع: سجل مشتريات الطالب السابقة */}
         {activeTab === "purchases" && (
           <div className="space-y-3">
             {studentOrders.length === 0 ? (
@@ -705,7 +786,8 @@ export default function ParentPortal({ token }: { token: string }) {
             ) : (
               <div className="grid gap-2.5">
                 {studentOrders.map((order) => {
-                  const isDone = order.status === "delivered";
+                  const isDigital = order.itemKind === "cosmetic" || order.itemKind === "heart";
+                  const isDone = isDigital || order.status === "delivered";
                   const pDate = new Date(order.purchasedAt);
 
                   return (
@@ -729,13 +811,17 @@ export default function ParentPortal({ token }: { token: string }) {
                         <div className="min-w-0">
                           <h4 className="font-display text-sm font-black text-ink">{order.itemName}{(order.quantity ?? 1) > 1 ? ` × ${ar(order.quantity ?? 1)}` : ""}</h4>
                           <p className="mt-0.5 text-xs font-bold text-grape-500">
-                            السعر: {ar(order.price)} عملة &bull; التاريخ: {pDate.toLocaleDateString("ar-SA")}
+                            السعر: {ar(order.price)} عملة &bull; التاريخ: {formatHijriDate(pDate)}
                           </p>
                         </div>
                       </div>
 
                       <div className="ms-auto sm:ms-0">
-                        {isDone ? (
+                        {isDigital ? (
+                          <span className="rounded-xl bg-grape-100 px-3 py-1 text-xs font-black text-grape-800">
+                            {order.itemKind === "cosmetic" ? "أضيفت إلى شنطة الطالب ✓" : "تمت الاستعادة فورًا ✓"}
+                          </span>
+                        ) : isDone ? (
                           <span className="rounded-xl bg-mint-100 px-3 py-1 text-xs font-black text-mint-800">
                             تم التسليم بنجاح ✓
                           </span>

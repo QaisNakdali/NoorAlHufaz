@@ -128,6 +128,7 @@ export function applyCheckoutTransaction(
   const newOrders: PurchaseOrder[] = resolved.map(({ item, qty }, index) => {
     const id = `${requestId}:${index + 1}`;
     orderIds.push(id);
+    const deliveredImmediately = item.kind === "cosmetic";
     return {
       id,
       requestId,
@@ -142,7 +143,8 @@ export function applyCheckoutTransaction(
       quantity: qty,
       price: item.price * qty,
       purchasedAt,
-      status: "pending",
+      status: deliveredImmediately ? "delivered" : "pending",
+      deliveredAt: deliveredImmediately ? purchasedAt : undefined,
     };
   });
 

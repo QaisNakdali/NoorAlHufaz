@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
-import { addCalendarDays, formatHijriDate, formatTeachingWeek } from "../hijriDate";
+import { addCalendarDays, formatHijriDate, formatTeachingWeek, hijriInputValue, isTeachingWeekStart, parseHijriInput } from "../hijriDate";
 import { ar, DAYS, emptyRecitationRatings, emptyWeeklyWard, emptyWeekDays, uid, type DailyWard, type DayKey, type DayPart, type WeekLog, type WeekStudentRecord } from "../core";
 import Avatar from "./Avatar";
 import NumericInput from "./NumericInput";
@@ -84,7 +84,7 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
 }
 
 export default function PastWeeks() {
-  const { weeksLog, updateWeekLog, removeWeekLog } = useApp();
+  const { weeksLog, updateWeekLog, updateArchivedWeekDate, removeWeekLog } = useApp();
   const [dateSearch, setDateSearch] = useState("");
 
   // ترتيب زمني تنازلي من الأحدث إلى الأقدم
@@ -148,11 +148,30 @@ export default function PastWeeks() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
+  const [weekDateInput, setWeekDateInput] = useState("");
+  const [weekDateError, setWeekDateError] = useState("");
+  const [savingWeekDate, setSavingWeekDate] = useState(false);
   const shown = draft ?? current;
 
   const unlock = () => {
     if (!current || pin !== "911") return setError("الرمز غير صحيح");
-    setDraft(copy(current)); setPin(""); setError("");
+    setDraft(copy(current));
+    setWeekDateInput(current.weekStartDateIso ? hijriInputValue(current.weekStartDateIso) : "");
+    setWeekDateError(""); setPin(""); setError("");
+  };
+
+  const saveWeekDate = async () => {
+    if (!draft) return;
+    const parsed = parseHijriInput(weekDateInput, draft.weekStartDateIso ? new Date(`${draft.weekStartDateIso}T12:00:00`) : new Date());
+    if (!parsed) return setWeekDateError("أدخل التاريخ الهجري بصيغة سنة-شهر-يوم");
+    if (!isTeachingWeekStart(parsed)) return setWeekDateError("بداية أسبوع الحلقة يجب أن توافق يوم الأحد");
+    setSavingWeekDate(true);
+    const result = await updateArchivedWeekDate(draft.week, parsed);
+    setSavingWeekDate(false);
+    if (!result.success) return setWeekDateError(result.error || "تعذر حفظ التاريخ");
+    setDraft((value) => value ? { ...value, weekStartDateIso: parsed } : value);
+    setWeekDateInput(hijriInputValue(parsed));
+    setWeekDateError("");
   };
 
   const addStudent = () => setDraft((log) => !log ? log : ({ ...log, records: [...(log.records ?? []), {
@@ -269,10 +288,21 @@ export default function PastWeeks() {
                 {error && <span className="self-center text-xs font-bold text-coral-600">{error}</span>}
               </div>
             ) : (
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" onClick={addStudent} className="rounded-xl bg-mint-600 px-4 py-2 text-sm font-bold text-white">+ إضافة طالب للسجل</button>
-                <button type="button" onClick={() => setDraft(null)} className="rounded-xl bg-grape-100 px-4 py-2 text-sm font-bold text-grape-600">إلغاء</button>
-                <button type="button" onClick={() => { updateWeekLog(draft.week, draft); setDraft(null); }} className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-bold text-white">حفظ التغييرات</button>
+              <div className="mt-4 space-y-3">
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3">
+                  <label className="block text-xs font-extrabold text-sky-900">بداية الأسبوع الهجرية (الأحد)</label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <input className="field-control w-52" dir="ltr" inputMode="numeric" value={weekDateInput} onChange={(e) => { setWeekDateInput(e.target.value); setWeekDateError(""); }} placeholder="1448-04-05" />
+                    <button type="button" disabled={savingWeekDate} onClick={() => void saveWeekDate()} className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{savingWeekDate ? "جارٍ الحفظ..." : "حفظ تاريخ الأسبوع"}</button>
+                  </div>
+                  <p className="mt-2 text-[11px] font-bold text-sky-700">تُحسب تواريخ الاثنين والثلاثاء والأربعاء تلقائيًا، ولا تتغير سجلات الطلاب.</p>
+                  {weekDateError && <p className="mt-1 text-xs font-bold text-coral-600">{weekDateError}</p>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={addStudent} className="rounded-xl bg-mint-600 px-4 py-2 text-sm font-bold text-white">+ إضافة طالب للسجل</button>
+                  <button type="button" onClick={() => setDraft(null)} className="rounded-xl bg-grape-100 px-4 py-2 text-sm font-bold text-grape-600">إلغاء</button>
+                  <button type="button" onClick={() => { updateWeekLog(draft.week, draft); setDraft(null); }} className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-bold text-white">حفظ تغييرات السجل</button>
+                </div>
               </div>
             )}
 

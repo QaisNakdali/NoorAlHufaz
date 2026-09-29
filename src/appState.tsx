@@ -63,7 +63,7 @@ import {
 } from "./core";
 import { buildTrackSnapshot, measureStudentWork } from "./analytics";
 import { localDateKey } from "./halaqaRotation";
-import { addCalendarDays, formatHijriDate, localDateKey as hijriLocalDateKey, teachingWeekStart } from "./hijriDate";
+import { addCalendarDays, formatHijriDate, isTeachingWeekStart, localDateKey as hijriLocalDateKey, teachingWeekStart } from "./hijriDate";
 import { sfx, setSoundEnabled } from "./sound";
 import {
   cloudLoad,
@@ -175,6 +175,7 @@ type Ctx = State & {
   buyItem: (id: string, itemId: string) => void;
   grantItem: (studentId: string, itemId: string) => void;
   equipCosmetic: (id: string, itemId: string) => void;
+  equipParentCosmetic: (id: string, itemId: string) => Promise<{ success: boolean; error?: string }>;
   unequipSlot: (id: string, slot: CosmeticSlot) => void;
   deliverItem: (id: string, itemId: string) => void;
   undeliverItem: (id: string, itemId: string) => void;
@@ -203,6 +204,7 @@ type Ctx = State & {
   setRewardSetting: (key: keyof RewardSettings, value: Partial<RewardSettings[keyof RewardSettings]>) => void;
   removeWeekLog: (week: number) => void;
   updateWeekLog: (week: number, next: WeekLog) => void;
+  updateArchivedWeekDate: (week: number, weekStartDateIso: string) => Promise<{ success: boolean; error?: string }>;
   /* الرحلة الأسبوعية */
   setTrip: (on: boolean, day?: TripDay | null) => void;
   toggleTripAttendee: (id: string) => void;
@@ -910,13 +912,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       if (isCloudEnabled()) {
-        if (dirtyRef.current) await pushCloud(true);
         setCloud((current) => ({ ...current, status: "syncing" }));
 
         let latest = await cloudLoad();
         for (let attempt = 0; attempt < 7; attempt += 1) {
           if (!latest) throw new Error("تعذر قراءة بيانات المتجر المشتركة");
-          const current = stateFromPartial(latest.data as Partial<State>);
+          const remote = stateFromPartial(latest.data as Partial<State>);
+          // دمج أي تغييرات محلية معلّقة فوق أحدث نسخة سحابية داخل عملية الشراء
+          // نفسها، بدل تنفيذ حفظ كامل إضافي قبل الشراء. هذا يقلل رحلة شبكية
+          // ويحافظ في الوقت نفسه على تحديثات المعلم غير المتعارضة.
+          const local = cloudDataRef.current ?? remote;
+          const base = syncedBaseRef.current ?? local;
+          const conflicts: MergeConflict[] = [];
+          const current = dirtyRef.current
+            ? stateFromPartial(mergeLocalChanges(base, local, remote, [], conflicts) as Partial<State>)
+            : remote;
+          if (conflicts.length) reportConflicts(conflicts);
           const transaction = applyCheckoutTransaction(current, studentId, items, requestId, purchasedAt, allowClosedStore);
           if (!transaction.success) return transaction;
 
@@ -961,7 +972,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       checkoutLocksRef.current.delete(checkoutKey);
     }
-  }, [applySnapshot, logParentAccess, pushCloud, receiveRemote, toast]);
+  }, [applySnapshot, logParentAccess, receiveRemote, reportConflicts, toast]);
 
   /** يمسح سجل الزيارات فقط؛ لا يغيّر الطلبات أو الطلاب أو الأرصدة أو الملكيات. */
   const clearParentActivity = useCallback(async (confirmationCode: string) => {
@@ -1779,6 +1790,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [products, students, toast, update]
   );
 
+  /** تفعيل خاصية من بوابة ولي الأمر فوق أحدث revision وبالتحقق من الملكية. */
+  const equipParentCosmetic = useCallback(async (id: string, itemId: string) => {
+    const mutate = (current: State): { state?: State; error?: string } => {
+      const student = current.students.find((entry) => entry.id === id);
+      const item = current.products.find((entry) => entry.id === itemId);
+      if (!student) return { error: "لم يتم العثور على الطالب" };
+      if (!item || item.kind !== "cosmetic" || !item.slot) return { error: "خاصية البروفايل غير صالحة" };
+      if (!student.inventory.includes(itemId)) return { error: "لا يملك الطالب هذه الخاصية" };
+      return {
+        state: {
+          ...current,
+          students: current.students.map((entry) => entry.id === id ? equipOn(entry, item) : entry),
+        },
+      };
+    };
+
+    try {
+      if (isCloudEnabled()) {
+        let latest = await cloudLoad();
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          if (!latest) return { success: false, error: "تعذر قراءة بيانات الطالب المشتركة" };
+          const current = stateFromPartial(latest.data as Partial<State>);
+          const result = mutate(current);
+          if (!result.state) return { success: false, error: result.error };
+          const saved = await cloudSave({ rev: latest.rev + 1, data: result.state }, latest.rev);
+          if (saved.applied) {
+            receiveRemote(stateFromPartial(saved.data as Partial<State>), saved.rev);
+            toast("success", "تم تفعيل الخاصية وظهرت في ملف الطالب");
+            return { success: true };
+          }
+          latest = { rev: saved.rev, data: saved.data };
+        }
+        return { success: false, error: "حدث تعارض أثناء التفعيل؛ حاول مرة أخرى" };
+      }
+      const current = cloudDataRef.current;
+      if (!current) return { success: false, error: "بيانات الطالب غير جاهزة" };
+      const result = mutate(current);
+      if (!result.state) return { success: false, error: result.error };
+      applySnapshot(result.state, revRef.current, true);
+      toast("success", "تم تفعيل الخاصية في شنطة الطالب");
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: `تعذر تفعيل الخاصية: ${errMsg(error)}` };
+    }
+  }, [applySnapshot, receiveRemote, toast]);
+
   /** خلع خاصية من خانة معيّنة (إرجاعها للشكل الأساسي) */
   const unequipSlot = useCallback(
     (id: string, slot: CosmeticSlot) => {
@@ -2087,6 +2144,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast("success", "تم حفظ تعديلات الأسبوع وتحديث نقاط وعملات الطلاب");
   }, [heartPrice, products, toast, week, weeksLog]);
 
+  /** يعدّل تاريخ سجل الأسبوع نفسه فقط؛ لا يعيد حساب أو نقل أي بيانات طالب. */
+  const updateArchivedWeekDate = useCallback(async (targetWeek: number, nextStart: string) => {
+    if (!isTeachingWeekStart(nextStart)) {
+      return { success: false, error: "يجب أن يكون تاريخ بداية الأسبوع يوم الأحد" };
+    }
+    const mutate = (current: State): State | null => {
+      if (!current.weeksLog.some((entry) => entry.week === targetWeek)) return null;
+      return {
+        ...current,
+        weeksLog: current.weeksLog.map((entry) => entry.week === targetWeek
+          ? { ...entry, weekStartDateIso: nextStart }
+          : entry),
+      };
+    };
+    try {
+      if (isCloudEnabled()) {
+        let latest = await cloudLoad();
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          if (!latest) return { success: false, error: "تعذر قراءة الأرشيف المشترك" };
+          const current = stateFromPartial(latest.data as Partial<State>);
+          const next = mutate(current);
+          if (!next) return { success: false, error: "لم يتم العثور على الأسبوع" };
+          const saved = await cloudSave({ rev: latest.rev + 1, data: next }, latest.rev);
+          if (saved.applied) {
+            receiveRemote(stateFromPartial(saved.data as Partial<State>), saved.rev);
+            toast("success", "تم تحديث تاريخ الأسبوع في جميع الواجهات");
+            return { success: true };
+          }
+          latest = { rev: saved.rev, data: saved.data };
+        }
+        return { success: false, error: "حدث تعارض أثناء تعديل التاريخ؛ حاول مرة أخرى" };
+      }
+      const current = cloudDataRef.current;
+      if (!current) return { success: false, error: "بيانات الأرشيف غير جاهزة" };
+      const next = mutate(current);
+      if (!next) return { success: false, error: "لم يتم العثور على الأسبوع" };
+      applySnapshot(next, revRef.current, true);
+      toast("success", "تم تحديث تاريخ الأسبوع");
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: `تعذر تحديث التاريخ: ${errMsg(error)}` };
+    }
+  }, [applySnapshot, receiveRemote, toast]);
+
   /* ===== الرحلة الأسبوعية ===== */
   const setTrip = useCallback((on: boolean, day?: TripDay | null) => {
     setTripOn(on);
@@ -2296,6 +2397,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     buyItem,
     grantItem,
     equipCosmetic,
+    equipParentCosmetic,
     unequipSlot,
     deliverItem,
     undeliverItem,
@@ -2310,6 +2412,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRewardSetting,
     removeWeekLog,
     updateWeekLog,
+    updateArchivedWeekDate,
     startWeek,
     showCeremony,
     startCeremony,

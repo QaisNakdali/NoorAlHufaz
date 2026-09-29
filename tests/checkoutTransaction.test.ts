@@ -96,3 +96,20 @@ test("لا يسمح بشراء قلب عند اكتمال القلوب", () => {
   assert.equal(result.success, false);
   assert.equal(initial.students[0].coins, 100);
 });
+
+test("خاصية البروفايل تُملَك وتُفعّل وتُسلّم فورًا", () => {
+  const cosmetic: ShopItem = {
+    id: "frame-test", name: "إطار اختباري", desc: "", price: 30, minLevel: 1,
+    icon: "frame", kind: "cosmetic", slot: "frame", value: "gold", stock: 2,
+  };
+  const initial = state();
+  initial.products = [cosmetic];
+  const result = applyCheckoutTransaction(initial, initial.students[0].id, [{ itemId: cosmetic.id, qty: 1 }], "cosmetic-a", "2026-09-29T00:00:00.000Z");
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.deepEqual(result.state.students[0].inventory, [cosmetic.id]);
+  assert.equal(result.state.students[0].frame, "gold");
+  assert.equal(result.state.orders[0].itemKind, "cosmetic");
+  assert.equal(result.state.orders[0].status, "delivered");
+  assert.equal(result.state.orders[0].deliveredAt, "2026-09-29T00:00:00.000Z");
+});
