@@ -245,13 +245,16 @@ export default function ParentPortal({ token }: { token: string }) {
   const purchaseNow = async (itemId: string) => {
     if (purchasingId) return;
     setPurchasingId(itemId);
-    const res = await checkoutParentCart(student.id, [{ itemId, qty: 1 }]);
-    setPurchasingId(null);
-    if (res.success) {
-      const product = products.find((item) => item.id === itemId);
-      setActiveTab(product?.kind === "cosmetic" ? "bag" : "purchases");
+    try {
+      const res = await checkoutParentCart(student.id, [{ itemId, qty: 1 }]);
+      if (res.success) {
+        const product = products.find((item) => item.id === itemId);
+        setActiveTab(product?.kind === "cosmetic" ? "bag" : "purchases");
+      }
+      else toast("error", res.error || "تعذر إتمام عملية الشراء");
+    } finally {
+      setPurchasingId(null);
     }
-    else toast("error", res.error || "تعذر إتمام عملية الشراء");
   };
 
   const equipFromBag = async (itemId: string) => {
