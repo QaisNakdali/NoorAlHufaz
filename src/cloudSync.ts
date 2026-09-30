@@ -6,10 +6,13 @@ import { externalizeDataImages } from "./cloudPayload";
   مفتاح anon مفتاح عام مصمم للاستخدام في المتصفح؛ الحماية الفعلية تطبقها RLS.
 */
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://inkxxpomafiwygzhohwr.supabase.co";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlua3h4cG9tYWZpd3lnemhvaHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5Mjc5MzcsImV4cCI6MjEwNTUwMzkzN30.9F1VB43lKUFWRQqDlOFdZWN9Qi3wnap17Z3JNZ8trxY";
-
-const STATE_TABLE = "app_state";
-const STATE_ID = "noor_al_hufaz_main";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlua3h4cG9tYWZpd3lnemhvaHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5Mjc5MzcsImV4cCI6MjEwNTUwMzkzN30.9F1VB43lKUFWRQqDlOFdZWN9Qi3wnap17Z3JNZ8trxY";const STATE_TABLE = "app_state";
+const productionStateId = import.meta.env.VITE_SUPABASE_STATE_ID || "noor_al_hufaz_main";
+const isExplicitPreviewBenchmark = typeof window !== "undefined"
+  && window.location.hostname !== "noor-al-hufaz-main.vercel.app"
+  && new URLSearchParams(window.location.search).get("checkoutBenchmark") === "1";
+// صف مستقل لا يحتوي أي بيانات طلاب حقيقية، ويعمل فقط في روابط المعاينة الصريحة.
+const STATE_ID = isExplicitPreviewBenchmark ? "noor_checkout_benchmark_v1" : productionStateId;
 const PHOTOS_BUCKET = "student-photos";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -19,8 +22,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 export const CLOUD_SKIP_PHOTOS = false;
 export const isCloudEnabled = (): boolean => Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-export type CloudPayload = { rev: number; data: unknown };
-export type CloudSaveResult = CloudPayload & { applied: boolean };
+export type CloudPayload = { rev: number; data: unknown };export type CloudSaveResult = CloudPayload & { applied: boolean };
 
 function errMsg(e: unknown): string {
   if (!e) return "حدث خطأ غير محدد";
