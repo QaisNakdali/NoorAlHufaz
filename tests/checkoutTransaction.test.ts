@@ -18,7 +18,7 @@ const product: ShopItem = {
 function state() {
   const first = { ...seedStudents()[0], coins: 100, coinsSpent: 0, bag: [], inventory: [] };
   const second = { ...seedStudents()[1], coins: 100, coinsSpent: 0, bag: [], inventory: [] };
-  return { parentStoreOpen: true, heartPrice: 40, students: [first, second], products: [product], orders: [] };
+  return { parentStoreOpen: true, heartPrice: 40, students: [first, second], products: [{ ...product }], orders: [] };
 }
 
 test("الشراء يخصم العملات والمخزون وينشئ طلبًا كوحدة واحدة", () => {
@@ -41,6 +41,21 @@ test("قطعة واحدة لا يمكن أن تنجح لطالبين", () => {
   assert.equal(second.success, false);
   assert.match(second.success ? "" : second.error, /لم تعد تكفي/);
   assert.equal(first.state.students[1].coins, 100);
+});
+
+test("شراء طالبان مختلفان يُحفظام معًا عند توفر المخزون", () => {
+  const initial = state();
+  initial.products[0].stock = 2;
+  const first = applyCheckoutTransaction(initial, initial.students[0].id, [{ itemId: product.id, qty: 1 }], "parallel-a", "2026-09-29T00:00:00.000Z");
+  assert.equal(first.success, true);
+  if (!first.success) return;
+  const second = applyCheckoutTransaction(first.state, initial.students[1].id, [{ itemId: product.id, qty: 1 }], "parallel-b", "2026-09-29T00:00:01.000Z");
+  assert.equal(second.success, true);
+  if (!second.success) return;
+  assert.equal(second.state.students[0].coins, 60);
+  assert.equal(second.state.students[1].coins, 60);
+  assert.equal(second.state.products[0].stock, 0);
+  assert.deepEqual(second.state.orders.map((order) => order.requestId).sort(), ["parallel-a", "parallel-b"]);
 });
 
 test("إعادة نفس requestId لا تخصم العملات مرتين", () => {
@@ -112,4 +127,14 @@ test("خاصية البروفايل تُملَك وتُفعّل وتُسلّم �
   assert.equal(result.state.orders[0].itemKind, "cosmetic");
   assert.equal(result.state.orders[0].status, "delivered");
   assert.equal(result.state.orders[0].deliveredAt, "2026-09-29T00:00:00.000Z");
+});
+
+test("المنتج الخارجي يبقى بانتظار التسليم بعد الشراء", () => {
+  const initial = state();
+  const result = applyCheckoutTransaction(initial, initial.students[0].id, [{ itemId: product.id, qty: 1 }], "physical-pending", "2026-09-29T00:00:00.000Z");
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.state.orders[0].status, "pending");
+  assert.equal(result.state.orders[0].deliveredAt, undefined);
+  assert.equal(result.state.students[0].bag[0]?.itemId, product.id);
 });
