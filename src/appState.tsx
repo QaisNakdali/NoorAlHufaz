@@ -68,6 +68,7 @@ import { sfx, setSoundEnabled } from "./sound";
 import {
   cloudLoad,
   cloudSave,
+  cloudSaveCompact,
   CLOUD_SKIP_PHOTOS,
   errMsg,
   isCloudEnabled,
@@ -914,7 +915,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (isCloudEnabled()) {
         setCloud((current) => ({ ...current, status: "syncing" }));
 
-        let latest = await cloudLoad();
+        const localSnapshot = cloudDataRef.current;
+        if (!localSnapshot) return { success: false, error: "بيانات المتجر غير جاهزة بعد" };
+        let latest = { rev: revRef.current, data: localSnapshot as unknown };
         for (let attempt = 0; attempt < 7; attempt += 1) {
           if (!latest) throw new Error("تعذر قراءة بيانات المتجر المشتركة");
           const remote = stateFromPartial(latest.data as Partial<State>);
@@ -931,7 +934,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const transaction = applyCheckoutTransaction(current, studentId, items, requestId, purchasedAt, allowClosedStore);
           if (!transaction.success) return transaction;
 
-          const saved = await cloudSave({ rev: latest.rev + 1, data: transaction.state }, latest.rev);
+          const saved = await cloudSaveCompact({ rev: latest.rev + 1, data: transaction.state }, latest.rev);
           if (saved.applied) {
             const committed = stateFromPartial(saved.data as Partial<State>);
             receiveRemote(committed, saved.rev);

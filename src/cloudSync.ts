@@ -108,6 +108,38 @@ export async function cloudSave(payload: CloudPayload, expectedRev: number): Pro
   return latest ? { ...latest, applied: false } : { ...prepared, applied: false };
 }
 
+/**
+ * نسخة خفيفة من الحفظ الذري للعمليات الحساسة السريعة (مثل الشراء).
+ * عند النجاح تعيد قاعدة البيانات رقم المراجعة فقط، بينما تبقى البيانات المحضرة
+ * محليًا لتطبيقها فورًا. لا نحمّل JSON الكامل مرة أخرى إلا عند تعارض حقيقي.
+ */
+export async function cloudSaveCompact(payload: CloudPayload, expectedRev: number): Promise<CloudSaveResult> {
+  const prepared = await preparePayload(payload);
+  const row = {
+    id: STATE_ID,
+    rev: prepared.rev,
+    data: prepared.data,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: updated, error: updateError } = await supabase
+    .from(STATE_TABLE)
+    .update(row)
+    .eq("id", STATE_ID)
+    .eq("rev", expectedRev)
+    .select("rev")
+    .maybeSingle();
+  if (updateError) throw updateError;
+  if (updated) return { ...prepared, rev: Number(updated.rev) || prepared.rev, applied: true };
+
+  const { error: insertError } = await supabase.from(STATE_TABLE).insert(row);
+  if (!insertError) return { ...prepared, applied: true };
+  if (insertError.code !== "23505") throw insertError;
+
+  const latest = await cloudLoad();
+  return latest ? { ...latest, applied: false } : { ...prepared, applied: false };
+}
+
 /** يستقبل تعديل أي معلم فور وصوله إلى قاعدة البيانات. */
 export function subscribeCloud(onPayload: (payload: CloudPayload) => void): () => void {
   let channel: RealtimeChannel | null = supabase
