@@ -42,6 +42,7 @@ function ProductImage({ p, dimmed = false }: { p: ShopProduct; dimmed?: boolean 
 /* ===== بطاقة منتج في واجهة الشراء ===== */
 export function BuyCard({ s, p, delay = 0, canGrant = false }: { s: Student; p: ShopProduct; delay?: number; canGrant?: boolean }) {
   const { buyItem, grantItem, restockProduct } = useApp();
+  const [buying, setBuying] = useState(false);
   const lvl = levelInfo(s.xp).level;
   const isCosmetic = p.kind === "cosmetic";
   const qty = isCosmetic ? (s.inventory.includes(p.id) ? 1 : 0) : bagQty(s, p.id);
@@ -105,8 +106,12 @@ export function BuyCard({ s, p, delay = 0, canGrant = false }: { s: Student; p: 
       <div className="mt-auto pt-2.5">
         <button
           type="button"
-          onClick={() => buyItem(s.id, p.id)}
-          disabled={soldOut || locked || poor || noHearts || outOfStock}
+          onClick={async () => {
+            if (buying) return;
+            setBuying(true);
+            try { await buyItem(s.id, p.id); } finally { setBuying(false); }
+          }}
+          disabled={buying || soldOut || locked || poor || noHearts || outOfStock}
           title={noHearts && !owned ? "عليك شراء قلب جديد أولًا" : outOfStock ? "نفدت الكمية لدى المعلم" : undefined}
           className={`flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 font-display text-sm font-extrabold transition-all active:translate-y-0.5 active:shadow-none disabled:cursor-not-allowed ${
             soldOut
@@ -118,7 +123,7 @@ export function BuyCard({ s, p, delay = 0, canGrant = false }: { s: Student; p: 
               : "bg-grape-600 text-white shadow-[0_4px_0_#56289d] hover:bg-grape-700"
           }`}
         >
-          {soldOut ? (isCosmetic ? "تُلبس من الحقيبة" : "اشتريتها") : outOfStock ? "نفدت الكمية" : noHearts ? "اشترِ قلبًا أولًا" : locked ? "مقفل" : (
+          {buying ? "جاري الشراء..." : soldOut ? (isCosmetic ? "تُلبس من الحقيبة" : "اشتريتها") : outOfStock ? "نفدت الكمية" : noHearts ? "اشترِ قلبًا أولًا" : locked ? "مقفل" : (
             <>
               <Coin className="h-4 w-4" />
               {ar(p.price)}
@@ -158,6 +163,7 @@ export function BuyCard({ s, p, delay = 0, canGrant = false }: { s: Student; p: 
 /* ===== بطاقة شراء القلب ===== */
 function HeartProductCard({ s }: { s: Student }) {
   const { buyHeart, heartPrice } = useApp();
+  const [buying, setBuying] = useState(false);
   const full = s.hearts >= MAX_HEARTS;
   const poor = s.coins < heartPrice;
   return (
@@ -176,12 +182,16 @@ function HeartProductCard({ s }: { s: Student }) {
       </div>
       <button
         type="button"
-        onClick={() => buyHeart(s.id)}
-        disabled={full || poor}
+        onClick={async () => {
+          if (buying) return;
+          setBuying(true);
+          try { await buyHeart(s.id); } finally { setBuying(false); }
+        }}
+        disabled={buying || full || poor}
         className="flex items-center gap-1.5 rounded-xl bg-coral-500 px-5 py-2.5 font-display text-sm font-extrabold text-white shadow-[0_4px_0_#b23a55] transition-all hover:brightness-110 active:translate-y-0.5 active:shadow-none disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
       >
-        <Coin className="h-4 w-4" />
         {ar(heartPrice)}
+        {buying ? "جاري الشراء..." : <><Coin className="h-4 w-4" />{ar(heartPrice)}</>}
       </button>
     </div>
   );
