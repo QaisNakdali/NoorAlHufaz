@@ -934,7 +934,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const transaction = applyCheckoutTransaction(current, studentId, items, requestId, purchasedAt, allowClosedStore);
           if (!transaction.success) return transaction;
 
-          const saved = await cloudSaveCompact({ rev: latest.rev + 1, data: transaction.state }, latest.rev);
+          const purchasedStudent = transaction.state.students.find((item) => item.id === studentId);
+          const parentLogs = (() => {
+            if (!purchasedStudent) return current.parentLogs;
+            const logs = [...current.parentLogs];
+            const recentIndex = logs.findIndex((log) => log.studentId === studentId && Date.now() - new Date(log.lastActiveAt).getTime() < 30 * 60 * 1000);
+            if (recentIndex >= 0) {
+              logs[recentIndex] = { ...logs[recentIndex], lastActiveAt: purchasedAt, enteredStore: true, purchased: true };
+              return logs;
+            }
+            return [{ id: uid(), studentId, studentName: purchasedStudent.name, enteredAt: purchasedAt, lastActiveAt: purchasedAt, enteredStore: true, purchased: true }, ...logs.slice(0, 99)];
+          })();
+          const committedState: State = { ...(transaction.state as State), parentLogs };
+          const saved = await cloudSaveCompact({ rev: latest.rev + 1, data: committedState }, latest.rev)
           if (saved.applied) {
             const committed = stateFromPartial(saved.data as Partial<State>);
             receiveRemote(committed, saved.rev);
