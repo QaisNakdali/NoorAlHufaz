@@ -117,9 +117,11 @@ export type DailyWard = {
   memorization: string;
   review: string;
   memorizationVerses: number;
-  reviewVerses: number;
+  /** حقل تاريخي فقط؛ التسجيلات الجديدة للمراجعة تستخدم reviewPages. */
+  reviewVerses?: number;
   memorizationLines: number;
-  reviewLines: number;
+  /** حقل تاريخي؛ عند وجود reviewPages تُشتق الأسطر ولا تُدخل يدويًا. */
+  reviewLines?: number;
   memorizationPages?: number;
   reviewPages?: number;
   memorizationFromVerse?: number;
@@ -175,7 +177,7 @@ export function emptyRecitationRatings(): RecitationRatings {
 }
 
 export function emptyWeeklyWard(): WeeklyWard {
-  const mk = (): DailyWard => ({ memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 });
+  const mk = (): DailyWard => ({ memorization: "", review: "", memorizationVerses: 0, memorizationLines: 0 });
   return { sun: mk(), mon: mk(), tue: mk(), wed: mk() };
 }
 

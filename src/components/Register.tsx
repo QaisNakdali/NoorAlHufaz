@@ -1,5 +1,5 @@
 /* كشف الحلقة — مرتب أبجديًا: حضور + تسميع حفظ + تسميع مراجعة لكل يوم */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useApp } from "../appState";
 import { buildRegisterInsight, analyzeStudentTrend, type TrackTrend } from "../analytics";
 import {
@@ -34,6 +34,16 @@ const PART_ON: Record<DayPart, string> = {
   h: "border-grape-500/60 bg-grape-600/12 text-grape-600",
   r: "border-gold-500/70 bg-gold-400/25 text-gold-600",
 };
+
+/** Enter يعتمد القيمة الحالية ثم ينقل التركيز إلى خانة الورد التالية دون إرسال النموذج. */
+function advanceWardInput(event: KeyboardEvent<HTMLInputElement>) {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  event.currentTarget.blur();
+  const fields = Array.from(document.querySelectorAll<HTMLElement>('[data-ward-input="true"]:not([disabled])'));
+  const index = fields.indexOf(event.currentTarget);
+  fields[index + 1]?.focus();
+}
 
 /* زر حذف بتأكيد مضمّن (خطوتان) */
 function DeleteBtn({ onDelete, label = "" }: { onDelete: () => void; label?: string }) {
@@ -337,7 +347,7 @@ function StudentDetailsModal({ student, onClose }: { student: Student; onClose: 
       const state = record.days?.[day.key] ?? { a: false, h: false, r: false }; const ward = record.ward?.[day.key] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
       return [
         ...(state.h && !state.absent ? [{ kind: "حفظ", day: `${day.label} — ${log.savedAtIso ? formatHijriDate(log.savedAtIso) : "أسبوع محفوظ سابقًا"}`, text: ward.memorization, verses: ward.memorizationVerses, lines: ward.memorizationLines }] : []),
-        ...(state.r && !state.absent ? [{ kind: "مراجعة", day: `${day.label} — ${log.savedAtIso ? formatHijriDate(log.savedAtIso) : "أسبوع محفوظ سابقًا"}`, text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines }] : []),
+        ...(state.r && !state.absent ? [{ kind: "مراجعة", day: `${day.label} — ${log.savedAtIso ? formatHijriDate(log.savedAtIso) : "أسبوع محفوظ سابقًا"}`, text: ward.review, verses: ward.reviewVerses, pages: ward.reviewPages, lines: ward.reviewLines }] : []),
       ];
     });
   });
@@ -347,7 +357,7 @@ function StudentDetailsModal({ student, onClose }: { student: Student; onClose: 
     const state = student.days?.[day.key] ?? { a: false, h: false, r: false }; const ward = student.ward?.[day.key] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 }; const date = formatHijriDate(actualDate);
     return [
       ...(state.h && !state.absent ? [{ kind: "حفظ", day: `${day.label} — ${date}`, text: ward.memorization, verses: ward.memorizationVerses, lines: ward.memorizationLines }] : []),
-      ...(state.r && !state.absent ? [{ kind: "مراجعة", day: `${day.label} — ${date}`, text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines }] : []),
+      ...(state.r && !state.absent ? [{ kind: "مراجعة", day: `${day.label} — ${date}`, text: ward.review, verses: ward.reviewVerses, pages: ward.reviewPages, lines: ward.reviewLines }] : []),
     ];
   });
   const sessions = [...archived, ...current];
@@ -357,7 +367,7 @@ function StudentDetailsModal({ student, onClose }: { student: Student; onClose: 
   return <Modal open onClose={onClose} wide><div className="p-6"><div className="flex items-center gap-3"><Avatar photo={student.photo} name={student.name} size={62}/><div className="flex-1"><h3 className="font-display text-2xl font-extrabold text-ink">{student.name}</h3><p className="text-sm font-bold text-grape-500">تفاصيل وتحليل الطالب — {formatHijriDate(new Date(), { month: "long", year: "numeric" })}</p></div><button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-grape-100 text-grape-600">×</button></div>
     <div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl bg-mint-50 p-4"><b>الحضور</b><p className="mt-2 text-xl font-extrabold">{ar(attendance.present)} حضور · {ar(attendance.absent)} غياب</p><p className="text-xs font-bold text-grape-500">{rate === null ? "لا توجد بيانات كافية" : `النسبة ${ar(rate)}٪${attendance.absent >= 2 ? " — يوجد غياب متكرر" : ""}`}</p></div><div className="rounded-2xl bg-grape-50 p-4"><b>الحفظ</b><p className="mt-2 text-sm font-bold text-grape-600">{analysis.memorization.label}</p><p className="mt-1 text-xs text-grape-500">{analysis.memorization.trend === "insufficient-data" ? "لا توجد بيانات كافية لتحديد الاتجاه بدقة." : `الاتجاه: ${analysis.memorization.trend === "improving" ? "يتحسن" : analysis.memorization.trend === "declining" ? "يتراجع" : "ثابت ضمن المستوى المطلوب"}`}</p></div><div className="rounded-2xl bg-gold-50 p-4"><b>المراجعة</b><p className="mt-2 text-sm font-bold text-grape-600">{analysis.review.label}</p><p className="mt-1 text-xs text-grape-500">{analysis.review.trend === "insufficient-data" ? "لا توجد بيانات كافية لتحديد الاتجاه بدقة." : `الاتجاه: ${analysis.review.trend === "improving" ? "تتحسن" : analysis.review.trend === "declining" ? "تتراجع" : "ثابتة ضمن المستوى المطلوب"}`}</p></div></div>
     <div className="mt-4 rounded-2xl bg-sky-50 p-4 text-sm font-bold leading-7 text-sky-800">💡 {analysis.advice}</div>
-    <h4 className="mt-5 font-display text-lg font-extrabold text-ink">تسميع الطالب خلال الشهر الهجري الحالي</h4>{sessions.length ? <div className="mt-3 space-y-2">{sessions.map((item, index) => <div key={`${item.day}-${item.kind}-${index}`} className="rounded-xl border border-grape-100 bg-white p-3"><div className="flex flex-wrap justify-between gap-2"><b className={item.kind === "حفظ" ? "text-grape-600" : "text-gold-700"}>{item.kind}</b><span className="text-xs font-bold text-grape-400">{item.day}</span></div><p className="mt-1 text-sm font-bold text-ink">{item.text || "لم يُسجّل اسم السورة"}</p><p className="text-xs text-grape-500">{ar(item.verses || 0)} آية · {ar(item.lines || 0)} سطر</p></div>)}</div> : <p className="mt-3 rounded-xl bg-grape-50 p-4 text-sm font-bold text-grape-500">لا توجد جلسات تسميع مسجلة في الشهر الهجري الحالي.</p>}
+    <h4 className="mt-5 font-display text-lg font-extrabold text-ink">تسميع الطالب خلال الشهر الهجري الحالي</h4>{sessions.length ? <div className="mt-3 space-y-2">{sessions.map((item, index) => <div key={`${item.day}-${item.kind}-${index}`} className="rounded-xl border border-grape-100 bg-white p-3"><div className="flex flex-wrap justify-between gap-2"><b className={item.kind === "حفظ" ? "text-grape-600" : "text-gold-700"}>{item.kind}</b><span className="text-xs font-bold text-grape-400">{item.day}</span></div><p className="mt-1 text-sm font-bold text-ink">{item.text || "لم يُسجّل اسم السورة"}</p><p className="text-xs text-grape-500">{item.kind === "مراجعة" && item.pages !== undefined ? `${ar(item.pages)} صفحة` : `${ar(item.verses || 0)} آية · ${ar(item.lines || 0)} سطر${item.kind === "مراجعة" ? " (سجل قديم)" : ""}`}</p></div>)}</div> : <p className="mt-3 rounded-xl bg-grape-50 p-4 text-sm font-bold text-grape-500">لا توجد جلسات تسميع مسجلة في الشهر الهجري الحالي.</p>}
     <p className="mt-4 text-xs font-bold text-grape-400">النشاط لا يُعرض إلا إذا كان محفوظًا كبيانات فعلية، ولا يوجد حاليًا حقل نشاط مستقل.</p>
   </div></Modal>;
 }
@@ -628,7 +638,7 @@ function RegisterRow({
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h4 className="font-display text-base font-extrabold text-ink">خطة الورد الأسبوعية</h4>
-            <p className="mt-1 text-xs font-semibold leading-5 text-grape-500">اكتب السورة والآيات والأسطر للحفظ والمراجعة، ويمكن استخدام نصف سطر مثل ٢٫٥</p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-grape-500">الحفظ: السورة والآيات والأسطر · المراجعة: السورة أو السور وعدد الصفحات</p>
           </div>
           <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-extrabold text-grape-500 shadow-sm">{ar(checkedCount)} / ١٢ منجز</span>
         </div>
@@ -647,17 +657,17 @@ function RegisterRow({
                   <div className="rounded-xl bg-grape-50 p-2.5">
                     <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-grape-700"><Icon name="book" className="h-4 w-4" />الحفظ الجديد</div>
                     <div className="grid gap-2 grid-cols-[minmax(0,1fr)_88px_78px]">
-                      <input disabled={absent} aria-label={`سورة الحفظ ${d.label}`} value={ward.memorization} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder={absent ? "غائب" : "اسم السورة"} className="field-control disabled:cursor-not-allowed disabled:opacity-50" />
-                      <NumericInput disabled={absent} aria-label={`عدد آيات الحفظ ${d.label}`} min={0} value={ward.memorizationVerses || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, memorizationVerses: value })} placeholder="الآيات" className="field-control text-center disabled:cursor-not-allowed disabled:opacity-50" />
-                      <NumericInput disabled={absent} aria-label={`عدد أسطر الحفظ ${d.label}`} min={0} step={0.5} value={ward.memorizationLines || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, memorizationLines: value })} placeholder="الأسطر" className="field-control text-center font-extrabold text-grape-700 disabled:cursor-not-allowed disabled:opacity-50" />
+                      <input data-ward-input="true" disabled={absent || s.isTesting} aria-label={`سورة الحفظ ${d.label}`} value={ward.memorization} onKeyDown={advanceWardInput} onChange={(e) => updateWard(s.id, d.key, { ...ward, memorization: e.target.value })} placeholder={absent ? "غائب" : s.isTesting ? "اختبار — مراجعة فقط" : "اسم السورة"} className="field-control disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput data-ward-input="true" disabled={absent || s.isTesting} aria-label={`عدد آيات الحفظ ${d.label}`} min={0} step="any" value={ward.memorizationVerses} zeroAsEmpty commitOnBlur onKeyDown={advanceWardInput} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, memorizationVerses: value })} placeholder="الآيات" className="field-control text-center disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput data-ward-input="true" disabled={absent || s.isTesting} aria-label={`عدد أسطر الحفظ ${d.label}`} min={0} step="any" value={ward.memorizationLines} zeroAsEmpty commitOnBlur onKeyDown={advanceWardInput} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, memorizationLines: value })} placeholder="الأسطر" className="field-control text-center font-extrabold text-grape-700 disabled:cursor-not-allowed disabled:opacity-50" />
                     </div>
+                    {s.isTesting && <p className="mt-2 rounded-lg bg-sky-100 px-2 py-1.5 text-[11px] font-extrabold text-sky-700">الطالب لديه اختبار — التسميع يُحسب مراجعة فقط</p>}
                   </div>
                   <div className="rounded-xl bg-amber-50 p-2.5">
                     <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-amber-700"><Icon name="refresh" className="h-4 w-4" />المراجعة</div>
-                    <div className="grid gap-2 grid-cols-[minmax(0,1fr)_88px_78px]">
-                      <input disabled={absent} aria-label={`سورة المراجعة ${d.label}`} value={ward.review} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder={absent ? "غائب" : "اسم السورة أو السور"} className="field-control border-amber-200 disabled:cursor-not-allowed disabled:opacity-50" />
-                      <NumericInput disabled={absent} aria-label={`عدد آيات المراجعة ${d.label}`} min={0} value={ward.reviewVerses || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, reviewVerses: value })} placeholder="الآيات" className="field-control border-amber-200 text-center disabled:cursor-not-allowed disabled:opacity-50" />
-                      <NumericInput disabled={absent} aria-label={`عدد أسطر المراجعة ${d.label}`} min={0} step={0.5} value={ward.reviewLines || 0} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, reviewLines: value })} placeholder="الأسطر" className="field-control border-amber-200 text-center font-extrabold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50" />
+                    <div className="grid gap-2 grid-cols-[minmax(0,1fr)_110px]">
+                      <input data-ward-input="true" disabled={absent} aria-label={`سورة المراجعة ${d.label}`} value={ward.review} onKeyDown={advanceWardInput} onChange={(e) => updateWard(s.id, d.key, { ...ward, review: e.target.value })} placeholder={absent ? "غائب" : "اسم السورة أو السور"} className="field-control border-amber-200 disabled:cursor-not-allowed disabled:opacity-50" />
+                      <NumericInput data-ward-input="true" disabled={absent} aria-label={`عدد صفحات المراجعة ${d.label}`} min={0} step="any" value={ward.reviewPages} zeroAsEmpty commitOnBlur onKeyDown={advanceWardInput} onEmpty={() => updateWard(s.id, d.key, { ...ward, reviewPages: undefined })} onValueChange={(value) => updateWard(s.id, d.key, { ...ward, reviewPages: value })} placeholder="الصفحات" className="field-control border-amber-200 text-center font-extrabold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50" />
                     </div>
                   </div>
                 </div>
@@ -671,7 +681,7 @@ function RegisterRow({
                     return (
                       <select
                         key={p.key}
-                        disabled={absent}
+                        disabled={absent || (p.key === "h" && s.isTesting)}
                         aria-label={`حالة ${p.label} ${d.label}`}
                         value={rating}
                         onChange={(event) => {

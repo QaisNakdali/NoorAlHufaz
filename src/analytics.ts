@@ -1,4 +1,5 @@
 import { DAYS, estimatedLinesFromVerses, levelInfo, type DayKey, type ParentContactRecord, type RecitationPart, type Student, type WeekLog, type WeekLogEntry } from "./core";
+import { reviewLinesForWard, safeNonNegativeDecimal } from "./learningMetrics";
 import { pagesForAyahRange, parseQuranRange } from "./quranPages";
 
 export type WorkMeasure = {
@@ -77,10 +78,11 @@ const hasPlannedWork = (student: Student, day: DayKey, kind: LearningTrack): boo
   const memV = Number(ward.memorizationVerses) || 0;
   const memL = Number(ward.memorizationLines) || 0;
   const revV = Number(ward.reviewVerses) || 0;
-  const revL = Number(ward.reviewLines) || 0;
+  const revL = reviewLinesForWard(ward);
+  const revP = safeNonNegativeDecimal(ward.reviewPages) ?? 0;
   return kind === "memorization"
     ? (mem.length > 0 || memV > 0 || memL > 0)
-    : (rev.length > 0 || revV > 0 || revL > 0);
+    : (rev.length > 0 || revV > 0 || revL > 0 || revP > 0);
 };
 
 export function pagesForWardDay(student: Student, day: DayKey, kind: LearningTrack): { pages: number; estimated: boolean } {
@@ -91,6 +93,10 @@ export function pagesForWardDay(student: Student, day: DayKey, kind: LearningTra
   const to = kind === "memorization" ? ward.memorizationToVerse : ward.reviewToVerse;
   const lines = Number(kind === "memorization" ? ward.memorizationLines : ward.reviewLines) || 0;
   const verses = Number(kind === "memorization" ? ward.memorizationVerses : ward.reviewVerses) || 0;
+  if (kind === "review") {
+    const explicitPages = safeNonNegativeDecimal(ward.reviewPages);
+    if (explicitPages !== undefined) return { pages: explicitPages, estimated: false };
+  }
   const parsed = text ? parseQuranRange(text) : null;
   const exact = parsed ? pagesForAyahRange(parsed.surah, from || parsed.from, to || parsed.to) : null;
   if (exact) return { pages: exact.pages, estimated: false };
@@ -108,7 +114,10 @@ export function measureStudentWork(student: Student, kind: "memorization" | "rev
     return Boolean(entry[part] || hasRating);
   });
   const verses = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationVerses : student.ward?.[d.key]?.reviewVerses) || 0), 0);
-  const enteredLines = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationLines : student.ward?.[d.key]?.reviewLines) || 0), 0);
+  const enteredLines = completed.reduce((sum, d) => {
+    const ward = student.ward?.[d.key];
+    return sum + (kind === "memorization" ? Number(ward?.memorizationLines) || 0 : reviewLinesForWard(ward));
+  }, 0);
   const pageMeasures = completed.map((d) => pagesForWardDay(student, d.key, kind));
   const lines = enteredLines > 0 ? enteredLines : estimatedLinesFromVerses(verses);
   const pagesEstimated = pageMeasures.some((measure) => measure.estimated);
