@@ -7,6 +7,7 @@ import Avatar from "./Avatar";
 import { Icon, Modal, SectionHead } from "./ui";
 import { addCalendarDays, dateFromLocalKey, formatHijriDate, formatHijriMonth, formatTeachingWeek, hijriMonthKey, localDateKey } from "../hijriDate";
 import { roundUpToQuarter } from "../statisticsNumber";
+import { reviewLinesForWard } from "../learningMetrics";
 
 type Period = "daily" | "weekly" | "monthly" | "all";
 type StatsView = "both" | "memorization" | "review";
@@ -83,7 +84,7 @@ const add = (a: StudentMetrics, b: StudentMetrics): StudentMetrics => ({
  */
 function checkDayRecitation(
   state?: { a?: boolean; h?: boolean; r?: boolean; absent?: boolean } | null,
-  ward?: { memorization?: string; review?: string; memorizationLines?: number; reviewLines?: number; memorizationVerses?: number; reviewVerses?: number } | null,
+  ward?: { memorization?: string; review?: string; memorizationLines?: number; reviewLines?: number; memorizationVerses?: number; reviewVerses?: number; reviewPages?: number } | null,
   ratings?: { h?: any; r?: any } | null
 ): {
   isAbsent: boolean;
@@ -230,7 +231,7 @@ function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
       if (hasRev && res.isPresent) {
         result.reviewSessions += 1;
         result.reviewVerses += Number(ward.reviewVerses) || 0;
-        const lines = Number(ward.reviewLines) || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0);
+        const lines = ward.reviewPages !== undefined ? reviewLinesForWard(ward) : (Number(ward.reviewLines) || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0));
         result.reviewLines += lines;
         result.reviewPages += pagesForWardDay(mockStudent, d.key, "review").pages;
       }
@@ -264,7 +265,7 @@ function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
   if (hasRev && res.isPresent) {
     result.reviewSessions = 1;
     result.reviewVerses += Number(ward.reviewVerses) || 0;
-    const lines = Number(ward.reviewLines) || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0);
+    const lines = ward.reviewPages !== undefined ? reviewLinesForWard(ward) : (Number(ward.reviewLines) || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0));
     result.reviewLines = lines;
     result.reviewPages += pagesForWardDay(mockStudent, day, "review").pages;
   }
@@ -1283,9 +1284,7 @@ export default function StatisticsPage() {
           <MetricCard icon="refresh" label="صفحات المراجعة" value={n(total.reviewPages)} tone="gold" />
 
           <MetricCard icon="chart" label="آيات الحفظ" value={ar(total.memorizationVerses)} />
-          <MetricCard icon="chart" label="آيات المراجعة" value={ar(total.reviewVerses)} />
           <MetricCard icon="chart" label="أسطر الحفظ" value={n(total.memorizationLines)} />
-          <MetricCard icon="chart" label="أسطر المراجعة" value={n(total.reviewLines)} />
         </div>
       </section>
 
@@ -2018,8 +2017,6 @@ export default function StatisticsPage() {
                   إجمالي صفحات المراجعة
                 </th>
                 <th className="p-2.5 text-center">جلسات المراجعة</th>
-                <th className="p-2.5 text-center">آيات المراجعة</th>
-                <th className="p-2.5 text-center">أسطر المراجعة</th>
                 <th className="p-2.5 text-center">أيام الحضور</th>
                 <th className="p-2.5 text-center">أيام الغياب</th>
               </tr>
@@ -2052,8 +2049,6 @@ export default function StatisticsPage() {
                     {n(item.reviewPages)}
                   </td>
                   <td className="p-2.5 text-center font-bold text-ink">{ar(item.reviewSessions)}</td>
-                  <td className="p-2.5 text-center font-bold text-grape-600">{ar(item.reviewVerses)}</td>
-                  <td className="p-2.5 text-center font-bold text-grape-600">{n(item.reviewLines)}</td>
                   <td className="p-2.5 text-center font-bold text-mint-600">{ar(item.present)}</td>
                   <td className="p-2.5 text-center font-bold text-coral-600">{ar(item.absent)}</td>
                 </tr>

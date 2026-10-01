@@ -38,7 +38,12 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
   const updateWardField = (day: DayKey, field: keyof DailyWard, value: any) => {
     const curWard = record.ward ?? emptyWeeklyWard();
     const curDay = curWard[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
-    update({ ...record, ward: { ...curWard, [day]: { ...curDay, [field]: value } } });
+    const nextDay = { ...curDay, [field]: value };
+    if (field === "reviewPages") {
+      delete nextDay.reviewVerses;
+      delete nextDay.reviewLines;
+    }
+    update({ ...record, ward: { ...curWard, [day]: nextDay } });
   };
   return <article className="rounded-2xl border-2 border-grape-100 bg-white p-4">
     <div className="flex flex-wrap items-center gap-3">
@@ -69,11 +74,11 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
               </div>
               <div className="rounded-lg bg-white p-2 border border-amber-200/60">
                 <span className="text-[11px] font-extrabold text-amber-800">ورد المراجعة:</span>
-                <div className="mt-1 grid grid-cols-3 gap-1.5">
+                <div className="mt-1 grid grid-cols-[minmax(0,1fr)_110px] gap-1.5">
                   <input disabled={absent} placeholder="السورة" className="field-control text-xs border-amber-200" value={ward.review} onChange={(e) => updateWardField(day.key, "review", e.target.value)} />
-                  <NumericInput disabled={absent} min={0} placeholder="الآيات" className="field-control text-xs border-amber-200 text-center" value={ward.reviewVerses || 0} onValueChange={(value) => updateWardField(day.key, "reviewVerses", value)} />
-                  <NumericInput disabled={absent} min={0} step={0.5} placeholder="الأسطر" className="field-control text-xs border-amber-200 text-center" value={ward.reviewLines || 0} onValueChange={(value) => updateWardField(day.key, "reviewLines", value)} />
+                  <NumericInput disabled={absent} min={0} step="any" placeholder="الصفحات" className="field-control text-xs border-amber-200 text-center" value={ward.reviewPages} zeroAsEmpty onEmpty={() => updateWardField(day.key, "reviewPages", undefined)} onValueChange={(value) => updateWardField(day.key, "reviewPages", value)} />
                 </div>
+                {ward.reviewPages === undefined && (ward.reviewVerses || ward.reviewLines) ? <p className="mt-1.5 text-[10px] font-bold text-amber-700/75">سجل قديم محفوظ: {ward.reviewVerses ? `${ar(ward.reviewVerses)} آية` : ""}{ward.reviewVerses && ward.reviewLines ? " · " : ""}{ward.reviewLines ? `${ar(ward.reviewLines)} سطر` : ""}</p> : null}
               </div>
             </div>
           </div>
@@ -386,9 +391,8 @@ export default function PastWeeks() {
                       const ward = record.ward?.[d.key];
                       const isAbsent = entry?.absent;
                       const hasH = entry?.h || Number(ward?.memorizationLines) > 0 || Number(ward?.memorizationVerses) > 0 || !!ward?.memorization?.trim();
-                      const hasR = entry?.r || Number(ward?.reviewLines) > 0 || Number(ward?.reviewVerses) > 0 || !!ward?.review?.trim();
+                      const hasR = entry?.r || Number(ward?.reviewPages) > 0 || Number(ward?.reviewLines) > 0 || Number(ward?.reviewVerses) > 0 || !!ward?.review?.trim();
                       const memPages = (ward?.memorizationLines ? Number(ward.memorizationLines) / 15 : 0);
-                      const revPages = (ward?.reviewLines ? Number(ward.reviewLines) / 15 : 0);
 
                       return (
                         <div key={d.key} className="rounded-xl border border-grape-100 bg-grape-50/60 p-2.5 text-xs">
@@ -418,9 +422,8 @@ export default function PastWeeks() {
                                 <div className="rounded bg-amber-50 p-1.5 text-[11px] leading-tight text-amber-900 border border-amber-200/50">
                                   <span className="font-extrabold text-amber-700">مراجعة: </span>
                                   {ward?.review ? <b>{ward.review} </b> : null}
-                                  {ward?.reviewVerses ? <span>({ar(ward.reviewVerses)} آية) </span> : null}
-                                  {ward?.reviewLines ? <span>[{ar(ward.reviewLines)} سطر ≈ {ar(Math.round(revPages * 10) / 10)} ص]</span> : null}
-                                  {!ward?.review && !ward?.reviewLines && <span>تمت المراجعة</span>}
+                                  {ward?.reviewPages !== undefined ? <span>[{ar(ward.reviewPages)} صفحة]</span> : <>{ward?.reviewVerses ? <span>({ar(ward.reviewVerses)} آية) </span> : null}{ward?.reviewLines ? <span>[{ar(ward.reviewLines)} سطر — سجل قديم]</span> : null}</>}
+                                  {!ward?.review && ward?.reviewPages === undefined && !ward?.reviewLines && <span>تمت المراجعة</span>}
                                 </div>
                               )}
                               {!hasH && !hasR && entry?.a && (

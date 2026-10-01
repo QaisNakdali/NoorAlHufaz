@@ -76,6 +76,11 @@ import {
 } from "./cloudSync";
 import { mergeLocalChanges, sameValue, type MergeConflict } from "./syncMerge";
 import { applyCheckoutTransaction, HEART_ITEM_ID } from "./checkoutTransaction";
+import { buildLocalSnapshot } from "./localSnapshot";
+import { hasCloudStudentCollection } from "./cloudStateGuard";
+import { reviewLinesFromPages, safeNonNegativeDecimal } from "./learningMetrics";
+import { buildWardUpdate, canRecordMemorization } from "./learningRules";
+import { checkoutClock, reportCheckoutPerformance, type CheckoutPerformanceMetrics } from "./checkoutPerformance";
 
 export type ToastKind = "xp" | "coin" | "level" | "award" | "error" | "success" | "heart" | "info";
 export type Toast = { id: number; kind: ToastKind; msg: string };
@@ -172,8 +177,8 @@ type Ctx = State & {
   removeHeart: (id: string) => void;
   restoreHeart: (id: string) => void;
 
-  buyHeart: (id: string) => void;
-  buyItem: (id: string, itemId: string) => void;
+  buyHeart: (id: string) => Promise<{ success: boolean; error?: string; performance?: CheckoutPerformanceMetrics }>;
+  buyItem: (id: string, itemId: string) => Promise<{ success: boolean; error?: string; performance?: CheckoutPerformanceMetrics }>;
   grantItem: (studentId: string, itemId: string) => void;
   equipCosmetic: (id: string, itemId: string) => void;
   equipParentCosmetic: (id: string, itemId: string) => Promise<{ success: boolean; error?: string }>;
@@ -197,7 +202,7 @@ type Ctx = State & {
   parentLogs: ParentAccessLog[];
   logParentAccess: (studentId: string, enteredStore?: boolean, purchased?: boolean) => void;
   clearParentActivity: (confirmationCode: string) => Promise<{ success: boolean; error?: string }>;
-  checkoutParentCart: (studentId: string, items: { itemId: string; qty: number }[], allowClosedStore?: boolean) => Promise<{ success: boolean; error?: string }>;
+  checkoutParentCart: (studentId: string, items: { itemId: string; qty: number }[], allowClosedStore?: boolean) => Promise<{ success: boolean; error?: string; performance?: CheckoutPerformanceMetrics }>;
 
   grantAward: (id: string, title: string, coins?: number, xp?: number, uniqueKey?: string) => void;
   setCeremonyPick: (key: keyof CeremonyPicks, id: string | null) => void;
@@ -264,9 +269,10 @@ function normStudent(s: Student): Student {
           memorization: String(item.memorization ?? ""),
           review: String(item.review ?? ""),
           memorizationVerses: Math.max(0, Number(item.memorizationVerses ?? 0) || 0),
-          reviewVerses: Math.max(0, Number(item.reviewVerses ?? 0) || 0),
+          ...(item.reviewVerses === undefined || item.reviewVerses === null ? {} : { reviewVerses: Math.max(0, Number(item.reviewVerses) || 0) }),
           memorizationLines: Math.max(0, Number(item.memorizationLines ?? 0) || 0),
-          reviewLines: Math.max(0, Number(item.reviewLines ?? 0) || 0),
+          ...(item.reviewLines === undefined || item.reviewLines === null ? {} : { reviewLines: Math.max(0, Number(item.reviewLines) || 0) }),
+          ...(safeNonNegativeDecimal(item.reviewPages) === undefined ? {} : { reviewPages: safeNonNegativeDecimal(item.reviewPages) }),
         };
       }
       return normalized;
@@ -322,9 +328,10 @@ function normWeekRecord(r: any): WeekStudentRecord {
         memorization: String(item.memorization ?? ""),
         review: String(item.review ?? ""),
         memorizationVerses: Math.max(0, Number(item.memorizationVerses ?? 0) || 0),
-        reviewVerses: Math.max(0, Number(item.reviewVerses ?? 0) || 0),
+        ...(item.reviewVerses === undefined || item.reviewVerses === null ? {} : { reviewVerses: Math.max(0, Number(item.reviewVerses) || 0) }),
         memorizationLines: Math.max(0, Number(item.memorizationLines ?? 0) || 0),
-        reviewLines: Math.max(0, Number(item.reviewLines ?? 0) || 0),
+        ...(item.reviewLines === undefined || item.reviewLines === null ? {} : { reviewLines: Math.max(0, Number(item.reviewLines) || 0) }),
+        ...(safeNonNegativeDecimal(item.reviewPages) === undefined ? {} : { reviewPages: safeNonNegativeDecimal(item.reviewPages) }),
       };
     }
   }
@@ -489,6 +496,14 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
     orders: Array.isArray(p.orders) ? (p.orders as PurchaseOrder[]) : [],
     parentLogs: Array.isArray(p.parentLogs) ? (p.parentLogs as ParentAccessLog[]) : [],
   };
+}
+
+/** رفض النسخ السحابية التالفة بدل تحويلها إلى بيانات تجريبية ثم حفظها. */
+function stateFromCloudPayload(value: unknown): State {
+  if (!hasCloudStudentCollection(value)) {
+    throw new Error("رفض النظام نسخة سحابية ناقصة لحماية بيانات الطلاب؛ لم يتم تطبيقها أو رفعها");
+  }
+  return stateFromPartial(value as Partial<State>);
 }
 
 let localLoadError: string | null = null;
@@ -758,7 +773,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const persistLocal = useCallback((data: State, rev: number, dirty: boolean) => {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ ...data, __rev: rev, __dirty: dirty, __base: syncedBaseRef.current }));
+      localStorage.setItem(KEY, JSON.stringify(buildLocalSnapshot(data, rev, dirty, syncedBaseRef.current)));
       localPersistErrorRef.current = false;
     } catch (error) {
       if (!localPersistErrorRef.current) {
@@ -824,7 +839,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // عند التعارض ندمج فروق هذا الجهاز فوق النسخة الفائزة ثم نعيد المحاولة ذريًا.
       for (let attempt = 0; attempt < 6; attempt += 1) {
         const result = await cloudSave({ rev: expectedRev + 1, data: candidate }, expectedRev);
-        const normalized = stateFromPartial(result.data as Partial<State>);
+        const normalized = stateFromCloudPayload(result.data);
         if (result.applied) {
           savedState = normalized;
           savedRev = result.rev;
@@ -903,24 +918,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * الحساب فوق النسخة الأحدث بدل بيع مخزون قديم أو خصم الرصيد مرتين.
    */
   const checkoutParentCart = useCallback(async (studentId: string, items: { itemId: string; qty: number }[], allowClosedStore = false) => {
+    const startedAt = checkoutClock.now();
+    let networkMs = 0;
+    let requestCount = 0;
+    let casRetries = 0;
+    let payloadBytes = 0;
+    const finish = (result: { success: boolean; error?: string }) => {
+      const totalMs = checkoutClock.now() - startedAt;
+      const performance: CheckoutPerformanceMetrics = {
+        totalMs: Math.round(totalMs),
+        networkMs: Math.round(networkMs),
+        localWorkMs: Math.max(0, Math.round(totalMs - networkMs)),
+        requestCount,
+        casRetries,
+        payloadBytes,
+        success: result.success,
+      };
+      reportCheckoutPerformance(performance);
+      return { ...result, performance };
+    };
     const checkoutKey = `parent-checkout:${studentId}`;
     if (checkoutLocksRef.current.has(checkoutKey)) {
-      return { success: false, error: "عملية الشراء قيد التنفيذ، يرجى الانتظار قليلًا" };
+      return finish({ success: false, error: "عملية الشراء قيد التنفيذ، يرجى الانتظار قليلًا" });
     }
     checkoutLocksRef.current.add(checkoutKey);
     const requestId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : uid();
     const purchasedAt = new Date().toISOString();
 
     try {
+      // معاملة الشراء تستوعب التعديلات المحلية المعلقة. إلغاء المؤقت يمنع
+      // رفع الحالة الكبيرة مرتين والتسابق مع عملية الشراء نفسها.
+      if (pushTimer.current) {
+        window.clearTimeout(pushTimer.current);
+        pushTimer.current = null;
+      }
       if (isCloudEnabled()) {
         setCloud((current) => ({ ...current, status: "syncing" }));
 
         const localSnapshot = cloudDataRef.current;
-        if (!localSnapshot) return { success: false, error: "بيانات المتجر غير جاهزة بعد" };
+        if (!localSnapshot) return finish({ success: false, error: "بيانات المتجر غير جاهزة بعد" });
+        const legacyBenchmark = typeof window !== "undefined"
+          && window.location.hostname !== "noor-al-hufaz-main.vercel.app"
+          && new URLSearchParams(window.location.search).get("checkoutLegacy") === "1";
         let latest = { rev: revRef.current, data: localSnapshot as unknown };
+        // مسار قياس للنسخة السابقة في Preview المعزول فقط: قراءة app_state كاملًا
+        // قبل كل شراء ثم إرجاعه كاملًا. لا يمكن تفعيله على نطاق Production.
+        if (legacyBenchmark) {
+          const loadStartedAt = checkoutClock.now();
+          requestCount += 1;
+          const loaded = await cloudLoad();
+          networkMs += checkoutClock.now() - loadStartedAt;
+          if (loaded) latest = loaded;
+        }
         for (let attempt = 0; attempt < 7; attempt += 1) {
           if (!latest) throw new Error("تعذر قراءة بيانات المتجر المشتركة");
-          const remote = stateFromPartial(latest.data as Partial<State>);
+          const remote = stateFromCloudPayload(latest.data);
           // دمج أي تغييرات محلية معلّقة فوق أحدث نسخة سحابية داخل عملية الشراء
           // نفسها، بدل تنفيذ حفظ كامل إضافي قبل الشراء. هذا يقلل رحلة شبكية
           // ويحافظ في الوقت نفسه على تحديثات المعلم غير المتعارضة.
@@ -932,8 +984,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             : remote;
           if (conflicts.length) reportConflicts(conflicts);
           const transaction = applyCheckoutTransaction(current, studentId, items, requestId, purchasedAt, allowClosedStore);
-          if (!transaction.success) return transaction;
+          if (!transaction.success) return finish(transaction);
 
+          // سجل نشاط ولي الأمر جزء من نفس التثبيت الذري، فلا ننشئ حفظًا
+          // سحابيًا ثانيًا بعد الشراء ولا نرفع global revision مرتين.
           const purchasedStudent = transaction.state.students.find((item) => item.id === studentId);
           const parentLogs = (() => {
             if (!purchasedStudent) return current.parentLogs;
@@ -943,47 +997,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
               logs[recentIndex] = { ...logs[recentIndex], lastActiveAt: purchasedAt, enteredStore: true, purchased: true };
               return logs;
             }
-            return [{ id: uid(), studentId, studentName: purchasedStudent.name, enteredAt: purchasedAt, lastActiveAt: purchasedAt, enteredStore: true, purchased: true }, ...logs.slice(0, 99)];
+            return [{
+              id: uid(), studentId, studentName: purchasedStudent.name,
+              enteredAt: purchasedAt, lastActiveAt: purchasedAt,
+              enteredStore: true, purchased: true,
+            }, ...logs.slice(0, 99)];
           })();
           const committedState: State = { ...(transaction.state as State), parentLogs };
-          const saved = await cloudSaveCompact({ rev: latest.rev + 1, data: committedState }, latest.rev)
+          payloadBytes = new TextEncoder().encode(JSON.stringify(committedState)).byteLength;
+
+          const networkStartedAt = checkoutClock.now();
+          requestCount += 1;
+          const saved = legacyBenchmark
+            ? await cloudSave({ rev: latest.rev + 1, data: committedState }, latest.rev)
+            : await cloudSaveCompact({ rev: latest.rev + 1, data: committedState }, latest.rev);
+          networkMs += checkoutClock.now() - networkStartedAt;
+          requestCount += saved.networkRequests - 1;
           if (saved.applied) {
-            const committed = stateFromPartial(saved.data as Partial<State>);
+            const committed = stateFromCloudPayload(saved.data);
             receiveRemote(committed, saved.rev);
-            logParentAccess(studentId, true, true);
             sfx.coin();
             timers.current.push(window.setTimeout(() => sfx.sparkle(), 250));
             toast("success", transaction.alreadyApplied
               ? "عملية الشراء مسجلة بالفعل"
               : `تمت عملية الشراء بنجاح! خصم ${transaction.totalCost} عملة`);
             setCloud((currentCloud) => ({ ...currentCloud, status: "ok", lastSyncAt: Date.now(), lastError: null }));
-            return { success: true };
+            return finish({ success: true });
           }
 
+          casRetries += 1;
           latest = { rev: saved.rev, data: saved.data };
-          const possibleCommit = stateFromPartial(saved.data as Partial<State>);
+          const possibleCommit = stateFromCloudPayload(saved.data);
           if (possibleCommit.orders.some((order) => order.requestId === requestId)) {
             receiveRemote(possibleCommit, saved.rev);
-            return { success: true };
+            return finish({ success: true });
           }
         }
-        return { success: false, error: "حدثت عمليات شراء متزامنة كثيرة؛ حدّث الصفحة وحاول مرة أخرى" };
+        return finish({ success: false, error: "حدثت عمليات شراء متزامنة كثيرة؛ حدّث الصفحة وحاول مرة أخرى" });
       }
 
       const current = cloudDataRef.current;
-      if (!current) return { success: false, error: "بيانات المتجر غير جاهزة بعد" };
+      if (!current) return finish({ success: false, error: "بيانات المتجر غير جاهزة بعد" });
       const transaction = applyCheckoutTransaction(current, studentId, items, requestId, purchasedAt, allowClosedStore);
-      if (!transaction.success) return transaction;
+      if (!transaction.success) return finish(transaction);
       applySnapshot(transaction.state as State, revRef.current, true);
       logParentAccess(studentId, true, true);
       sfx.coin();
       timers.current.push(window.setTimeout(() => sfx.sparkle(), 250));
       toast("success", `تمت عملية الشراء بنجاح! خصم ${transaction.totalCost} عملة`);
-      return { success: true };
+      return finish({ success: true });
     } catch (error) {
       const message = errMsg(error);
       setCloud((current) => ({ ...current, status: "error", lastError: message }));
-      return { success: false, error: `تعذر تثبيت عملية الشراء بأمان: ${message}` };
+      return finish({ success: false, error: `تعذر تثبيت عملية الشراء بأمان: ${message}` });
     } finally {
       checkoutLocksRef.current.delete(checkoutKey);
     }
@@ -998,11 +1064,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         let latest = await cloudLoad();
         for (let attempt = 0; attempt < 5; attempt += 1) {
           if (!latest) return { success: false, error: "تعذر قراءة السجل المشترك" };
-          const current = stateFromPartial(latest.data as Partial<State>);
+          const current = stateFromCloudPayload(latest.data);
           const next: State = { ...current, parentLogs: [] };
           const saved = await cloudSave({ rev: latest.rev + 1, data: next }, latest.rev);
           if (saved.applied) {
-            receiveRemote(stateFromPartial(saved.data as Partial<State>), saved.rev);
+            receiveRemote(stateFromCloudPayload(saved.data), saved.rev);
             toast("success", "تم حذف سجل زيارات أولياء الأمور فقط");
             return { success: true };
           }
@@ -1026,7 +1092,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const remote = await cloudLoad();
         if (remote && remote.rev > revRef.current) {
-          const norm = stateFromPartial(remote.data as Partial<State>);
+          const norm = stateFromCloudPayload(remote.data);
           receiveRemote(norm, remote.rev);
           if (announce) toast("success", "تم جلب تحديثات جديدة من السحابة");
         } else if (!remote) {
@@ -1120,7 +1186,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void pullCloud(false);
     return subscribeCloud((remote) => {
       if (remote.rev <= revRef.current) return;
-      const normalized = stateFromPartial(remote.data as Partial<State>);
+      const normalized = stateFromCloudPayload(remote.data);
       receiveRemote(normalized, remote.rev);
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
     });
@@ -1411,6 +1477,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStudents((ss) => {
         const target = ss.find((s) => s.id === id);
         if (!target) return ss;
+        if (part === "h" && !canRecordMemorization(target.isTesting)) {
+          toast("info", `${target.name}: الطالب في اختبار — التسميع يُسجل مراجعة فقط`);
+          return ss;
+        }
         if (target.days[day]?.absent) {
           toast("error", `${target.name}: ألغِ حالة الغياب أولًا قبل تسجيل الحضور أو التسميع`);
           return ss;
@@ -1457,7 +1527,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ? {
                 ...(s.lastHeard ?? {}),
                 ...(part === "h" && ward.memorization ? { memorization: { text: ward.memorization, verses: ward.memorizationVerses, lines: ward.memorizationLines, day: dayLabel, at: Date.now() } } : {}),
-                ...(part === "r" && ward.review ? { review: { text: ward.review, verses: ward.reviewVerses, lines: ward.reviewLines, day: dayLabel, at: Date.now() } } : {}),
+                ...(part === "r" && ward.review ? { review: { text: ward.review, verses: ward.reviewVerses ?? 0, lines: ward.reviewPages !== undefined ? reviewLinesFromPages(ward.reviewPages) : ward.reviewLines, day: dayLabel, at: Date.now() } } : {}),
               }
             : s.lastHeard;
 
@@ -1562,17 +1632,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [heartPrice, products, students, toast, week, weekStartDateIso, weeksLog]);
 
   const updateWard = useCallback((id: string, day: DayKey, ward: DailyWard) => {
-    setStudents((ss) => ss.map((s) => s.id === id
-      ? { ...s, ward: { ...(s.ward ?? emptyWeeklyWard()), [day]: {
-          ...ward,
-          memorization: String(ward.memorization ?? ""),
-          review: String(ward.review ?? ""),
-          memorizationVerses: Math.max(0, Number(ward.memorizationVerses) || 0),
-          reviewVerses: Math.max(0, Number(ward.reviewVerses) || 0),
-          memorizationLines: Math.max(0, Number(ward.memorizationLines) || 0),
-          reviewLines: Math.max(0, Number(ward.reviewLines) || 0),
-        } } }
-      : s));
+    setStudents((ss) => ss.map((s) => {
+      if (s.id !== id) return s;
+      const previous = s.ward?.[day] ?? emptyWeeklyWard()[day];
+      const nextWard = buildWardUpdate(previous, ward, s.isTesting);
+      return { ...s, ward: { ...(s.ward ?? emptyWeeklyWard()), [day]: nextWard } };
+    }));
   }, []);
 
   /** تبديل حالة تم التسميع اليومية للطالب */
@@ -1746,47 +1811,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ===== الشراء ===== */
   const buyHeart = useCallback(
-    (id: string) => {
-      if (!acquireActionLock(`buy-heart:${id}`)) return;
+    async (id: string) => {
+      if (!acquireActionLock(`buy-heart:${id}`)) return { success: false, error: "عملية الشراء قيد التنفيذ" };
       const st = students.find((s) => s.id === id);
-      if (!st) return;
+      if (!st) return { success: false, error: "الطالب غير موجود" };
       if (st.hearts >= MAX_HEARTS) {
         toast("error", "قلوبك مكتملة بالفعل");
         sfx.error();
-        return;
+        return { success: false, error: "قلوبك مكتملة بالفعل" };
       }
       if (st.coins < heartPrice) {
         toast("error", `عملاتك لا تكفي — تحتاج ${ar(heartPrice)}`);
         sfx.error();
-        return;
+        return { success: false, error: `عملاتك لا تكفي — تحتاج ${ar(heartPrice)}` };
       }
-      void checkoutParentCart(id, [{ itemId: HEART_ITEM_ID, qty: 1 }], true).then((result) => {
-        if (!result.success) {
-          toast("error", result.error || "تعذر شراء القلب بأمان");
-          sfx.error();
-        }
-      });
+      const result = await checkoutParentCart(id, [{ itemId: HEART_ITEM_ID, qty: 1 }], true);
+      if (!result.success) {
+        toast("error", result.error || "تعذر شراء القلب بأمان");
+        sfx.error();
+      }
+      return result;
     },
     [acquireActionLock, checkoutParentCart, heartPrice, students, toast]
   );
 
   const buyItem = useCallback(
-    (id: string, itemId: string) => {
-      if (!acquireActionLock(`buy-item:${id}:${itemId}`)) return;
+    async (id: string, itemId: string) => {
+      if (!acquireActionLock(`buy-item:${id}:${itemId}`)) return { success: false, error: "عملية الشراء قيد التنفيذ" };
       const item = findItem(products, itemId);
       const st = students.find((s) => s.id === id);
-      if (!item || !st) return;
+      if (!item || !st) return { success: false, error: "تعذر العثور على المنتج أو الطالب" };
       if (st.hearts <= 0) {
         toast("heart", `قلوب ${st.name} نفدت — عليه شراء قلب جديد أولًا ليعود للشراء`);
         sfx.error();
-        return;
+        return { success: false, error: "يجب شراء قلب جديد أولًا" };
       }
-      void checkoutParentCart(id, [{ itemId, qty: 1 }], true).then((result) => {
-        if (!result.success) {
-          toast("error", result.error || "تعذر إتمام الشراء");
-          sfx.error();
-        }
-      });
+      const result = await checkoutParentCart(id, [{ itemId, qty: 1 }], true);
+      if (!result.success) {
+        toast("error", result.error || "تعذر إتمام الشراء");
+        sfx.error();
+      }
+      return result;
     },
     [acquireActionLock, checkoutParentCart, products, students, toast]
   );
@@ -1826,12 +1891,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         let latest = await cloudLoad();
         for (let attempt = 0; attempt < 5; attempt += 1) {
           if (!latest) return { success: false, error: "تعذر قراءة بيانات الطالب المشتركة" };
-          const current = stateFromPartial(latest.data as Partial<State>);
+          const current = stateFromCloudPayload(latest.data);
           const result = mutate(current);
           if (!result.state) return { success: false, error: result.error };
           const saved = await cloudSave({ rev: latest.rev + 1, data: result.state }, latest.rev);
           if (saved.applied) {
-            receiveRemote(stateFromPartial(saved.data as Partial<State>), saved.rev);
+            receiveRemote(stateFromCloudPayload(saved.data), saved.rev);
             toast("success", "تم تفعيل الخاصية وظهرت في ملف الطالب");
             return { success: true };
           }
@@ -2178,12 +2243,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         let latest = await cloudLoad();
         for (let attempt = 0; attempt < 5; attempt += 1) {
           if (!latest) return { success: false, error: "تعذر قراءة الأرشيف المشترك" };
-          const current = stateFromPartial(latest.data as Partial<State>);
+          const current = stateFromCloudPayload(latest.data);
           const next = mutate(current);
           if (!next) return { success: false, error: "لم يتم العثور على الأسبوع" };
           const saved = await cloudSave({ rev: latest.rev + 1, data: next }, latest.rev);
           if (saved.applied) {
-            receiveRemote(stateFromPartial(saved.data as Partial<State>), saved.rev);
+            receiveRemote(stateFromCloudPayload(saved.data), saved.rev);
             toast("success", "تم تحديث تاريخ الأسبوع في جميع الواجهات");
             return { success: true };
           }
