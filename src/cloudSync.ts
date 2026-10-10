@@ -2,6 +2,7 @@ import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
 import { externalizeDataImages } from "./cloudPayload";
 import { cacheImageUploads } from "./imageUploadCache";
 import { buildCloudPatch } from "./cloudPatch";
+import { applyLiveDelta, type LiveDelta } from "./liveDelta";
 
 /*
   مزامنة Supabase اللحظية.
@@ -72,7 +73,17 @@ async function preparePayload(payload: CloudPayload): Promise<CloudPayload> {
   return { ...payload, data };
 }
 
-export async function cloudLoad(): Promise<CloudPayload | null> {
+let serverSnapshot: CloudPayload | null = null;
+function rememberSnapshot(snapshot: CloudPayload): CloudPayload {
+  if (!serverSnapshot || snapshot.rev >= serverSnapshot.rev) serverSnapshot = snapshot;
+  return snapshot;
+}
+let loadInFlight: Promise<CloudPayload | null> | null = null;
+export function cloudLoad(): Promise<CloudPayload | null> {
+  if (!loadInFlight) loadInFlight = readCloud().finally(() => { loadInFlight = null; });
+  return loadInFlight;
+}
+async function readCloud(): Promise<CloudPayload | null> {
   const { data, error } = await supabase
     .from(STATE_TABLE)
     .select("rev,data")
@@ -80,7 +91,7 @@ export async function cloudLoad(): Promise<CloudPayload | null> {
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return { rev: Number(data.rev) || 0, data: data.data };
+  return rememberSnapshot({ rev: Number(data.rev) || 0, data: data.data });
 }
 
 /** يحفظ الحالة ويعيدها بعد نقل الصور إلى Storage إن وجدت. */
@@ -100,14 +111,14 @@ export async function cloudSave(payload: CloudPayload, expectedRev: number): Pro
     .update(row)
     .eq("id", STATE_ID)
     .eq("rev", expectedRev)
-    .select("rev,data")
+    .select("rev")
     .maybeSingle();
   if (updateError) throw updateError;
-  if (updated) return { ...prepared, applied: true, networkRequests: 1 };
+  if (updated) return { ...rememberSnapshot(prepared), applied: true, networkRequests: 1 };
 
   // إذا لم يوجد الصف بعد، نحاول إنشاءه. تعارض الإنشاء يعني أن جهازًا آخر سبقنا.
   const { error: insertError } = await supabase.from(STATE_TABLE).insert(row);
-  if (!insertError) return { ...prepared, applied: true, networkRequests: 2 };
+  if (!insertError) return { ...rememberSnapshot(prepared), applied: true, networkRequests: 2 };
   if (insertError.code !== "23505") throw insertError;
 
   // حدث تعديل متزامن؛ نعيد النسخة الفائزة كي يدمج المتصل تغييره فوقها ثم يعيد المحاولة.
@@ -130,7 +141,7 @@ export async function cloudSaveCompact(payload: CloudPayload, expectedRev: numbe
         p_state_id: STATE_ID, p_expected_rev: expectedRev, p_next_rev: expectedRev + 1, p_patch: patch,
       });
       if (!error) {
-        if (data?.applied) return { ...prepared, rev: Number(data.rev), applied: true, networkRequests: 1 };
+        if (data?.applied) return { ...rememberSnapshot({ ...prepared, rev: Number(data.rev) }), applied: true, networkRequests: 1 };
         const latest = await cloudLoad();
         if (!latest) throw new Error("تعذر العثور على بيانات الموقع؛ لم يتم تأكيد الشراء");
         return { ...latest, applied: false, networkRequests: 2 };
@@ -154,32 +165,59 @@ export async function cloudSaveCompact(payload: CloudPayload, expectedRev: numbe
     .select("rev")
     .maybeSingle();
   if (updateError) throw updateError;
-  if (updated) return { ...prepared, rev: Number(updated.rev) || prepared.rev, applied: true, networkRequests: 1 };
+  if (updated) return { ...rememberSnapshot({ ...prepared, rev: Number(updated.rev) || prepared.rev }), applied: true, networkRequests: 1 };
 
   const { error: insertError } = await supabase.from(STATE_TABLE).insert(row);
-  if (!insertError) return { ...prepared, applied: true, networkRequests: 2 };
+  if (!insertError) return { ...rememberSnapshot(prepared), applied: true, networkRequests: 2 };
   if (insertError.code !== "23505") throw insertError;
 
   const latest = await cloudLoad();
   return latest ? { ...latest, applied: false, networkRequests: 3 } : { ...prepared, applied: false, networkRequests: 3 };
 }
 
-/** يستقبل تعديل أي معلم فور وصوله إلى قاعدة البيانات. */
+/** Server deltas preserve instant updates without transferring the full archive. */
 export function subscribeCloud(onPayload: (payload: CloudPayload) => void): () => void {
+  let disposed = false;
+  let chain = Promise.resolve();
+  const enqueue = (task: () => Promise<void>) => {
+    chain = chain.then(async () => { if (!disposed) await task(); }).catch(() => {});
+  };
+  const recover = async () => {
+    const snapshot = await cloudLoad();
+    if (!disposed && snapshot) onPayload(snapshot);
+  };
+  const checkRevision = async () => {
+    if (disposed || document.visibilityState === "hidden") return;
+    const { data, error } = await supabase.from(STATE_TABLE).select("rev").eq("id", STATE_ID).maybeSingle();
+    if (error) throw error;
+    if (data && (!serverSnapshot || Number(data.rev) !== serverSnapshot.rev)) await recover();
+  };
   let channel: RealtimeChannel | null = supabase
-    .channel("noor-al-hufaz-live")
-    .on("postgres_changes", {
-      event: "*",
-      schema: "public",
-      table: STATE_TABLE,
-      filter: `id=eq.${STATE_ID}`,
-    }, (event) => {
-      const row = event.new as { rev?: number | string; data?: unknown };
-      if (row && row.data !== undefined) onPayload({ rev: Number(row.rev) || 0, data: row.data });
+    .channel(`noor-delta:${STATE_ID}`, { config: { private: false } })
+    .on("broadcast", { event: "state_delta" }, ({ payload }) => {
+      enqueue(async () => {
+        const next = applyLiveDelta(serverSnapshot, payload as LiveDelta);
+        if (!next) { await recover(); return; }
+        if (next !== serverSnapshot) {
+          rememberSnapshot(next);
+          if (!disposed) onPayload(next);
+        }
+      });
     })
-    .subscribe();
-
+    .subscribe((status) => {
+      // Join/rejoin before reconciliation: recover any event missed during connection.
+      if (status === "SUBSCRIBED") enqueue(checkRevision);
+    });
+  const onVisible = () => { if (document.visibilityState !== "hidden") enqueue(checkRevision); };
+  const onOnline = () => enqueue(checkRevision);
+  const timer = window.setInterval(() => enqueue(checkRevision), 60000);
+  document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("online", onOnline);
   return () => {
+    disposed = true;
+    window.clearInterval(timer);
+    document.removeEventListener("visibilitychange", onVisible);
+    window.removeEventListener("online", onOnline);
     if (channel) void supabase.removeChannel(channel);
     channel = null;
   };
