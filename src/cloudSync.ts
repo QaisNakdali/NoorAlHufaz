@@ -1,5 +1,7 @@
 import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
 import { externalizeDataImages } from "./cloudPayload";
+import { cacheImageUploads } from "./imageUploadCache";
+import { buildCloudPatch } from "./cloudPatch";
 
 /*
   مزامنة Supabase اللحظية.
@@ -13,6 +15,7 @@ const isExplicitPreviewBenchmark = typeof window !== "undefined"
   && new URLSearchParams(window.location.search).get("checkoutBenchmark") === "1";
 // صف مستقل لا يحتوي أي بيانات طلاب حقيقية، ويعمل فقط في روابط المعاينة الصريحة.
 const STATE_ID = isExplicitPreviewBenchmark ? "noor_checkout_benchmark_v1" : productionStateId;
+export const CLOUD_STATE_SCOPE = `${SUPABASE_URL}/${STATE_ID}`;
 const PHOTOS_BUCKET = "student-photos";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -22,7 +25,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 export const CLOUD_SKIP_PHOTOS = false;
 export const isCloudEnabled = (): boolean => Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-export type CloudPayload = { rev: number; data: unknown };export type CloudSaveResult = CloudPayload & { applied: boolean };
+export type CloudPayload = { rev: number; data: unknown };export type CloudSaveResult = CloudPayload & { applied: boolean; networkRequests: number };
 
 function errMsg(e: unknown): string {
   if (!e) return "حدث خطأ غير محدد";
@@ -60,10 +63,12 @@ async function uploadEmbeddedImage(dataUrl: string): Promise<string> {
   return `${data.publicUrl}?v=${hash.slice(0, 12)}`;
 }
 
-/** ينقل جميع صور dataURL إلى Storage مرة واحدة ويعيد نسخة خفيفة للمزامنة. */
+const uploadImageOnce = cacheImageUploads(uploadEmbeddedImage);
+
+/** ينقل صور dataURL مع إعادة استخدام الرفع الناجح دون حذف الأصل. */
 async function preparePayload(payload: CloudPayload): Promise<CloudPayload> {
   if (!payload.data || typeof payload.data !== "object") return payload;
-  const data = await externalizeDataImages(payload.data, uploadEmbeddedImage);
+  const data = await externalizeDataImages(payload.data, uploadImageOnce);
   return { ...payload, data };
 }
 
@@ -98,16 +103,16 @@ export async function cloudSave(payload: CloudPayload, expectedRev: number): Pro
     .select("rev,data")
     .maybeSingle();
   if (updateError) throw updateError;
-  if (updated) return { ...prepared, applied: true };
+  if (updated) return { ...prepared, applied: true, networkRequests: 1 };
 
   // إذا لم يوجد الصف بعد، نحاول إنشاءه. تعارض الإنشاء يعني أن جهازًا آخر سبقنا.
   const { error: insertError } = await supabase.from(STATE_TABLE).insert(row);
-  if (!insertError) return { ...prepared, applied: true };
+  if (!insertError) return { ...prepared, applied: true, networkRequests: 2 };
   if (insertError.code !== "23505") throw insertError;
 
   // حدث تعديل متزامن؛ نعيد النسخة الفائزة كي يدمج المتصل تغييره فوقها ثم يعيد المحاولة.
   const latest = await cloudLoad();
-  return latest ? { ...latest, applied: false } : { ...prepared, applied: false };
+  return latest ? { ...latest, applied: false, networkRequests: 3 } : { ...prepared, applied: false, networkRequests: 3 };
 }
 
 /**
@@ -115,8 +120,25 @@ export async function cloudSave(payload: CloudPayload, expectedRev: number): Pro
  * عند النجاح تعيد قاعدة البيانات رقم المراجعة فقط، بينما تبقى البيانات المحضرة
  * محليًا لتطبيقها فورًا. لا نحمّل JSON الكامل مرة أخرى إلا عند تعارض حقيقي.
  */
-export async function cloudSaveCompact(payload: CloudPayload, expectedRev: number): Promise<CloudSaveResult> {
+let patchAvailable = true;
+export async function cloudSaveCompact(payload: CloudPayload, expectedRev: number, before?: unknown): Promise<CloudSaveResult> {
   const prepared = await preparePayload(payload);
+  if (patchAvailable && before) {
+    const patch = buildCloudPatch(before, prepared.data);
+    if (patch.length > 0 && patch.length <= 2000) {
+      const { data, error } = await supabase.rpc("noor_apply_patch", {
+        p_state_id: STATE_ID, p_expected_rev: expectedRev, p_next_rev: expectedRev + 1, p_patch: patch,
+      });
+      if (!error) {
+        if (data?.applied) return { ...prepared, rev: Number(data.rev), applied: true, networkRequests: 1 };
+        const latest = await cloudLoad();
+        if (!latest) throw new Error("تعذر العثور على بيانات الموقع؛ لم يتم تأكيد الشراء");
+        return { ...latest, applied: false, networkRequests: 2 };
+      }
+      if (error.code !== "PGRST202" && error.code !== "42883") throw error;
+      patchAvailable = false; // Missing function only: ambiguous failures must retain the operation ID.
+    }
+  }
   const row = {
     id: STATE_ID,
     rev: prepared.rev,
@@ -132,14 +154,14 @@ export async function cloudSaveCompact(payload: CloudPayload, expectedRev: numbe
     .select("rev")
     .maybeSingle();
   if (updateError) throw updateError;
-  if (updated) return { ...prepared, rev: Number(updated.rev) || prepared.rev, applied: true };
+  if (updated) return { ...prepared, rev: Number(updated.rev) || prepared.rev, applied: true, networkRequests: 1 };
 
   const { error: insertError } = await supabase.from(STATE_TABLE).insert(row);
-  if (!insertError) return { ...prepared, applied: true };
+  if (!insertError) return { ...prepared, applied: true, networkRequests: 2 };
   if (insertError.code !== "23505") throw insertError;
 
   const latest = await cloudLoad();
-  return latest ? { ...latest, applied: false } : { ...prepared, applied: false };
+  return latest ? { ...latest, applied: false, networkRequests: 3 } : { ...prepared, applied: false, networkRequests: 3 };
 }
 
 /** يستقبل تعديل أي معلم فور وصوله إلى قاعدة البيانات. */

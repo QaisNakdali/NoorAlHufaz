@@ -98,7 +98,7 @@ export default function StudentBag({ s }: { s: Student }) {
                 <div key={b.itemId} className={`flex items-center gap-3 rounded-2xl border-2 bg-white p-2.5 ${done ? "border-mint-400/60" : "border-grape-100"}`}>
                   <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl">
                     {p.image ? (
-                      <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
+                      <img src={p.image} alt={p.name} loading="lazy" decoding="async" className="h-full w-full object-contain object-center" />
                     ) : (
                       <div className="grid h-full w-full place-items-center bg-grape-100 text-grape-500">
                         <Icon name={p.icon} className="h-5 w-5" strokeWidth={1.8} />

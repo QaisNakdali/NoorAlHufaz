@@ -1,6 +1,6 @@
 /* ضغط الصور محليًا قبل الحفظ + ألوان الأسماء */
 
-/** يضغط صورة مرفوعة إلى مربع بحجم محدّد ويعيدها كـ dataURL */
+/** يضغط صورة جديدة فقط؛ يحافظ على نسبة أبعاد المنتجات دون قص أو تكبير. */
 export function compressImage(file: File, size = 320, square = true): Promise<string> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -18,8 +18,9 @@ export function compressImage(file: File, size = 320, square = true): Promise<st
           sy = Math.max(0, (sh - s) / 3); // انحياز للأعلى لالتقاط الوجه
           sw = sh = s;
         }
-        c.width = size;
-        c.height = size;
+        const scale = Math.min(1, size / Math.max(sw, sh));
+        c.width = Math.max(1, Math.round(sw * scale));
+        c.height = Math.max(1, Math.round(sh * scale));
         const x = c.getContext("2d");
         if (!x) {
           reject(new Error("canvas"));
@@ -27,8 +28,9 @@ export function compressImage(file: File, size = 320, square = true): Promise<st
         }
         x.imageSmoothingEnabled = true;
         x.imageSmoothingQuality = "high";
-        x.drawImage(img, sx, sy, sw, sh, 0, 0, size, size);
-        resolve(c.toDataURL("image/jpeg", 0.82));
+        x.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+        // المتصفحات غير الداعمة تعيد PNG؛ تبقى الشفافية والصورة سليمتين.
+        resolve(c.toDataURL("image/webp", 0.88));
       } catch (e) {
         reject(e as Error);
       } finally {

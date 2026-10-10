@@ -58,11 +58,12 @@ export default function ParentPortal({ token }: { token: string }) {
   }, [orders, student]);
 
   // تسجيل جلسة النشاط عند الدخول
+  const activeStudentId = student?.id;
   useEffect(() => {
-    if (student) {
-      logParentAccess(student.id, activeTab === "store");
+    if (activeStudentId) {
+      logParentAccess(activeStudentId, activeTab === "store");
     }
-  }, [student, activeTab, logParentAccess]);
+  }, [activeStudentId, activeTab, logParentAccess]);
 
   // حالة الرابط غير الصالح أو عند حذف الطالب
   if (!student) {
@@ -148,7 +149,7 @@ export default function ParentPortal({ token }: { token: string }) {
       if (hasMem) {
         monthMemSessions += 1;
         monthMemPages += pagesForWardDay(record, day.key, "memorization").pages;
-      } else monthNotHeardMem += 1;
+      } else if (state.testing !== true) monthNotHeardMem += 1;
       if (hasRev) {
         monthRevSessions += 1;
         monthRevPages += pagesForWardDay(record, day.key, "review").pages;
@@ -179,7 +180,7 @@ export default function ParentPortal({ token }: { token: string }) {
     ? {
         present: todayPresent, absent: todayAbsent, memSessions: todayMem, revSessions: todayRev,
         memPages: todayMemPages, revPages: todayRevPages,
-        notHeardMem: todayPresent && !todayMem ? 1 : 0,
+        notHeardMem: todayPresent && !todayMem && todayState?.testing !== true ? 1 : 0,
         notHeardRev: todayPresent && !todayRev ? 1 : 0,
         label: "اليوم",
       }
@@ -192,7 +193,7 @@ export default function ParentPortal({ token }: { token: string }) {
       }
     : {
         present: currPresent, absent: currAbsent, memSessions, revSessions, memPages, revPages,
-        notHeardMem: Math.max(0, currPresent - memSessions),
+        notHeardMem: DAYS.filter((d) => { const e = student.days?.[d.key]; const r = student.recitationRatings?.[d.key]; return e?.a && !e.absent && e.testing !== true && !e.h && r?.h !== "excellent" && r?.h !== "very-good"; }).length,
         notHeardRev: Math.max(0, currPresent - revSessions),
         label: "الأسبوع",
       };
@@ -682,7 +683,7 @@ export default function ParentPortal({ token }: { token: string }) {
                         <div>
                           <div className="mb-2 h-28 overflow-hidden rounded-xl bg-slate-50 p-2 sm:h-32 sm:mb-2.5">
                             {p.image ? (
-                              <img src={p.image} alt={p.name} className="h-full w-full object-contain" />
+                              <img src={p.image} alt={p.name} loading="lazy" decoding="async" className="h-full w-full object-contain object-center" />
                             ) : isCosmetic ? (
                               <CosmeticThumb slot={p.slot} value={p.value} />
                             ) : (
@@ -740,7 +741,7 @@ export default function ParentPortal({ token }: { token: string }) {
                     return (
                       <article key={item.id} className={`rounded-2xl border-2 p-3 ${active ? "border-mint-400 bg-mint-50" : "border-grape-100 bg-white"}`}>
                         <div className="h-24 overflow-hidden rounded-xl bg-grape-50 p-2">
-                          {item.image ? <img src={item.image} alt={item.name} className="h-full w-full object-contain" /> : <CosmeticThumb slot={item.slot} value={item.value} />}
+                          {item.image ? <img src={item.image} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-contain object-center" /> : <CosmeticThumb slot={item.slot} value={item.value} />}
                         </div>
                         <h4 className="mt-2 truncate font-display text-xs font-black text-ink">{item.name}</h4>
                         <button type="button" disabled={active || equippingId !== null} onClick={() => void equipFromBag(item.id)} className={`mt-2 min-h-9 w-full rounded-xl text-xs font-black ${active ? "bg-mint-100 text-mint-800" : "bg-grape-600 text-white disabled:opacity-50"}`}>
@@ -803,7 +804,7 @@ export default function ParentPortal({ token }: { token: string }) {
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-grape-50 border border-grape-100">
                           {order.itemImage ? (
-                            <img src={order.itemImage} alt={order.itemName} className="h-full w-full object-contain bg-white p-1" />
+                            <img src={order.itemImage} alt={order.itemName} loading="lazy" decoding="async" className="h-full w-full object-contain object-center bg-white p-1" />
                           ) : (
                             <div className="grid h-full w-full place-items-center text-grape-400">
                               <Icon name={order.itemIcon || "gift"} className="h-5 w-5" />

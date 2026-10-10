@@ -1,4 +1,5 @@
 /* الحالة المركزية للمنصة مع الحفظ في localStorage */
+import { buildCloudPatch } from "./cloudPatch";
 import {
   createContext,
   useCallback,
@@ -70,6 +71,7 @@ import {
   cloudSave,
   cloudSaveCompact,
   CLOUD_SKIP_PHOTOS,
+  CLOUD_STATE_SCOPE,
   errMsg,
   isCloudEnabled,
   subscribeCloud,
@@ -80,6 +82,9 @@ import { buildLocalSnapshot } from "./localSnapshot";
 import { hasCloudStudentCollection } from "./cloudStateGuard";
 import { reviewLinesFromPages, safeNonNegativeDecimal } from "./learningMetrics";
 import { buildWardUpdate, canRecordMemorization } from "./learningRules";
+import { captureExamDay, toggleExamMode } from "./examDay";
+import { beginPendingCheckout } from "./pendingCheckout";
+import { CloudWriteQueue } from "./cloudWriteQueue";
 import { checkoutClock, reportCheckoutPerformance, type CheckoutPerformanceMetrics } from "./checkoutPerformance";
 
 export type ToastKind = "xp" | "coin" | "level" | "award" | "error" | "success" | "heart" | "info";
@@ -235,7 +240,7 @@ function normStudent(s: Student): Student {
     if (typeof v === "boolean") out[d.key] = { a: v, h: v, r: false };
     else if (v && typeof v === "object") {
       const e = v as Record<string, unknown>;
-      out[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined };
+      out[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined, ...(typeof e.testing === "boolean" ? { testing: e.testing } : {}) };
     }
   }
   return {
@@ -316,7 +321,7 @@ function normWeekRecord(r: any): WeekStudentRecord {
     if (typeof v === "boolean") days[d.key] = { a: v, h: v, r: false };
     else if (v && typeof v === "object") {
       const e = v as Record<string, unknown>;
-      days[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined };
+      days[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined, ...(typeof e.testing === "boolean" ? { testing: e.testing } : {}) };
     }
   }
   const ward = emptyWeeklyWard();
@@ -599,14 +604,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [showCeremony, setShowCeremony] = useState(false);
   const checkoutLocksRef = useRef(new Set<string>());
-  const timers = useRef<number[]>([]);
+  const timers = useRef(new Set<number>());
+  const scheduleTimer = useCallback((callback: () => void, delay: number) => {
+    const timer = window.setTimeout(() => {
+      timers.current.delete(timer);
+      callback();
+    }, delay);
+    timers.current.add(timer);
+    return timer;
+  }, []);
 
   const toast = useCallback((kind: ToastKind, msg: string) => {
     const id = toastSeq++;
     setToasts((ts) => [...ts.slice(-3), { id, kind, msg }]);
-    const t = window.setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== id)), 3200);
-    timers.current.push(t);
-  }, []);
+    scheduleTimer(() => setToasts((ts) => ts.filter((x) => x.id !== id)), 3200);
+  }, [scheduleTimer]);
 
   const setContactMessage = useCallback((type: "absence" | "notHeard", message: string) => {
     setContactMessages((prev) => ({
@@ -702,8 +714,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
+  const studentsForParentLogRef = useRef(students);
+  studentsForParentLogRef.current = students;
   const logParentAccess = useCallback((studentId: string, enteredStore?: boolean, purchased?: boolean) => {
-    const st = students.find((s) => s.id === studentId);
+    const st = studentsForParentLogRef.current.find((s) => s.id === studentId);
     if (!st) return;
     const now = new Date().toISOString();
     setParentLogs((prev) => {
@@ -731,7 +745,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...copy.slice(0, 99),
       ];
     });
-  }, [students]);
+  }, []);
 
   /* ===== المزامنة السحابية ===== */
   const cloudEnabled = isCloudEnabled();
@@ -754,6 +768,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const localPersistErrorRef = useRef(false);
   // يحدد إن كانت اللقطة الجاري تطبيقها نظيفة أم تحتوي دمجًا محليًا يحتاج رفعًا جديدًا.
   const applyingSnapshot = useRef<{ rev: number; dirty: boolean } | null>(null);
+  const writeQueueRef = useRef(new CloudWriteQueue());
+  const deferredRemoteRef = useRef<{ data: State; rev: number } | null>(null);
+  const drainRemoteRef = useRef<() => void>(() => {});
+  const pushRetryMsRef = useRef(250);
 
   const reportConflicts = useCallback((conflicts: MergeConflict[]) => {
     if (conflicts.length === 0) return;
@@ -766,8 +784,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const acquireActionLock = useCallback((key: string, duration = 1200): boolean => {
     if (actionLocksRef.current.has(key)) return false;
     actionLocksRef.current.add(key);
-    const timer = window.setTimeout(() => actionLocksRef.current.delete(key), duration);
-    timers.current.push(timer);
+    scheduleTimer(() => { actionLocksRef.current.delete(key); }, duration);
     return true;
   }, []);
 
@@ -817,7 +834,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /** رفع نسخة إلى السحابة */
-  const pushCloud = useCallback(async (force = false) => {
+  const pushCloud = useCallback(async (force = false) => writeQueueRef.current.run(async () => {
     if (!isCloudEnabled()) return;
     if (pushInFlight.current) {
       pushAgain.current = true;
@@ -862,20 +879,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cloudDataRef.current = finalLocal;
       applySnapshot(finalLocal, savedRev, stillDirty);
       reportConflicts(conflicts);
+      pushRetryMsRef.current = 250;
       // تم الاحتفاظ بالتعديلات دون رسائل منبثقة مزعجة
       if (stillDirty) pushAgain.current = true;
       setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
     } catch (e) {
+      pushRetryMsRef.current = Math.min(30_000, Math.max(1000, pushRetryMsRef.current * 2));
       setCloud((c) => ({ ...c, status: "error", lastError: errMsg(e) }));
     } finally {
       pushInFlight.current = false;
+      drainRemoteRef.current();
       if (pushAgain.current || dirtyRef.current) {
         pushAgain.current = false;
         if (pushTimer.current) window.clearTimeout(pushTimer.current);
-        pushTimer.current = window.setTimeout(() => void pushCloud(), 250);
+        pushTimer.current = window.setTimeout(() => void pushCloud(), pushRetryMsRef.current);
       }
     }
-  }, [applySnapshot, reportConflicts]);
+  }), [applySnapshot, reportConflicts]);
 
   /** تطبيق حزمة قادمة من السحابة على الحالة */
   const prepareRemote = useCallback((remote: State): State => {
@@ -895,9 +915,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /** استقبال نسخة أحدث مع حماية أي تعديل محلي لم يصل للسحابة بعد. */
   const receiveRemote = useCallback((incoming: State, remoteRev: number) => {
+    if (remoteRev < revRef.current) return;
+    if (pushInFlight.current || checkoutLocksRef.current.size > 0) {
+      if (!deferredRemoteRef.current || remoteRev >= deferredRemoteRef.current.rev) deferredRemoteRef.current = { data: incoming, rev: remoteRev };
+      return;
+    }
     const remote = prepareRemote(incoming);
     const local = cloudDataRef.current ?? remote;
-    const base = syncedBaseRef.current ?? local;
+    let base = syncedBaseRef.current ?? local;
+    // A lost checkout response may be confirmed by the initial pull after a
+    // reload. Its submitted edits must be acknowledged before normal merging.
+    const pendingPrefix = `${KEY}:pending-checkout:${CLOUD_STATE_SCOPE}:`;
+    for (const key of Object.keys(localStorage).filter((key) => key.startsWith(pendingPrefix))) {
+      const stored = localStorage.getItem(key);
+      if (!stored) continue;
+      try {
+        const operation = JSON.parse(stored);
+        if (!operation.acknowledged && operation.submittedLocal && remote.orders.some((order) => order.requestId === operation.requestId)) {
+          base = stateFromCloudPayload(operation.submittedLocal);
+          localStorage.setItem(key, JSON.stringify({ ...operation, acknowledged: true }));
+          break;
+        }
+      } catch (error) {
+        setCloud((current) => ({ ...current, status: "error", lastError: errMsg(error) }));
+        return;
+      }
+    }
     const conflicts: MergeConflict[] = [];
     const merged = dirtyRef.current
       ? stateFromPartial(mergeLocalChanges(base, local, remote, [], conflicts) as Partial<State>)
@@ -911,6 +954,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reportConflicts(conflicts);
     // تم الحفظ الآمن دون رسائل منبثقة مزعجة
   }, [applySnapshot, prepareRemote, reportConflicts]);
+
+  drainRemoteRef.current = () => {
+    if (pushInFlight.current || checkoutLocksRef.current.size > 0) return;
+    const pending = deferredRemoteRef.current;
+    deferredRemoteRef.current = null;
+    if (pending && pending.rev > revRef.current) receiveRemote(pending.data, pending.rev);
+  };
+
+  const acceptCheckoutCommit = useCallback((submittedLocal: State, committed: State, rev: number) => {
+    const conflicts: MergeConflict[] = [];
+    const merged = mergeLocalChanges(submittedLocal, cloudDataRef.current ?? submittedLocal, committed, [], conflicts);
+    const finalLocal = merged === committed ? committed : stateFromPartial(merged as Partial<State>);
+    const dirty = !sameValue(finalLocal, committed);
+    revRef.current = rev;
+    syncedBaseRef.current = committed;
+    dirtyRef.current = dirty;
+    cloudDataRef.current = finalLocal;
+    applySnapshot(finalLocal, rev, dirty);
+    reportConflicts(conflicts);
+  }, [applySnapshot, reportConflicts]);
 
   /**
    * شراء بوابة ولي الأمر: قراءة أحدث نسخة ثم تنفيذ خصم الرصيد والمخزون وإنشاء
@@ -942,10 +1005,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return finish({ success: false, error: "عملية الشراء قيد التنفيذ، يرجى الانتظار قليلًا" });
     }
     checkoutLocksRef.current.add(checkoutKey);
-    const requestId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : uid();
-    const purchasedAt = new Date().toISOString();
+    const pendingKey = `${KEY}:pending-checkout:${CLOUD_STATE_SCOPE}:${studentId}`;
 
+    return writeQueueRef.current.run(async () => {
     try {
+      const pendingPrefix = `${KEY}:pending-checkout:${CLOUD_STATE_SCOPE}:`;
+      if (Object.keys(localStorage).some((key) => key.startsWith(pendingPrefix) && key !== pendingKey)) {
+        throw new Error("توجد عملية شراء معلقة لطالب آخر؛ تحقق منها بإعادة محاولة المنتج نفسه أولًا");
+      }
+      const pending = beginPendingCheckout(localStorage, pendingKey, {
+        requestId: uid(), purchasedAt: new Date().toISOString(), studentId, lines: items, allowClosedStore,
+      });
+      const { requestId, purchasedAt } = pending.operation;
+      // Only dirty checkouts need an acknowledgment base. Persist it before
+      // sending, so a reload after a lost response cannot reapply those edits.
+      if (!pending.resumed && dirtyRef.current && cloudDataRef.current) {
+        pending.operation.submittedLocal = cloudDataRef.current;
+        localStorage.setItem(pendingKey, JSON.stringify(pending.operation));
+      }
       // معاملة الشراء تستوعب التعديلات المحلية المعلقة. إلغاء المؤقت يمنع
       // رفع الحالة الكبيرة مرتين والتسابق مع عملية الشراء نفسها.
       if (pushTimer.current) {
@@ -963,7 +1040,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         let latest = { rev: revRef.current, data: localSnapshot as unknown };
         // مسار قياس للنسخة السابقة في Preview المعزول فقط: قراءة app_state كاملًا
         // قبل كل شراء ثم إرجاعه كاملًا. لا يمكن تفعيله على نطاق Production.
-        if (legacyBenchmark) {
+        if (legacyBenchmark || pending.resumed) {
           const loadStartedAt = checkoutClock.now();
           requestCount += 1;
           const loaded = await cloudLoad();
@@ -972,19 +1049,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         for (let attempt = 0; attempt < 7; attempt += 1) {
           if (!latest) throw new Error("تعذر قراءة بيانات المتجر المشتركة");
-          const remote = stateFromCloudPayload(latest.data);
+          const remote = latest.data === localSnapshot ? localSnapshot : stateFromCloudPayload(latest.data);
           // دمج أي تغييرات محلية معلّقة فوق أحدث نسخة سحابية داخل عملية الشراء
           // نفسها، بدل تنفيذ حفظ كامل إضافي قبل الشراء. هذا يقلل رحلة شبكية
           // ويحافظ في الوقت نفسه على تحديثات المعلم غير المتعارضة.
           const local = cloudDataRef.current ?? remote;
           const base = syncedBaseRef.current ?? local;
           const conflicts: MergeConflict[] = [];
+          if (remote.orders.some((order) => order.requestId === requestId)) {
+            const submitted = pending.operation.submittedLocal && !pending.operation.acknowledged
+              ? stateFromCloudPayload(pending.operation.submittedLocal) : base;
+            const confirmed = stateFromPartial(mergeLocalChanges(submitted, local, remote, [], conflicts) as Partial<State>);
+            const existing = applyCheckoutTransaction(confirmed, studentId, items, requestId, purchasedAt, allowClosedStore);
+            if (!existing.success) return finish(existing);
+            acceptCheckoutCommit(local, confirmed, latest.rev);
+            reportConflicts(conflicts);
+            localStorage.removeItem(pendingKey);
+            return finish({ success: true });
+          }
           const current = dirtyRef.current
             ? stateFromPartial(mergeLocalChanges(base, local, remote, [], conflicts) as Partial<State>)
             : remote;
           if (conflicts.length) reportConflicts(conflicts);
           const transaction = applyCheckoutTransaction(current, studentId, items, requestId, purchasedAt, allowClosedStore);
-          if (!transaction.success) return finish(transaction);
+          if (!transaction.success) {
+            localStorage.removeItem(pendingKey);
+            return finish(transaction);
+          }
+          if (transaction.alreadyApplied) {
+            acceptCheckoutCommit(local, current, latest.rev);
+            localStorage.removeItem(pendingKey);
+            return finish({ success: true });
+          }
 
           // سجل نشاط ولي الأمر جزء من نفس التثبيت الذري، فلا ننشئ حفظًا
           // سحابيًا ثانيًا بعد الشراء ولا نرفع global revision مرتين.
@@ -1004,20 +1100,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }, ...logs.slice(0, 99)];
           })();
           const committedState: State = { ...(transaction.state as State), parentLogs };
-          payloadBytes = new TextEncoder().encode(JSON.stringify(committedState)).byteLength;
+          // Payload measurement reflects the delta sent by the normal checkout path.
+          payloadBytes = new TextEncoder().encode(JSON.stringify(legacyBenchmark ? committedState : buildCloudPatch(remote, committedState))).byteLength;
 
           const networkStartedAt = checkoutClock.now();
           requestCount += 1;
           const saved = legacyBenchmark
             ? await cloudSave({ rev: latest.rev + 1, data: committedState }, latest.rev)
-            : await cloudSaveCompact({ rev: latest.rev + 1, data: committedState }, latest.rev);
+            : await cloudSaveCompact({ rev: latest.rev + 1, data: committedState }, latest.rev, remote);
           networkMs += checkoutClock.now() - networkStartedAt;
           requestCount += saved.networkRequests - 1;
           if (saved.applied) {
-            const committed = stateFromCloudPayload(saved.data);
-            receiveRemote(committed, saved.rev);
+            const committed = saved.data === committedState ? committedState : stateFromCloudPayload(saved.data);
+            acceptCheckoutCommit(local, committed, saved.rev);
+            localStorage.removeItem(pendingKey);
             sfx.coin();
-            timers.current.push(window.setTimeout(() => sfx.sparkle(), 250));
+            scheduleTimer(() => sfx.sparkle(), 250);
             toast("success", transaction.alreadyApplied
               ? "عملية الشراء مسجلة بالفعل"
               : `تمت عملية الشراء بنجاح! خصم ${transaction.totalCost} عملة`);
@@ -1029,7 +1127,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           latest = { rev: saved.rev, data: saved.data };
           const possibleCommit = stateFromCloudPayload(saved.data);
           if (possibleCommit.orders.some((order) => order.requestId === requestId)) {
-            receiveRemote(possibleCommit, saved.rev);
+            acceptCheckoutCommit(local, possibleCommit, saved.rev);
+            localStorage.removeItem(pendingKey);
             return finish({ success: true });
           }
         }
@@ -1041,19 +1140,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const transaction = applyCheckoutTransaction(current, studentId, items, requestId, purchasedAt, allowClosedStore);
       if (!transaction.success) return finish(transaction);
       applySnapshot(transaction.state as State, revRef.current, true);
+      localStorage.removeItem(pendingKey);
       logParentAccess(studentId, true, true);
       sfx.coin();
-      timers.current.push(window.setTimeout(() => sfx.sparkle(), 250));
+      scheduleTimer(() => sfx.sparkle(), 250);
       toast("success", `تمت عملية الشراء بنجاح! خصم ${transaction.totalCost} عملة`);
       return finish({ success: true });
     } catch (error) {
       const message = errMsg(error);
       setCloud((current) => ({ ...current, status: "error", lastError: message }));
-      return finish({ success: false, error: `تعذر تثبيت عملية الشراء بأمان: ${message}` });
+      return finish({ success: false, error: `لم يتأكد حفظ عملية الشراء: ${message}. أعد محاولة المنتج نفسه للتحقق دون خصم مكرر` });
     } finally {
       checkoutLocksRef.current.delete(checkoutKey);
+      drainRemoteRef.current();
+      if (dirtyRef.current && !pushTimer.current) pushTimer.current = window.setTimeout(() => void pushCloud(), 700);
     }
-  }, [applySnapshot, logParentAccess, receiveRemote, reportConflicts, toast]);
+    });
+  }, [acceptCheckoutCommit, applySnapshot, logParentAccess, pushCloud, reportConflicts, toast]);
 
   /** يمسح سجل الزيارات فقط؛ لا يغيّر الطلبات أو الطلاب أو الأرصدة أو الملكيات. */
   const clearParentActivity = useCallback(async (confirmationCode: string) => {
@@ -1202,7 +1305,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSoundEnabled(sound);
   }, [sound]);
 
-  useEffect(() => () => timers.current.forEach((t) => clearTimeout(t)), []);
+  useEffect(() => () => {
+    timers.current.forEach((t) => clearTimeout(t));
+    if (pushTimer.current) window.clearTimeout(pushTimer.current);
+  }, []);
 
   const update = useCallback((id: string, fn: (s: Student) => Student) => {
     setStudents((ss) => ss.map((s) => (s.id === id ? fn(s) : s)));
@@ -1285,9 +1391,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const toggleStudentTesting = useCallback((id: string) => {
     const current = students.find((student) => student.id === id);
-    setStudents((items) => items.map((student) => student.id === id ? { ...student, isTesting: !student.isTesting } : student));
+    const today = localDateKey(new Date());
+    const todayDay = DAYS.find((_, index) => localDateKey(addCalendarDays(weekStartDateIso, index)) === today)?.key;
+    setStudents((items) => items.map((student) => student.id === id ? toggleExamMode(student, todayDay) : student));
     if (current) toast("success", `${current.name}: ${current.isTesting ? "انتهت فترة الاختبار" : "بدأت فترة الاختبار"}`);
-  }, [students, toast]);
+  }, [students, toast, weekStartDateIso]);
 
   const addHalaqa = useCallback((name: string, teacherNames: string[] = []) => {
     const clean = name.trim();
@@ -1512,7 +1620,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const nextList = ss.map((s) => {
           if (s.id !== id) return s;
-          const days: WeekDays = { ...s.days, [day]: { ...s.days[day], [part]: turningOn } };
+          const dayIndex = DAYS.findIndex((d) => d.key === day);
+          const isToday = localDateKey(addCalendarDays(weekStartDateIso, dayIndex)) === localDateKey(new Date());
+          const policy = turningOn && isToday ? captureExamDay(s.days[day], s.isTesting === true) : s.days[day];
+          const days: WeekDays = { ...s.days, [day]: { ...policy, [part]: turningOn } };
           const recitationRatings = part === "h" || part === "r" ? {
             ...(s.recitationRatings ?? emptyRecitationRatings()),
             [day]: {
@@ -1575,14 +1686,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (shouldPlayPop) sfx.pop(); else sfx.click();
       if (msgKind && msgText) toast(msgKind, msgText);
       if (leveledName && leveledTo) {
-        const t = window.setTimeout(() => {
+        scheduleTimer(() => {
           sfx.levelUp();
           toast("level", `ارتقى ${leveledName} إلى المستوى ${leveledTo} — مكافأة ${ar(LEVEL_COIN_REWARD)} عملات`);
         }, 350);
-        timers.current.push(t);
       }
     },
-    [heartPrice, products, toast, week, weeksLog]
+    [heartPrice, products, toast, week, weeksLog, weekStartDateIso]
   );
 
   /** الغياب حالة وصفية مستقلة ولا يضيف أو يخصم نقاطًا أو عملات. */
@@ -1731,11 +1841,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sfx.pop();
       toast("xp", `+${ar(cleanAmount)} نقطة خبرة`);
       if (leveledName && leveledTo) {
-        const t = window.setTimeout(() => {
+        scheduleTimer(() => {
           sfx.levelUp();
           toast("level", `ارتقى ${leveledName} إلى المستوى ${leveledTo} — مكافأة ${ar(LEVEL_COIN_REWARD)} عملات`);
         }, 350);
-        timers.current.push(t);
       }
     },
     [toast]
@@ -2336,6 +2445,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         memorizationDays: memorizationSnapshot.completedDays,
         reviewDays: reviewSnapshot.completedDays,
         memorizationExpectedDays: memorizationSnapshot.expectedDays ?? undefined,
+        memorizationExemptDays: DAYS.filter((d) => s.days[d.key].a && !s.days[d.key].absent && s.days[d.key].testing === true && !s.days[d.key].h).length,
         reviewExpectedDays: reviewSnapshot.expectedDays ?? undefined,
         memorizationExpectedPages: memorizationSnapshot.expectedPages ?? undefined,
         reviewExpectedPages: reviewSnapshot.expectedPages ?? undefined,

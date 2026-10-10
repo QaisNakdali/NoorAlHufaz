@@ -83,7 +83,7 @@ const add = (a: StudentMetrics, b: StudentMetrics): StudentMetrics => ({
  *    - كلاهما: حاضر ولم يُسجل له الحفظ والمراجعة معاً في نفس هذا اليوم.
  */
 function checkDayRecitation(
-  state?: { a?: boolean; h?: boolean; r?: boolean; absent?: boolean } | null,
+  state?: { a?: boolean; h?: boolean; r?: boolean; absent?: boolean; testing?: boolean } | null,
   ward?: { memorization?: string; review?: string; memorizationLines?: number; reviewLines?: number; memorizationVerses?: number; reviewVerses?: number; reviewPages?: number } | null,
   ratings?: { h?: any; r?: any } | null
 ): {
@@ -107,9 +107,9 @@ function checkDayRecitation(
   const hasMem = Boolean(state.h || ratings?.h === "excellent" || ratings?.h === "very-good");
   const hasRev = Boolean(state.r || ratings?.r === "excellent" || ratings?.r === "very-good");
 
-  const notHeardMem = !hasMem;
+  const notHeardMem = !hasMem && state.testing !== true;
   const notHeardRev = !hasRev;
-  const notHeardBoth = !hasMem && !hasRev;
+  const notHeardBoth = notHeardMem && notHeardRev;
 
   return {
     isAbsent: false,
@@ -327,7 +327,7 @@ function fromEntry(entry: WeekLogEntry): StudentMetrics {
   const absent = entry.absenceDays ?? 0;
   const memSessions = entry.memorizationSessions ?? entry.memorizationDays ?? 0;
   const revSessions = entry.reviewSessions ?? entry.reviewDays ?? 0;
-  const notHeardMem = Math.max(0, present - memSessions);
+  const notHeardMem = Math.max(0, present - memSessions - (entry.memorizationExemptDays ?? 0));
   const notHeardRev = Math.max(0, present - revSessions);
 
   return {

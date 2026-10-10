@@ -27,7 +27,7 @@ function ProductImage({ p, dimmed = false }: { p: ShopProduct; dimmed?: boolean 
   return (
     <div className={`h-32 overflow-hidden rounded-xl bg-slate-50 p-2 ${dimmed ? "opacity-45 grayscale" : ""}`}>
       {p.image ? (
-        <img src={p.image} alt={p.name} className="h-full w-full object-contain" />
+        <img src={p.image} alt={p.name} loading="lazy" decoding="async" className="h-full w-full object-contain object-center" />
       ) : p.kind === "cosmetic" ? (
         <CosmeticThumb slot={p.slot} value={p.value} />
       ) : (
@@ -190,8 +190,7 @@ function HeartProductCard({ s }: { s: Student }) {
         disabled={buying || full || poor}
         className="flex items-center gap-1.5 rounded-xl bg-coral-500 px-5 py-2.5 font-display text-sm font-extrabold text-white shadow-[0_4px_0_#b23a55] transition-all hover:brightness-110 active:translate-y-0.5 active:shadow-none disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
       >
-        {ar(heartPrice)}
-        {buying ? "جاري الشراء..." : <><Coin className="h-4 w-4" />{ar(heartPrice)}</>}
+        {buying ? "جاري الشراء..." : <><Coin className="h-4 w-4" />{ar(heartPrice)} عملة</>}
       </button>
     </div>
   );
@@ -318,7 +317,7 @@ function ProductModal({ initial, onClose }: { initial: ShopProduct | null; onClo
     if (!f) return;
     setBusy(true);
     try {
-      setImage(await compressImage(f, 320, true));
+      setImage(await compressImage(f, 640, false));
       sfx.pop();
     } catch {
       toast("error", "تعذّر قراءة الصورة");
@@ -606,7 +605,7 @@ export default function StoreTab() {
             <div key={p.id} className="flex items-center gap-3 rounded-2xl border-2 border-grape-100 bg-grape-50/50 p-2.5">
               <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl">
                 {p.image ? (
-                  <img src={p.image} alt={p.name} className="h-full w-full object-contain bg-white p-1" />
+                  <img src={p.image} alt={p.name} loading="lazy" decoding="async" className="h-full w-full object-contain object-center bg-white p-1" />
                 ) : p.kind === "cosmetic" ? (
                   <CosmeticThumb slot={p.slot} value={p.value} />
                 ) : (

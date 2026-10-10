@@ -29,8 +29,18 @@ export function applyCheckoutTransaction(
   purchasedAt: string,
   allowClosedStore = false,
 ): CheckoutResult {
+  if (!requestId || typeof requestId !== "string" || !Number.isFinite(Date.parse(purchasedAt))) {
+    return { success: false, error: "معرّف عملية الشراء أو تاريخها غير صالح" };
+  }
   const existing = state.orders.filter((order) => order.requestId === requestId);
   if (existing.length > 0) {
+    const expected = new Map<string, number>();
+    for (const line of lines ?? []) expected.set(line.itemId, (expected.get(line.itemId) ?? 0) + line.qty);
+    if (existing.some((order) => order.studentId !== studentId)
+      || existing.length !== expected.size
+      || existing.some((order) => (order.quantity ?? 1) !== expected.get(order.itemId))) {
+      return { success: false, error: "معرّف الشراء مستخدم لعملية مختلفة؛ لم يتم خصم أي عملات" };
+    }
     return {
       success: true,
       state,
@@ -43,6 +53,7 @@ export function applyCheckoutTransaction(
   if (!allowClosedStore && !state.parentStoreOpen) return { success: false, error: "المتجر مغلق حاليًا من قِبل إدارة الحلقة" };
   const student = state.students.find((item) => item.id === studentId);
   if (!student) return { success: false, error: "لم يتم العثور على الطالب" };
+  if (!Number.isSafeInteger(student.coins) || student.coins < 0) return { success: false, error: "رصيد الطالب غير صالح؛ راجع الإدارة قبل الشراء" };
   if (!Array.isArray(lines) || lines.length === 0) return { success: false, error: "لم يتم تحديد منتج للشراء" };
 
   const quantities = new Map<string, number>();
@@ -51,6 +62,7 @@ export function applyCheckoutTransaction(
       return { success: false, error: "كمية الشراء غير صالحة" };
     }
     quantities.set(line.itemId, (quantities.get(line.itemId) ?? 0) + line.qty);
+    if (quantities.get(line.itemId)! > 99) return { success: false, error: "كمية الشراء غير صالحة" };
   }
 
   const buyingHeart = quantities.has(HEART_ITEM_ID);
@@ -61,7 +73,8 @@ export function applyCheckoutTransaction(
     const qty = quantities.get(HEART_ITEM_ID) ?? 0;
     if (qty !== 1) return { success: false, error: "يمكن استعادة قلب واحد في كل عملية" };
     if (student.hearts >= MAX_HEARTS) return { success: false, error: "قلوب الطالب مكتملة بالفعل" };
-    const price = Math.max(0, Math.round(state.heartPrice));
+    if (!Number.isSafeInteger(state.heartPrice) || state.heartPrice < 0) return { success: false, error: "سعر القلب غير صالح" };
+    const price = state.heartPrice;
     if (student.coins < price) return { success: false, error: `رصيد العملات غير كافٍ. المطلوب: ${price}، المتوفر: ${student.coins}` };
     const orderId = `${requestId}:heart`;
     const order: PurchaseOrder = {
@@ -108,15 +121,19 @@ export function applyCheckoutTransaction(
   for (const [itemId, qty] of quantities) {
     const product = state.products.find((item) => item.id === itemId);
     if (!product) return { success: false, error: "أحد المنتجات لم يعد متوفرًا" };
+    if (!Number.isSafeInteger(product.price) || product.price < 0) return { success: false, error: "سعر المنتج غير صالح" };
+    if (typeof product.stock === "number" && (!Number.isSafeInteger(product.stock) || product.stock < 0)) return { success: false, error: "مخزون المنتج غير صالح" };
     if (level < product.minLevel) return { success: false, error: `المنتج «${product.name}» يتطلب المستوى ${product.minLevel}` };
     if (typeof product.stock === "number" && product.stock < qty) {
       return { success: false, error: `عذرًا، الكمية المتوفرة من «${product.name}» لم تعد تكفي` };
     }
     const cosmetic = product.kind === "cosmetic";
+    if (cosmetic && qty !== 1) return { success: false, error: "يمكن شراء خاصية واحدة فقط" };
     const ownedQty = cosmetic ? (student.inventory.includes(product.id) ? 1 : 0) : bagQty(student, product.id);
     if (cosmetic && ownedQty > 0) return { success: false, error: `الطالب يملك «${product.name}» بالفعل` };
     if (!cosmetic && !product.repeatable && ownedQty > 0) return { success: false, error: `تم شراء «${product.name}» مسبقًا` };
     totalCost += product.price * qty;
+    if (!Number.isSafeInteger(totalCost)) return { success: false, error: "إجمالي السعر غير صالح" };
     resolved.push({ item: product, qty });
   }
 

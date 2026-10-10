@@ -1,10 +1,17 @@
 export function sameValue(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length
+      && a.every((value, index) => sameValue(value, b[index]));
   }
+  if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  // Undefined optional fields are absent in persisted JSON.
+  const keys = Object.keys(left).filter((key) => left[key] !== undefined);
+  const otherKeys = Object.keys(right).filter((key) => right[key] !== undefined);
+  return keys.length === otherKeys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && sameValue(left[key], right[key]));
 }
 
 function arrayItemKey(value: unknown): string | null {

@@ -36,7 +36,7 @@ function NewProductCard({ p, delay }: { p: ShopProduct; delay: number }) {
     <div className="anim-slide-up overflow-hidden rounded-2xl border-2 border-gold-400/40 bg-white text-ink" style={{ animationDelay: `${delay}ms` }}>
       <div className="h-28 overflow-hidden">
         {p.image ? (
-          <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
+          <img src={p.image} alt={p.name} loading="lazy" decoding="async" className="h-full w-full object-contain object-center" />
         ) : p.kind === "cosmetic" ? (
           <CosmeticThumb slot={p.slot} value={p.value} />
         ) : (
