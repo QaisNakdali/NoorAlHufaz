@@ -205,7 +205,7 @@ export function buildTrackSnapshot(student: Student, kind: LearningTrack): Track
   const part = trackPart(kind);
   const evaluableDays = DAYS.filter((day) => {
     const entry = student.days?.[day.key];
-    return !!entry && entry.absent !== true && (entry.a || entry.h || entry.r);
+    return !!entry && entry.absent !== true && (kind !== "memorization" || entry.testing !== true || entry.h) && (entry.a || entry.h || entry.r);
   });
   const plannedDays = evaluableDays.filter((day) => hasPlannedWork(student, day.key, kind));
   const completedDays = evaluableDays.filter((day) => !!student.days?.[day.key]?.[part]).length;

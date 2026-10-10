@@ -107,7 +107,7 @@ export type DayPart = "a" | "h" | "r"; // حضور | تسميع حفظ | تسم�
 export type RecitationPart = "h" | "r";
 export type RecitationRating = "excellent" | "very-good";
 /** absent حالة مستقلة اختيارية؛ غيابها في البيانات القديمة يعني أن اليوم غير محدد، لا أنه غياب. */
-export type DayEntry = Record<DayPart, boolean> & { absent?: boolean; date?: string };
+export type DayEntry = Record<DayPart, boolean> & { absent?: boolean; date?: string; testing?: boolean };
 export type WeekDays = Record<DayKey, DayEntry>;
 export type RecitationRatings = Record<DayKey, Partial<Record<RecitationPart, RecitationRating>>>;
 
@@ -194,7 +194,7 @@ export function weekXpOf(days?: WeekDays | null): number {
     if (e && !e.absent) {
       if (e.a) total += ATTEND_XP;
       if (e.h) total += RECITE_XP;
-      if (e.r) total += RECITE_XP;
+      if (e.r) total += RECITE_XP * (e.testing === true && !e.h ? 2 : 1);
     }
   }
   return total;
@@ -209,7 +209,7 @@ export function weekCoinsOf(days?: WeekDays | null): number {
     if (e && !e.absent) {
       if (e.a) total += ATTEND_COINS;
       if (e.h) total += RECITE_COINS;
-      if (e.r) total += RECITE_COINS;
+      if (e.r) total += RECITE_COINS * (e.testing === true && !e.h ? 2 : 1);
     }
   }
   return total;
@@ -514,7 +514,10 @@ export const isChampionEligible = (
   const completedAttendance = DAYS.every((day) => s.days[day.key]?.a && !s.days[day.key]?.absent);
 
   // 2. إتمام تسميع الحفظ والمراجعة لجميع الأيام الأربعة (8 خانات تسميع كاملة)
-  const completedRecitation = DAYS.every((day) => s.days[day.key]?.h && s.days[day.key]?.r);
+  const completedRecitation = DAYS.every((day) => {
+    const entry = s.days[day.key];
+    return entry?.r && (entry.h || entry.testing === true);
+  });
 
   // 3. درجات التسميع:
   // إذا سُمّع التسميع ولم تُسجل درجة صريحة فالافتراضي هو "ممتاز"
@@ -526,11 +529,11 @@ export const isChampionEligible = (
     const hRating = getRating(day.key, "h");
     const rRating = getRating(day.key, "r");
     if (ratingMode === "excellent") {
-      return hRating === "excellent" && rRating === "excellent";
+      return (s.days[day.key].testing === true && !s.days[day.key].h || hRating === "excellent") && rRating === "excellent";
     }
     // وضع "مختلط": كل من ممتاز وجيد جدًا مسموح به لكل يوم
     return (
-      (hRating === "excellent" || hRating === "very-good") &&
+      (s.days[day.key].testing === true && !s.days[day.key].h || hRating === "excellent" || hRating === "very-good") &&
       (rRating === "excellent" || rRating === "very-good")
     );
   });
@@ -599,6 +602,7 @@ export type WeekLogEntry = {
   memorizationSessions?: number;
   reviewSessions?: number;
   memorizationExpectedDays?: number;
+  memorizationExemptDays?: number;
   reviewExpectedDays?: number;
   memorizationExpectedPages?: number;
   reviewExpectedPages?: number;
