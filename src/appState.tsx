@@ -1,3 +1,4 @@
+import { applyArchiveAdjustment, archiveCloudPayload } from "./archiveAdjustment";
 /* الحالة المركزية للمنصة مع الحفظ في localStorage */
 import { buildCloudPatch } from "./cloudPatch";
 import {
@@ -76,7 +77,8 @@ import {
   isCloudEnabled,
   subscribeCloud,
 } from "./cloudSync";
-import { mergeLocalChanges, sameValue, type MergeConflict } from "./syncMerge";
+import { sameValue, type MergeConflict } from "./syncMerge";
+import { mergeAccountingChanges as mergeLocalChanges } from "./rewardMerge";
 import { applyCheckoutTransaction, HEART_ITEM_ID } from "./checkoutTransaction";
 import { buildLocalSnapshot } from "./localSnapshot";
 import { hasCloudStudentCollection } from "./cloudStateGuard";
@@ -214,7 +216,7 @@ type Ctx = State & {
   setCeremonyHalaqaPick: (reward: PerHalaqaRewardKey, halaqaId: string, id: string | null) => void;
   setRewardSetting: (key: keyof RewardSettings, value: Partial<RewardSettings[keyof RewardSettings]>) => void;
   removeWeekLog: (week: number) => void;
-  updateWeekLog: (week: number, next: WeekLog) => void;
+  updateWeekLog: (week: number, next: WeekLog, base: WeekLog) => Promise<{ success: boolean; error?: string }>;
   updateArchivedWeekDate: (week: number, weekStartDateIso: string) => Promise<{ success: boolean; error?: string }>;
   /* الرحلة الأسبوعية */
   setTrip: (on: boolean, day?: TripDay | null) => void;
@@ -256,9 +258,6 @@ function normStudent(s: Student): Student {
           const rating = source?.[d.key]?.[part];
           if (rating === "excellent" || rating === "very-good") {
             ratings[d.key][part] = rating;
-          } else if (out[d.key]?.[part]) {
-            // ترحيل آمن: إذا كان التسميع مسجلًا ولم تُحدد الدرجة في السجلات القديمة، فالافتراضي هو ممتاز
-            ratings[d.key][part] = "excellent";
           }
         }
       }
@@ -271,6 +270,7 @@ function normStudent(s: Student): Student {
       for (const d of DAYS) {
         const item = source[d.key];
         if (item) normalized[d.key] = {
+          ...item,
           memorization: String(item.memorization ?? ""),
           review: String(item.review ?? ""),
           memorizationVerses: Math.max(0, Number(item.memorizationVerses ?? 0) || 0),
@@ -330,6 +330,7 @@ function normWeekRecord(r: any): WeekStudentRecord {
     const item = srcWard[d.key] as Record<string, unknown> | undefined;
     if (item && typeof item === "object") {
       ward[d.key] = {
+        ...item,
         memorization: String(item.memorization ?? ""),
         review: String(item.review ?? ""),
         memorizationVerses: Math.max(0, Number(item.memorizationVerses ?? 0) || 0),
@@ -341,6 +342,7 @@ function normWeekRecord(r: any): WeekStudentRecord {
     }
   }
   return {
+    ...r,
     id: String(r?.id ?? ""),
     name: String(r?.name ?? ""),
     photo: r?.photo ?? null,
@@ -387,25 +389,18 @@ function stateFromPartial(p: Partial<State> | null | undefined): State {
     // قيمة xp/coins نفسها هي المصدر الوحيد للحقيقة. نحفظ الفرق كقيد دائم حتى
     // لا تعود الأرصدة القديمة إلى قيمة مشتقة مختلفة بعد التحديث أو المزامنة.
     if (typeof source.coinsSpent !== "number") {
-      let inferredSpent = 0;
-      for (const itemId of student.inventory ?? []) {
-        const item = currentProducts.find((product) => product.id === itemId);
-        if (item && Number.isFinite(item.price)) inferredSpent += Math.max(0, item.price);
-      }
-      for (const entry of student.bag ?? []) {
-        const item = currentProducts.find((product) => product.id === entry.itemId);
-        if (item && Number.isFinite(item.price)) inferredSpent += Math.max(0, item.price) * Math.max(0, entry.qty ?? 0);
-      }
-      student = { ...student, coinsSpent: inferredSpent };
+      // Existing balance is authoritative. Today's prices cannot identify old spending.
+      // The unknown difference is preserved below as historical carry, not a guessed debit.
+      student = { ...student, coinsSpent: 0 };
     }
 
     let totals = calculateStudentTotals(student, currentWeeksLog, currentWeekNum, currentProducts, currentHeartPrice);
     if (typeof source.xp === "number" && Number.isFinite(source.xp) && Math.max(0, source.xp) !== totals.xp) {
-      student = { ...student, manualXpAdjust: (student.manualXpAdjust ?? 0) + Math.max(0, source.xp) - totals.xp };
+      student = { ...student, historicalXpCarry: (student.historicalXpCarry ?? 0) + Math.max(0, source.xp) - totals.xp };
       totals = calculateStudentTotals(student, currentWeeksLog, currentWeekNum, currentProducts, currentHeartPrice);
     }
     if (typeof source.coins === "number" && Number.isFinite(source.coins) && Math.max(0, source.coins) !== totals.coins) {
-      student = { ...student, manualCoinsAdjust: (student.manualCoinsAdjust ?? 0) + Math.max(0, source.coins) - totals.coins };
+      student = { ...student, historicalCoinsCarry: (student.historicalCoinsCarry ?? 0) + Math.max(0, source.coins) - totals.coins };
     }
     return student;
   });
@@ -1612,6 +1607,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         // تحديد ما إذا كان الإجراء تشغيلًا أم إيقافًا:
         const turningOn = rating ? true : !currentlyOn;
+        const proposedDays = { ...target.days, [day]: { ...target.days[day], [part]: turningOn } };
+        if (target.coins + weekCoinsOf(proposedDays) - weekCoinsOf(target.days) < 0 || target.xp + weekXpOf(proposedDays) - weekXpOf(target.days) < 0) {
+          toast("error", "لا تكفي النقاط أو العملات لعكس المكافأة؛ المشتريات محفوظة ولم يُطبّق التعديل");
+          return ss;
+        }
         if (turningOn === currentlyOn && (part === "h" || part === "r") && rating) {
           return ss;
         }
@@ -2227,111 +2227,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [toast]
   );
 
-  const updateWeekLog = useCallback((targetWeek: number, next: WeekLog) => {
-    const updatedEntries = next.records ? next.records.map((r) => {
-      const mockStudent = r as unknown as Student;
-      const previousEntry = next.students?.find((entry) => entry.id === r.id) ?? next.top?.find((entry) => entry.id === r.id);
-      const mem = measureStudentWork(mockStudent, "memorization");
-      const rev = measureStudentWork(mockStudent, "review");
-      return {
-        id: r.id,
-        name: r.name,
-        photo: r.photo,
-        xp: r.xp,
-        weekXp: weekXpOf(r.days),
-        level: levelInfo(r.xp).level,
-        coins: r.coins,
-        hearts: r.hearts,
-        attendanceDays: DAYS.filter((d) => r.days[d.key].a).length,
-        absenceDays: DAYS.filter((d) => r.days[d.key].absent === true).length,
-        evaluatedDays: DAYS.filter((d) => r.days[d.key].a || r.days[d.key].absent === true).length,
-        memorizationLines: mem.lines,
-        reviewLines: rev.lines,
-        memorizationVerses: mem.verses,
-        reviewVerses: rev.verses,
-        memorizationPages: mem.pages,
-        reviewPages: rev.pages,
-        memorizationDays: mem.sessions,
-        reviewDays: rev.sessions,
-        frame: previousEntry?.frame ?? null,
-        crown: previousEntry?.crown ?? null,
-        isTesting: r.isTesting === true,
-        halaqaId: r.halaqaId ?? null,
-      };
-    }) : (next.students ?? []);
-
-    const updatedLog: WeekLog = {
-      ...next,
-      week: targetWeek,
-      students: updatedEntries,
-      top: [...updatedEntries].sort((a, b) => (b.weekXp ?? 0) - (a.weekXp ?? 0) || (b.xp ?? 0) - (a.xp ?? 0)).slice(0, 10),
-    };
-
-    const nextWeeksLog = weeksLog.map((log) => log.week === targetWeek ? updatedLog : log);
-    setWeeksLog(nextWeeksLog);
-
-    // تحديث وإعادة احتساب نقاط وعملات جميع الطلاب النشطين استنادًا إلى سجلات الأسبوع المعدل
-    setStudents((ss) => {
-      let updatedStudents = ss.map((s) => {
-        const totals = calculateStudentTotals(s, nextWeeksLog, week, products, heartPrice);
-        return {
-          ...s,
-          xp: totals.xp,
-          weekXp: totals.weekXp,
-          coins: totals.coins,
-          weekCoins: totals.weekCoins,
-          highestRewardedLevel: totals.highestRewardedLevel,
-        };
-      });
-
-      // إذا أُضيف طالب في الأسبوع السابق ولم يكن موجودًا بعد في كشف الطلاب العام، يُضاف تلقائيًا
-      if (next.records) {
-        for (const r of next.records) {
-          const exists = updatedStudents.some((s) => s.id === r.id || normalizeArabic(s.name) === normalizeArabic(r.name));
-          if (!exists && r.name && r.name !== "طالب أضيف إلى السجل") {
-            const newSt: Student = {
-              id: r.id.startsWith("archive-") ? uid() : r.id,
-              name: r.name,
-              photo: r.photo,
-              halaqaId: r.halaqaId ?? null,
-              hearts: MAX_HEARTS,
-              heartsLostWeek: 0,
-              xp: 0,
-              weekXp: 0,
-              weekCoins: 0,
-              coins: 0,
-              highestRewardedLevel: 1,
-              isTesting: r.isTesting === true,
-              createdAt: Date.now(),
-              days: emptyWeekDays(),
-              ward: emptyWeeklyWard(),
-              inventory: [],
-              bag: [],
-              frame: null,
-              crown: null,
-              glow: null,
-              cardBg: null,
-              awards: [],
-              memorizationRecords: [],
-            };
-            const totals = calculateStudentTotals(newSt, nextWeeksLog, week, products, heartPrice);
-            updatedStudents.push({
-              ...newSt,
-              xp: totals.xp,
-              weekXp: totals.weekXp,
-              coins: totals.coins,
-              weekCoins: totals.weekCoins,
-              highestRewardedLevel: totals.highestRewardedLevel,
-            });
-          }
+  const updateWeekLog = useCallback(async (targetWeek: number, draft: WeekLog, base: WeekLog) => {
+    const lock = 'archive-edit:' + targetWeek;
+    if (checkoutLocksRef.current.has(lock)) return { success: false, error: 'جارٍ حفظ هذا الأسبوع' };
+    checkoutLocksRef.current.add(lock);
+    return writeQueueRef.current.run(async () => {
+      try {
+        const pendingPrefix = `${KEY}:pending-checkout:${CLOUD_STATE_SCOPE}:`;
+        if (Object.keys(localStorage).some(key => key.startsWith(pendingPrefix))) {
+          throw new Error("توجد عملية شراء غير مؤكدة على هذا الجهاز؛ تحقق منها في المتجر قبل تعديل مكافآت الأرشيف");
         }
+        let latest = await cloudLoad();
+        for (let attempt = 0; attempt < 6; attempt++) {
+          if (!latest) throw new Error('تعذر قراءة الأرشيف المشترك؛ لم يُحفظ التعديل');
+          const remote = stateFromCloudPayload(latest.data);
+          const submitted = cloudDataRef.current ?? remote;
+          const conflicts: MergeConflict[] = [];
+          const current = dirtyRef.current
+            ? stateFromPartial(mergeLocalChanges(syncedBaseRef.current ?? submitted, submitted, remote, [], conflicts) as Partial<State>)
+            : remote;
+          if (conflicts.length) throw new Error('توجد تغييرات محلية متعارضة؛ راجعها قبل تعديل الأرشيف');
+          const next = applyArchiveAdjustment(current, targetWeek, draft, base);
+          if (sameValue(next, remote)) {
+            acceptCheckoutCommit(submitted, remote, latest.rev);
+            return { success: true };
+          }
+          setCloud(c => ({ ...c, status: 'syncing' }));
+          const payload = archiveCloudPayload(latest.data, remote, next);
+          const saved = await cloudSaveCompact({ rev: latest.rev + 1, data: payload }, latest.rev, latest.data);
+          if (saved.applied) {
+            acceptCheckoutCommit(submitted, stateFromCloudPayload(saved.data), saved.rev);
+            setCloud(c => ({ ...c, status: 'ok', lastSyncAt: Date.now(), lastError: null }));
+            toast('success', 'تم حفظ تعديلات الأسبوع وتحديث الاستحقاق دون تكرار المكافآت');
+            return { success: true };
+          }
+          latest = { rev: saved.rev, data: saved.data };
+        }
+        throw new Error('تعديلات متزامنة كثيرة؛ أعد المحاولة');
+      } catch (error) {
+        const message = errMsg(error);
+        setCloud(c => ({ ...c, status: 'error', lastError: message }));
+        return { success: false, error: message };
+      } finally {
+        checkoutLocksRef.current.delete(lock);
+        drainRemoteRef.current();
       }
-
-      return updatedStudents;
     });
-
-    toast("success", "تم حفظ تعديلات الأسبوع وتحديث نقاط وعملات الطلاب");
-  }, [heartPrice, products, toast, week, weeksLog]);
+  }, [acceptCheckoutCommit, toast]);
 
   /** يعدّل تاريخ سجل الأسبوع نفسه فقط؛ لا يعيد حساب أو نقل أي بيانات طالب. */
   const updateArchivedWeekDate = useCallback(async (targetWeek: number, nextStart: string) => {

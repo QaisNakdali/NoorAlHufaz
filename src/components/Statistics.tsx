@@ -1,3 +1,4 @@
+import { isLearningCompleted } from "../learningCompletion";
 /* إحصائيات الطلاب فقط — قراءة مباشرة من الكشف الحالي وأرشيف الأسابيع مع فصل إحصائيات الحفظ عن المراجعة والترتيب التنازلي التلقائي حسب الصفحات */
 import { useMemo, useState, useEffect } from "react";
 import { useApp, DEFAULT_ABSENCE_MESSAGE, DEFAULT_NOT_HEARD_MESSAGE } from "../appState";
@@ -6,7 +7,7 @@ import { ar, DAYS, type DayKey, type Student, type WeekLog, type WeekLogEntry, t
 import Avatar from "./Avatar";
 import { Icon, Modal, SectionHead } from "./ui";
 import { addCalendarDays, dateFromLocalKey, formatHijriDate, formatHijriMonth, formatTeachingWeek, hijriMonthKey, localDateKey } from "../hijriDate";
-import { roundUpToQuarter } from "../statisticsNumber";
+const precisePages = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 import { reviewLinesForWard } from "../learningMetrics";
 
 type Period = "daily" | "weekly" | "monthly" | "all";
@@ -53,7 +54,7 @@ const emptyMetrics = (student: Pick<Student, "id" | "name" | "photo" | "halaqaId
   notHeardBoth: 0,
 });
 
-const n = (value: number) => ar(roundUpToQuarter(value));
+const n = (value: number) => ar(precisePages(value));
 
 const add = (a: StudentMetrics, b: StudentMetrics): StudentMetrics => ({
   ...a,
@@ -104,8 +105,8 @@ function checkDayRecitation(
   }
 
   // الطالب حاضر في هذا اليوم (state.a === true && !state.absent)
-  const hasMem = Boolean(state.h || ratings?.h === "excellent" || ratings?.h === "very-good");
-  const hasRev = Boolean(state.r || ratings?.r === "excellent" || ratings?.r === "very-good");
+  const hasMem = state.h === true && (ratings?.h === "excellent" || ratings?.h === "very-good");
+  const hasRev = state.r === true && (ratings?.r === "excellent" || ratings?.r === "very-good");
 
   const notHeardMem = !hasMem && state.testing !== true;
   const notHeardRev = !hasRev;
@@ -201,76 +202,19 @@ function fillTemplate(
  */
 function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
   const result = emptyMetrics(record);
-  const mockStudent = record as unknown as Student;
-
-  if (!day) {
-    for (const d of DAYS) {
-      const state = record.days?.[d.key];
-      const ward = record.ward?.[d.key] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
-      const ratings = record.recitationRatings?.[d.key];
-
-      const res = checkDayRecitation(state, ward, ratings);
-      if (res.isPresent) result.present += 1;
-      if (res.isAbsent) result.absent += 1;
-      if (res.notHeardMem) result.notHeardMem += 1;
-      if (res.notHeardRev) result.notHeardRev += 1;
-      if (res.notHeardBoth) result.notHeardBoth += 1;
-
-      // حساب الجلسات والصفحات فقط للأيام التي سَمّع فيها الطالب بالفعل:
-      const hasMem = Boolean(state?.h || ratings?.h === "excellent" || ratings?.h === "very-good");
-      const hasRev = Boolean(state?.r || ratings?.r === "excellent" || ratings?.r === "very-good");
-
-      if (hasMem && res.isPresent) {
-        result.memorizationSessions += 1;
-        result.memorizationVerses += Number(ward.memorizationVerses) || 0;
-        const lines = Number(ward.memorizationLines) || (ward.memorizationVerses ? estimatedLinesFromVerses(ward.memorizationVerses) : 0);
-        result.memorizationLines += lines;
-        result.memorizationPages += pagesForWardDay(mockStudent, d.key, "memorization").pages;
-      }
-
-      if (hasRev && res.isPresent) {
-        result.reviewSessions += 1;
-        result.reviewVerses += Number(ward.reviewVerses) || 0;
-        const lines = ward.reviewPages !== undefined ? reviewLinesForWard(ward) : (Number(ward.reviewLines) || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0));
-        result.reviewLines += lines;
-        result.reviewPages += pagesForWardDay(mockStudent, d.key, "review").pages;
-      }
-    }
-    return result;
+  for (const d of DAYS.filter(d => !day || d.key === day)) {
+    const res = checkDayRecitation(record.days?.[d.key], record.ward?.[d.key], record.recitationRatings?.[d.key]);
+    if (res.isPresent) result.present++;
+    if (res.isAbsent) result.absent++;
+    if (res.notHeardMem) result.notHeardMem++;
+    if (res.notHeardRev) result.notHeardRev++;
+    if (res.notHeardBoth) result.notHeardBoth++;
   }
-
-  // إذا تم تحديد يوم معين:
-  const state = record.days?.[day];
-  const ward = record.ward?.[day] ?? { memorization: "", review: "", memorizationVerses: 0, reviewVerses: 0, memorizationLines: 0, reviewLines: 0 };
-  const ratings = record.recitationRatings?.[day];
-
-  const res = checkDayRecitation(state, ward, ratings);
-  if (res.isPresent) result.present = 1;
-  if (res.isAbsent) result.absent = 1;
-  if (res.notHeardMem) result.notHeardMem = 1;
-  if (res.notHeardRev) result.notHeardRev = 1;
-  if (res.notHeardBoth) result.notHeardBoth = 1;
-
-  const hasMem = Boolean(state?.h || ratings?.h === "excellent" || ratings?.h === "very-good");
-  const hasRev = Boolean(state?.r || ratings?.r === "excellent" || ratings?.r === "very-good");
-
-  if (hasMem && res.isPresent) {
-    result.memorizationSessions = 1;
-    result.memorizationVerses += Number(ward.memorizationVerses) || 0;
-    const lines = Number(ward.memorizationLines) || (ward.memorizationVerses ? estimatedLinesFromVerses(ward.memorizationVerses) : 0);
-    result.memorizationLines = lines;
-    result.memorizationPages += pagesForWardDay(mockStudent, day, "memorization").pages;
-  }
-
-  if (hasRev && res.isPresent) {
-    result.reviewSessions = 1;
-    result.reviewVerses += Number(ward.reviewVerses) || 0;
-    const lines = ward.reviewPages !== undefined ? reviewLinesForWard(ward) : (Number(ward.reviewLines) || (ward.reviewVerses ? estimatedLinesFromVerses(ward.reviewVerses) : 0));
-    result.reviewLines = lines;
-    result.reviewPages += pagesForWardDay(mockStudent, day, "review").pages;
-  }
-
-  return result;
+  const mem = measureStudentWork(record as Student, 'memorization', day ? [day] : undefined);
+  const rev = measureStudentWork(record as Student, 'review', day ? [day] : undefined);
+  return { ...result, memorizationSessions: mem.sessions, memorizationVerses: mem.verses,
+    memorizationLines: mem.lines, memorizationPages: mem.pages, reviewSessions: rev.sessions,
+    reviewVerses: rev.verses, reviewLines: rev.lines, reviewPages: rev.pages };
 }
 
 function fromStudent(student: Student, day?: DayKey): StudentMetrics {

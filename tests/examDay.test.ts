@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { captureExamDay, toggleExamMode } from "../src/examDay.ts";
 import { DAYS, seedStudents, emptyWeekDays, emptyRecitationRatings, weekXpOf, weekCoinsOf, isChampionEligible, calculateStudentTotals, ATTEND_XP, ATTEND_COINS, RECITE_XP, RECITE_COINS } from "../src/core.ts";
-const student = () => ({ ...seedStudents()[0], days: emptyWeekDays(), recitationRatings: emptyRecitationRatings(), awards:[],coinsSpent:0,manualCoinsAdjust:0,manualXpAdjust:0,isTesting:false });
+const student = () => ({ ...seedStudents()[0], days: emptyWeekDays(), recitationRatings: Object.fromEntries(DAYS.map(d => [d.key, { h: "excellent", r: "excellent" }])), awards:[],coinsSpent:0,manualCoinsAdjust:0,manualXpAdjust:0,isTesting:false });
 
 test("normal and exam review receive the same two learning rewards; attendance is unchanged", () => {
   const normal=student();normal.days.sun={a:true,h:true,r:true};
@@ -65,3 +65,4 @@ test("capture does not alter existing completed recitations or award balances", 
   const e={a:true,h:false,r:true};assert.equal(captureExamDay(e,true),e);
   const s=student();const prior=JSON.stringify(s);toggleExamMode(s,'sun');assert.equal(JSON.stringify(s),prior);
 });
+
