@@ -4,6 +4,7 @@ import { addCalendarDays, formatHijriDate, formatTeachingWeek, hijriInputValue, 
 import { ar, DAYS, emptyRecitationRatings, emptyWeeklyWard, emptyWeekDays, uid, type DailyWard, type DayKey, type DayPart, type WeekLog, type WeekStudentRecord } from "../core";
 import Avatar from "./Avatar";
 import NumericInput from "./NumericInput";
+import { isLearningCompleted } from "../learningCompletion";
 import { Icon, Modal, SectionHead } from "./ui";
 
 const copy = <T,>(value: T): T => structuredClone(value);
@@ -33,7 +34,10 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
     const days = copy(record.days);
     if (key === "absent") days[day] = checked ? { a: false, h: false, r: false, absent: true } : { ...days[day], absent: false };
     else days[day] = { ...days[day], [key]: checked, absent: false };
-    update({ ...record, days });
+    const recitationRatings = copy(record.recitationRatings ?? emptyRecitationRatings());
+    if (key === "h" || key === "r") recitationRatings[day] = { ...recitationRatings[day], [key]: checked ? (recitationRatings[day]?.[key] ?? "excellent") : undefined };
+    if (key === "absent" && checked) recitationRatings[day] = {};
+    update({ ...record, days, recitationRatings });
   };
   const updateWardField = (day: DayKey, field: keyof DailyWard, value: any) => {
     const curWard = record.ward ?? emptyWeeklyWard();
@@ -44,6 +48,11 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
       delete nextDay.reviewLines;
     }
     update({ ...record, ward: { ...curWard, [day]: nextDay } });
+  };
+  const setRating = (day: DayKey, part: "h" | "r", value: string) => {
+    const rating = value === "excellent" || value === "very-good" ? value : undefined;
+    update({ ...record, days: { ...record.days, [day]: { ...record.days[day], [part]: !!rating } },
+      recitationRatings: { ...record.recitationRatings, [day]: { ...record.recitationRatings?.[day], [part]: rating } } });
   };
   return <article className="rounded-2xl border-2 border-grape-100 bg-white p-4">
     <div className="flex flex-wrap items-center gap-3">
@@ -64,6 +73,15 @@ function StudentEditor({ record, update, remove, weekStartDateIso }: {
               <label className="rounded-lg bg-coral-50 p-2 text-center font-bold text-coral-600"><input className="me-1" type="checkbox" checked={absent} onChange={(e) => setDay(day.key, "absent", e.target.checked)} />غائب</label>
             </div>
             <div className="mt-2.5 space-y-2">
+              <div className="grid grid-cols-2 gap-1.5">
+                {(["h", "r"] as const).map(part => <select key={part} disabled={absent}
+                  aria-label={`${part === "h" ? "تقييم الحفظ" : "تقييم المراجعة"} ${day.label}`}
+                  className="field-control text-xs" value={record.days[day.key]?.[part] ? record.recitationRatings?.[day.key]?.[part] ?? "" : ""}
+                  onChange={e => setRating(day.key, part, e.target.value)}>
+                  <option value="">{part === "h" ? "لم يحفظ / بدون تقييم" : "لم يراجع / بدون تقييم"}</option>
+                  <option value="excellent">ممتاز</option><option value="very-good">جيد جدًا</option>
+                </select>)}
+              </div>
               <div className="rounded-lg bg-white p-2 border border-grape-200/60">
                 <span className="text-[11px] font-extrabold text-grape-700">ورد الحفظ:</span>
                 <div className="mt-1 grid grid-cols-3 gap-1.5">
@@ -131,6 +149,9 @@ export default function PastWeeks() {
   const [week, setWeek] = useState<number | null>(logs[0]?.week ?? null);
   const current = (filteredLogs.find((item) => item.week === week) ?? filteredLogs[0] ?? logs.find((item) => item.week === week)) ?? null;
   const [draft, setDraft] = useState<WeekLog | null>(null);
+  const [draftBase, setDraftBase] = useState<WeekLog | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePin, setDeletePin] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -161,6 +182,8 @@ export default function PastWeeks() {
   const unlock = () => {
     if (!current || pin !== "911") return setError("الرمز غير صحيح");
     setDraft(copy(current));
+    setDraftBase(copy(current));
+    setSaveError("");
     setWeekDateInput(current.weekStartDateIso ? hijriInputValue(current.weekStartDateIso) : "");
     setWeekDateError(""); setPin(""); setError("");
   };
@@ -306,7 +329,14 @@ export default function PastWeeks() {
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={addStudent} className="rounded-xl bg-mint-600 px-4 py-2 text-sm font-bold text-white">+ إضافة طالب للسجل</button>
                   <button type="button" onClick={() => setDraft(null)} className="rounded-xl bg-grape-100 px-4 py-2 text-sm font-bold text-grape-600">إلغاء</button>
-                  <button type="button" onClick={() => { updateWeekLog(draft.week, draft); setDraft(null); }} className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-bold text-white">حفظ تغييرات السجل</button>
+                  <button type="button" disabled={savingDraft} onClick={async () => {
+                    if (!draftBase) return;
+                    setSavingDraft(true); setSaveError("");
+                    const result = await updateWeekLog(draft.week, draft, draftBase);
+                    setSavingDraft(false);
+                    if (result.success) setDraft(null); else setSaveError(result.error ?? "تعذر تأكيد حفظ السجل؛ يمكنك إعادة المحاولة");
+                  }} className="rounded-xl bg-grape-600 px-4 py-2 text-sm font-bold text-white">{savingDraft ? "جارٍ تأكيد الحفظ..." : "حفظ تغييرات السجل"}</button>
+                  {saveError && <p role="alert" className="text-sm font-bold text-coral-600">{saveError}</p>}
                 </div>
               </div>
             )}
@@ -380,7 +410,7 @@ export default function PastWeeks() {
                       <Avatar photo={record.photo} name={record.name} size={42} />
                       <div>
                         <p className="font-display font-extrabold text-base text-ink">{record.name} {record.isTesting && <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] text-white">اختبار</span>}</p>
-                        <p className="text-xs font-bold text-grape-500">حضور {ar(DAYS.filter((d) => record.days?.[d.key]?.a).length)} · غياب {ar(DAYS.filter((d) => record.days?.[d.key]?.absent).length)} · حفظ {ar(DAYS.filter((d) => record.days?.[d.key]?.h).length)} · مراجعة {ar(DAYS.filter((d) => record.days?.[d.key]?.r).length)}</p>
+                        <p className="text-xs font-bold text-grape-500">حضور {ar(DAYS.filter((d) => record.days?.[d.key]?.a).length)} · غياب {ar(DAYS.filter((d) => record.days?.[d.key]?.absent).length)} · حفظ {ar(DAYS.filter((d) => isLearningCompleted(record, d.key, "h")).length)} · مراجعة {ar(DAYS.filter((d) => isLearningCompleted(record, d.key, "r")).length)}</p>
                       </div>
                     </div>
                   </div>
@@ -412,6 +442,7 @@ export default function PastWeeks() {
                               {hasH && (
                                 <div className="rounded bg-white p-1.5 text-[11px] leading-tight text-grape-800 border border-grape-200/50">
                                   <span className="font-extrabold text-grape-600">حفظ: </span>
+                                  {!isLearningCompleted(record, d.key, "h") && <span className="font-bold">{entry?.testing === true && !entry.h ? "معفى بسبب الاختبار · " : "مقدار مسجل غير منجز · "}</span>}
                                   {ward?.memorization ? <b>{ward.memorization} </b> : null}
                                   {ward?.memorizationVerses ? <span>({ar(ward.memorizationVerses)} آية) </span> : null}
                                   {ward?.memorizationLines ? <span>[{ar(ward.memorizationLines)} سطر ≈ {ar(Math.round(memPages * 10) / 10)} ص]</span> : null}
@@ -421,6 +452,7 @@ export default function PastWeeks() {
                               {hasR && (
                                 <div className="rounded bg-amber-50 p-1.5 text-[11px] leading-tight text-amber-900 border border-amber-200/50">
                                   <span className="font-extrabold text-amber-700">مراجعة: </span>
+                                  {!isLearningCompleted(record, d.key, "r") && <span className="font-bold">مقدار مسجل غير منجز · </span>}
                                   {ward?.review ? <b>{ward.review} </b> : null}
                                   {ward?.reviewPages !== undefined ? <span>[{ar(ward.reviewPages)} صفحة]</span> : <>{ward?.reviewVerses ? <span>({ar(ward.reviewVerses)} آية) </span> : null}{ward?.reviewLines ? <span>[{ar(ward.reviewLines)} سطر — سجل قديم]</span> : null}</>}
                                   {!ward?.review && ward?.reviewPages === undefined && !ward?.reviewLines && <span>تمت المراجعة</span>}

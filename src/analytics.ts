@@ -1,6 +1,6 @@
-import { DAYS, estimatedLinesFromVerses, levelInfo, type DayKey, type ParentContactRecord, type RecitationPart, type Student, type WeekLog, type WeekLogEntry } from "./core";
-import { reviewLinesForWard, safeNonNegativeDecimal } from "./learningMetrics";
-import { pagesForAyahRange, parseQuranRange } from "./quranPages";
+import { DAYS, estimatedLinesFromVerses, levelInfo, weekXpOf, type DayKey, type ParentContactRecord, type RecitationPart, type Student, type WeekLog, type WeekLogEntry } from "./core.ts";
+import { reviewLinesForWard, safeNonNegativeDecimal } from "./learningMetrics.ts";
+import { pagesForAyahRange, parseQuranRange } from "./quranPages.ts";
 
 export type WorkMeasure = {
   sessions: number;
@@ -105,21 +105,20 @@ export function pagesForWardDay(student: Student, day: DayKey, kind: LearningTra
   return { pages: 0, estimated: true };
 }
 
-export function measureStudentWork(student: Student, kind: "memorization" | "review"): WorkMeasure {
+export function measureStudentWork(student: Student, kind: "memorization" | "review", selectedDays?: DayKey[]): WorkMeasure {
   const part = kind === "memorization" ? "h" : "r";
   const completed = DAYS.filter((d) => {
-    const entry = student.days?.[d.key];
-    if (!entry || entry.absent || !entry.a) return false;
-    const hasRating = student.recitationRatings?.[d.key]?.[part] === "excellent" || student.recitationRatings?.[d.key]?.[part] === "very-good";
-    return Boolean(entry[part] || hasRating);
+    return (!selectedDays || selectedDays.includes(d.key)) && isLearningCompleted(student, d.key, part);
   });
   const verses = completed.reduce((sum, d) => sum + Number((kind === "memorization" ? student.ward?.[d.key]?.memorizationVerses : student.ward?.[d.key]?.reviewVerses) || 0), 0);
   const enteredLines = completed.reduce((sum, d) => {
     const ward = student.ward?.[d.key];
-    return sum + (kind === "memorization" ? Number(ward?.memorizationLines) || 0 : reviewLinesForWard(ward));
+    const explicit = kind === "memorization" ? Number(ward?.memorizationLines) || 0 : reviewLinesForWard(ward);
+    const verses = Number(kind === "memorization" ? ward?.memorizationVerses : ward?.reviewVerses) || 0;
+    return sum + (explicit > 0 ? explicit : estimatedLinesFromVerses(verses));
   }, 0);
   const pageMeasures = completed.map((d) => pagesForWardDay(student, d.key, kind));
-  const lines = enteredLines > 0 ? enteredLines : estimatedLinesFromVerses(verses);
+  const lines = enteredLines;
   const pagesEstimated = pageMeasures.some((measure) => measure.estimated);
   const pages = pageMeasures.reduce((sum, measure) => sum + measure.pages, 0);
   return {
@@ -148,8 +147,8 @@ export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAn
 
   const history = weeksLog
     .map((w) => {
-      const record = w.records?.find((r) => r.id === student.id || r.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
-      const entry = (w.students ?? w.top).find((e) => e.id === student.id || e.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
+      const record = w.records?.find((r) => r.id === student.id);
+      const entry = (w.students ?? w.top).find((e) => e.id === student.id);
       if (record || entry) {
         const memRecord = record ? measureStudentWork(record as unknown as Student, "memorization") : null;
         const revRecord = record ? measureStudentWork(record as unknown as Student, "review") : null;
@@ -158,10 +157,10 @@ export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAn
         return {
           id: record?.id ?? entry?.id ?? student.id,
           name: record?.name ?? entry?.name ?? student.name,
-          memorizationPages: Math.max(memRecord?.pages ?? 0, entryMemPages || 0),
-          reviewPages: Math.max(revRecord?.pages ?? 0, entryRevPages || 0),
-          memorizationLines: Math.max(memRecord?.lines ?? 0, entry?.memorizationLines ?? 0),
-          reviewLines: Math.max(revRecord?.lines ?? 0, entry?.reviewLines ?? 0),
+          memorizationPages: memRecord ? memRecord.pages : entryMemPages || 0,
+          reviewPages: revRecord ? revRecord.pages : entryRevPages || 0,
+          memorizationLines: memRecord ? memRecord.lines : entry?.memorizationLines ?? 0,
+          reviewLines: revRecord ? revRecord.lines : entry?.reviewLines ?? 0,
         };
       }
       return null;
@@ -208,12 +207,12 @@ export function buildTrackSnapshot(student: Student, kind: LearningTrack): Track
     return !!entry && entry.absent !== true && (kind !== "memorization" || entry.testing !== true || entry.h) && (entry.a || entry.h || entry.r);
   });
   const plannedDays = evaluableDays.filter((day) => hasPlannedWork(student, day.key, kind));
-  const completedDays = evaluableDays.filter((day) => !!student.days?.[day.key]?.[part]).length;
+  const completedDays = evaluableDays.filter((day) => isLearningCompleted(student, day.key, part)).length;
   const expectedPagesValue = plannedDays.reduce((sum, day) => sum + pagesForWardDay(student, day.key, kind).pages, 0);
   let excellent = 0;
   let veryGood = 0;
   for (const day of plannedDays) {
-    if (!student.days?.[day.key]?.[part]) continue;
+    if (!isLearningCompleted(student, day.key, part)) continue;
     const rating = student.recitationRatings?.[day.key]?.[part];
     if (rating === "excellent") excellent += 1;
     if (rating === "very-good") veryGood += 1;
@@ -241,6 +240,26 @@ function historySnapshot(entry: WeekLogEntry, kind: LearningTrack): TrackSnapsho
 }
 
 const ratio = (actual: number, expected: number | null): number | null => expected && expected > 0 ? actual / expected : null;
+
+/** Detailed archived days outrank cached totals, including after a failed evaluation. */
+function historicalEntry(log: WeekLog, studentId: string): WeekLogEntry | undefined {
+  const entry = (log.students ?? log.top).find(e => e.id === studentId);
+  const record = log.records?.find(r => r.id === studentId);
+  if (!record) return entry;
+  const student = record as Student;
+  const mem = buildTrackSnapshot(student, "memorization"), rev = buildTrackSnapshot(student, "review");
+  const m = measureStudentWork(student, "memorization"), r = measureStudentWork(student, "review");
+  return { ...entry, id: record.id, name: record.name, photo: record.photo, xp: record.xp, coins: record.coins,
+    hearts: record.hearts, level: levelInfo(record.xp).level, weekXp: weekXpOf(record.days), frame: entry?.frame ?? null, crown: entry?.crown ?? null,
+    attendanceDays: DAYS.filter(d => record.days[d.key]?.a && !record.days[d.key]?.absent).length,
+    absenceDays: DAYS.filter(d => record.days[d.key]?.absent).length,
+    memorizationPages: m.pages, memorizationLines: m.lines, memorizationVerses: m.verses, memorizationDays: m.sessions,
+    memorizationExpectedDays: mem.expectedDays ?? undefined, memorizationExpectedPages: mem.expectedPages ?? undefined,
+    memorizationExcellent: mem.excellent, memorizationVeryGood: mem.veryGood,
+    reviewPages: r.pages, reviewLines: r.lines, reviewVerses: r.verses, reviewDays: r.sessions,
+    reviewExpectedDays: rev.expectedDays ?? undefined, reviewExpectedPages: rev.expectedPages ?? undefined,
+    reviewExcellent: rev.excellent, reviewVeryGood: rev.veryGood, isTesting: record.isTesting };
+}
 
 function requirementFrom(dayRate: number | null, quantityRate: number | null): RequirementStatus {
   const rates = [dayRate, quantityRate].filter((value): value is number => value !== null);
@@ -326,7 +345,7 @@ export function analyzeAttendance(student: Student, weeksLog: WeekLog[]): Attend
   const attendanceRate = evaluatedDays > 0 ? round((presentDays / evaluatedDays) * 100, 1) : null;
   const historicRates = [...weeksLog]
     .sort((a, b) => a.week - b.week)
-    .map((log) => (log.students ?? log.top).find((entry) => entry.id === student.id))
+    .map((log) => historicalEntry(log, student.id))
     .filter((entry): entry is WeekLogEntry => !!entry && entry.absenceDays !== undefined)
     .map((entry) => {
       const total = entry.evaluatedDays ?? ((entry.attendanceDays ?? 0) + (entry.absenceDays ?? 0));
@@ -361,9 +380,9 @@ export function analyzeLearningTrack(student: Student, weeksLog: WeekLog[], kind
   const current = buildTrackSnapshot(student, kind);
   const historyEntries = [...weeksLog]
     .sort((a, b) => a.week - b.week)
-    .map((log) => (log.students ?? log.top).find((entry) => entry.id === student.id))
+    .map((log) => historicalEntry(log, student.id))
     .filter((entry): entry is NonNullable<typeof entry> => !!entry);
-  const history = (kind === "memorization" ? historyEntries.filter((entry) => entry.isTesting !== true) : historyEntries)
+  const history = (kind === "memorization" ? historyEntries.filter((entry) => entry.isTesting !== true || entry.memorizationExpectedDays !== undefined) : historyEntries)
     .map((entry) => historySnapshot(entry, kind));
   const completionRate = ratio(current.completedDays, current.expectedDays);
   const quantityRate = ratio(current.pages, current.expectedPages);
@@ -521,8 +540,8 @@ export function analyzeStudentTrend(
 
   const weekHist: { present: number; absent: number }[] = [];
   for (const w of chronologicalWeeks) {
-    const record = w.records?.find((r) => r.id === student.id || r.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
-    const entry = (w.students ?? w.top)?.find((e) => e.id === student.id || e.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
+    const record = w.records?.find((r) => r.id === student.id);
+    const entry = (w.students ?? w.top)?.find((e) => e.id === student.id);
     if (record && record.days) {
       const p = DAYS.filter((d) => !!record.days?.[d.key]?.a && !record.days?.[d.key]?.absent).length;
       const ab = DAYS.filter((d) => record.days?.[d.key]?.absent === true).length;
@@ -634,12 +653,12 @@ export function generateParentAIGuidance(
     const st = student.days?.[d.key];
     const rt = student.recitationRatings?.[d.key];
     if (st?.a && !st.absent) {
-      if (st.h || rt?.h === "excellent" || rt?.h === "very-good") {
+      if (isLearningCompleted(student, d.key, "h")) {
         currMemSessions += 1;
         if (rt?.h === "excellent") currExcellent += 1;
         if (rt?.h === "very-good") currVeryGood += 1;
       }
-      if (st.r || rt?.r === "excellent" || rt?.r === "very-good") {
+      if (isLearningCompleted(student, d.key, "r")) {
         currRevSessions += 1;
         if (rt?.r === "excellent") currExcellent += 1;
         if (rt?.r === "very-good") currVeryGood += 1;
@@ -650,9 +669,9 @@ export function generateParentAIGuidance(
   // 2. تحليل الأسابيع السابقة المتراكمة
   const pastRecords = weeksLog
     .map((log) => {
-      const rec = log.records?.find((r) => r.id === student.id || r.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
+      const rec = log.records?.find((r) => r.id === student.id);
       if (rec) return rec;
-      const topEntry = (log.students ?? log.top ?? []).find((e) => e.id === student.id || e.name.replace(/[ًٌٍَُِّْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase() === normTarget);
+      const topEntry = (log.students ?? log.top ?? []).find((e) => e.id === student.id);
       return topEntry ? (topEntry as any) : null;
     })
     .filter(Boolean);
@@ -670,10 +689,10 @@ export function generateParentAIGuidance(
       pastPresentSum += p;
       pastAbsentSum += a;
       for (const d of DAYS) {
-        if (pr.recitationRatings?.[d.key]?.h === "excellent") pastExcSum += 1;
-        if (pr.recitationRatings?.[d.key]?.h === "very-good") pastVgSum += 1;
-        if (pr.recitationRatings?.[d.key]?.r === "excellent") pastExcSum += 1;
-        if (pr.recitationRatings?.[d.key]?.r === "very-good") pastVgSum += 1;
+        if (isLearningCompleted(pr, d.key, "h") && pr.recitationRatings?.[d.key]?.h === "excellent") pastExcSum += 1;
+        if (isLearningCompleted(pr, d.key, "h") && pr.recitationRatings?.[d.key]?.h === "very-good") pastVgSum += 1;
+        if (isLearningCompleted(pr, d.key, "r") && pr.recitationRatings?.[d.key]?.r === "excellent") pastExcSum += 1;
+        if (isLearningCompleted(pr, d.key, "r") && pr.recitationRatings?.[d.key]?.r === "very-good") pastVgSum += 1;
       }
     } else {
       pastPresentSum += pr.attendanceDays ?? 0;
@@ -786,3 +805,5 @@ export function generateParentAIGuidance(
     recommendations: recs,
   };
 }
+import { isLearningCompleted } from "./learningCompletion.ts";
+

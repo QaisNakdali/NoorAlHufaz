@@ -185,34 +185,26 @@ export function emptyWeeklyWard(): WeeklyWard {
 export const estimatedLinesFromVerses = (verses: number): number =>
   Math.max(0, Math.round((Number(verses) || 0) * 1.45));
 
-/** نقاط الأسبوع = مجموع نقاط كل الخانات المسجلة */
-export function weekXpOf(days?: WeekDays | null): number {
+/** One entitlement rule; legacy completion flags retain their already credited rewards. */
+function weekRewardAmount(days: WeekDays | null | undefined, attendance: number, recitation: number): number {
   if (!days || typeof days !== "object") return 0;
   let total = 0;
   for (const d of DAYS) {
     const e = days[d.key];
     if (e && !e.absent) {
-      if (e.a) total += ATTEND_XP;
-      if (e.h) total += RECITE_XP;
-      if (e.r) total += RECITE_XP * (e.testing === true && !e.h ? 2 : 1);
+      if (e.a) total += attendance;
+      if (e.h) total += recitation;
+      if (e.r) total += recitation * (e.testing === true && !e.h ? 2 : 1);
     }
   }
   return total;
 }
 
-/** عملات الأسبوع = مجموع عملات كل الخانات المسجلة */
+export function weekXpOf(days?: WeekDays | null): number {
+  return weekRewardAmount(days, ATTEND_XP, RECITE_XP);
+}
 export function weekCoinsOf(days?: WeekDays | null): number {
-  if (!days || typeof days !== "object") return 0;
-  let total = 0;
-  for (const d of DAYS) {
-    const e = days[d.key];
-    if (e && !e.absent) {
-      if (e.a) total += ATTEND_COINS;
-      if (e.h) total += RECITE_COINS;
-      if (e.r) total += RECITE_COINS * (e.testing === true && !e.h ? 2 : 1);
-    }
-  }
-  return total;
+  return weekRewardAmount(days, ATTEND_COINS, RECITE_COINS);
 }
 
 /* ========== أنواع سجل الحفظ التفصيلي ========== */
@@ -283,6 +275,9 @@ export type Student = {
   awards: AwardRec[];
   /** أعلى مستوى استلم الطالب مكافأته بالفعل لمنع تكرار مكافأة المستوى */
   highestRewardedLevel?: number;
+  /** Preserved historical balance not attributable to a known transaction. */
+  historicalXpCarry?: number;
+  historicalCoinsCarry?: number;
   memorizationRecords?: MemorizationRecord[]; // سجل الحفظ التفصيلي (جديد)
   manualXpAdjust?: number;
   manualCoinsAdjust?: number;
@@ -520,9 +515,9 @@ export const isChampionEligible = (
   });
 
   // 3. درجات التسميع:
-  // إذا سُمّع التسميع ولم تُسجل درجة صريحة فالافتراضي هو "ممتاز"
-  const getRating = (dayKey: DayKey, part: RecitationPart): RecitationRating => {
-    return s.recitationRatings?.[dayKey]?.[part] ?? "excellent";
+  // Missing evaluations cannot qualify as a successful evaluation.
+  const getRating = (dayKey: DayKey, part: RecitationPart): RecitationRating | undefined => {
+    return s.recitationRatings?.[dayKey]?.[part];
   };
 
   const ratingEligible = DAYS.every((day) => {
@@ -696,14 +691,18 @@ export function calculateStudentTotals(
     if (!log) continue;
     let matchedRecord: WeekStudentRecord | undefined;
     if (Array.isArray(log.records) && log.records.length > 0) {
-      matchedRecord = log.records.find((r) => r && (r.id === student.id || (r.name && normalizeArabic(r.name) === normName)));
+      matchedRecord = log.records.find((r) => r?.id === student.id);
+      if (!matchedRecord) {
+        const legacy = log.records.filter(r => !r.id && r.name && normalizeArabic(r.name) === normName);
+        if (legacy.length === 1) matchedRecord = legacy[0];
+      }
     }
     if (matchedRecord && matchedRecord.days) {
       pastXp += weekXpOf(matchedRecord.days);
       pastCoins += weekCoinsOf(matchedRecord.days);
     } else {
       const entryList = Array.isArray(log.students) ? log.students : Array.isArray(log.top) ? log.top : [];
-      const entry = entryList.find((e) => e && (e.id === student.id || (e.name && normalizeArabic(e.name) === normName)));
+      const entry = entryList.find(e => e?.id === student.id);
       if (entry) {
         pastXp += typeof entry.weekXp === "number" ? entry.weekXp : 0;
         pastCoins += typeof (entry as any).weekCoins === "number" ? (entry as any).weekCoins : 0;
@@ -724,18 +723,19 @@ export function calculateStudentTotals(
 
   // 4. إجمالي النقاط
   const manualXp = typeof student.manualXpAdjust === "number" ? student.manualXpAdjust : 0;
-  const totalXp = Math.max(0, pastXp + weekXp + awardsXp + manualXp);
+  const totalXp = Math.max(0, pastXp + weekXp + awardsXp + manualXp + (student.historicalXpCarry ?? 0));
 
   // 5. المستوى = دالة رياضية حتمية ناتجة عن إجمالي النقاط
   const lvlInfo = levelInfo(totalXp);
   const level = lvlInfo.level;
 
   // 6. مكافأة ارتقاء المستوى (+5 لكل مستوى أعلى من المستوى 1)
-  const levelRewardCoins = Math.max(0, level - 1) * LEVEL_COIN_REWARD;
+  const highestRewardedLevel = Math.max(level, student.highestRewardedLevel ?? 1);
+  const levelRewardCoins = Math.max(0, highestRewardedLevel - 1) * LEVEL_COIN_REWARD;
 
   // 7. العملات المصروفة
   let spent = typeof student.coinsSpent === "number" ? student.coinsSpent : 0;
-  if (spent <= 0 && Array.isArray(products) && products.length > 0) {
+  if (typeof student.coinsSpent !== "number" && Array.isArray(products) && products.length > 0) {
     if (Array.isArray(student.inventory)) {
       for (const itemId of student.inventory) {
         const item = findItem(products, itemId);
@@ -753,7 +753,7 @@ export function calculateStudentTotals(
 
   // 8. إجمالي العملات
   const manualCoins = typeof student.manualCoinsAdjust === "number" ? student.manualCoinsAdjust : 0;
-  const totalCoins = Math.max(0, pastCoins + weekCoins + awardsCoins + levelRewardCoins + manualCoins - spent);
+  const totalCoins = Math.max(0, pastCoins + weekCoins + awardsCoins + levelRewardCoins + manualCoins + (student.historicalCoinsCarry ?? 0) - spent);
 
   return {
     xp: totalXp,
@@ -761,7 +761,7 @@ export function calculateStudentTotals(
     coins: totalCoins,
     weekCoins,
     level,
-    highestRewardedLevel: level,
+    highestRewardedLevel,
   };
 }
 
@@ -805,7 +805,7 @@ export type Mode = "teacher" | "student";
 
 /** الحصول على آخر سجل حفظ للطالب */
 export const getLastMemorizationRecord = (s: Student): MemorizationRecord | null => {
-  const records = s.memorizationRecords ?? [];
+  const records = (s.memorizationRecords ?? []).filter(r => r.success === true);
   if (records.length === 0) return null;
   return [...records].sort((a, b) => b.createdAt - a.createdAt)[0];
 };
@@ -820,7 +820,7 @@ export const getMemorizationSummary = (s: Student): string => {
 /** حساب إجمالي الآيات المحفوظة من السجلات */
 export const getTotalVersesMemorized = (s: Student): number => {
   const records = s.memorizationRecords ?? [];
-  return records.reduce((sum, r) => sum + r.versesCount, 0);
+  return records.filter(r => r.success === true).reduce((sum, r) => sum + r.versesCount, 0);
 };
 
 /** حساب عدد جلسات الحفظ الناجحة */
@@ -867,7 +867,7 @@ export function analyzeMemorizationPeriod(
     };
   }
 
-  const totalVerses = filtered.reduce((sum, r) => sum + r.versesCount, 0);
+  const totalVerses = filtered.filter(r => r.success === true).reduce((sum, r) => sum + r.versesCount, 0);
   const successfulSessions = filtered.filter(r => r.success).length;
   const failedSessions = filtered.filter(r => !r.success).length;
   const successRate = filtered.length > 0 ? (successfulSessions / filtered.length) * 100 : 0;
@@ -875,7 +875,7 @@ export function analyzeMemorizationPeriod(
 
   // تجميع حسب التاريخ
   const byDate: Record<string, number> = {};
-  filtered.forEach(r => {
+  filtered.filter(r => r.success === true).forEach(r => {
     const day = r.date.split("T")[0];
     byDate[day] = (byDate[day] ?? 0) + r.versesCount;
   });
@@ -896,8 +896,8 @@ export function analyzeMemorizationPeriod(
     const firstHalf = sorted.slice(0, mid);
     const secondHalf = sorted.slice(mid);
 
-    const firstAvg = firstHalf.reduce((s, r) => s + r.versesCount, 0) / firstHalf.length;
-    const secondAvg = secondHalf.reduce((s, r) => s + r.versesCount, 0) / secondHalf.length;
+    const firstAvg = firstHalf.reduce((s, r) => s + (r.success === true ? r.versesCount : 0), 0) / firstHalf.length;
+    const secondAvg = secondHalf.reduce((s, r) => s + (r.success === true ? r.versesCount : 0), 0) / secondHalf.length;
 
     const diff = secondAvg - firstAvg;
     const threshold = firstAvg * 0.2; // 20% تغيير
