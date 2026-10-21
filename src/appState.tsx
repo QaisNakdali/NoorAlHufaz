@@ -955,7 +955,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (pushInFlight.current || checkoutLocksRef.current.size > 0) return;
     const pending = deferredRemoteRef.current;
     deferredRemoteRef.current = null;
-    if (pending && pending.rev > revRef.current) receiveRemote(pending.data, pending.rev);
+    if (pending && pending.rev > revRef.current) {
+      try { receiveRemote(pending.data, pending.rev); }
+      catch (error) { setCloud(c => ({ ...c, status: 'error', lastError: errMsg(error) })); }
+    }
   };
 
   const acceptCheckoutCommit = useCallback((submittedLocal: State, committed: State, rev: number) => {
@@ -1285,9 +1288,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void pullCloud(false);
     return subscribeCloud((remote) => {
       if (remote.rev <= revRef.current) return;
-      const normalized = stateFromCloudPayload(remote.data);
-      receiveRemote(normalized, remote.rev);
-      setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
+      try {
+        const normalized = stateFromCloudPayload(remote.data);
+        receiveRemote(normalized, remote.rev);
+        setCloud((c) => ({ ...c, status: "ok", lastSyncAt: Date.now(), lastError: null }));
+      } catch (error) {
+        setCloud(c => ({ ...c, status: 'error', lastError: errMsg(error) }));
+      }
     });
   }, [cloudEnabled, pullCloud, receiveRemote]);
 
@@ -2163,12 +2170,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const awardId = `week-${week}-${id}-${uniqueKey ?? title}`;
       const legacyTitle = title.split(" — ")[0];
       if (st.awards.some((a) => a.id === awardId || (a.week === week && (a.title === title || (uniqueKey && a.title === legacyTitle))))) return;
-      const next: Student = {
-        ...st,
-        coins: st.coins + Math.max(0, coins),
-        awards: [...st.awards, { id: awardId, title, week, coins: Math.max(0, coins) }],
-      };
-      setStudents((ss) => ss.map((s) => (s.id === id ? next : s)));
+      setStudents((ss) => ss.map((s) => {
+        if (s.id !== id || s.awards.some((a) => a.id === awardId || (a.week === week && (a.title === title || (uniqueKey && a.title === legacyTitle))))) return s;
+        return { ...s, coins: s.coins + Math.max(0, coins), awards: [...s.awards, { id: awardId, title, week, coins: Math.max(0, coins) }] };
+      }));
       sfx.fanfare();
       toast("award", `حصل ${st.name} على «${title}» (+${ar(coins)} عملة)`);
     },
@@ -2367,7 +2372,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         id: s.id, name: s.name, photo: s.photo, xp: s.xp, weekXp: s.weekXp,
         level: levelInfo(s.xp).level, coins: s.coins, hearts: s.hearts,
         frame: s.frame ?? null, crown: s.crown ?? null,
-        attendanceDays: DAYS.filter((d) => s.days[d.key].a).length,
+        attendanceDays: DAYS.filter((d) => s.days[d.key].a && !s.days[d.key].absent).length,
         absenceDays: DAYS.filter((d) => s.days[d.key].absent === true).length,
         evaluatedDays: DAYS.filter((d) => s.days[d.key].a || s.days[d.key].absent === true).length,
         memorizationLines: memorization.lines, reviewLines: review.lines,
