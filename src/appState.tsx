@@ -851,7 +851,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // عند التعارض ندمج فروق هذا الجهاز فوق النسخة الفائزة ثم نعيد المحاولة ذريًا.
       for (let attempt = 0; attempt < 6; attempt += 1) {
-        const result = await cloudSave({ rev: expectedRev + 1, data: candidate }, expectedRev);
+        const result = await cloudSave({ rev: expectedRev + 1, data: candidate }, expectedRev, expectedRev > 0 && (attempt > 0 || syncedBaseRef.current) ? base : undefined);
         const normalized = stateFromCloudPayload(result.data);
         if (result.applied) {
           savedState = normalized;
@@ -1168,7 +1168,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (!latest) return { success: false, error: "تعذر قراءة السجل المشترك" };
           const current = stateFromCloudPayload(latest.data);
           const next: State = { ...current, parentLogs: [] };
-          const saved = await cloudSave({ rev: latest.rev + 1, data: next }, latest.rev);
+          const saved = await cloudSave({ rev: latest.rev + 1, data: next }, latest.rev, current);
           if (saved.applied) {
             receiveRemote(stateFromCloudPayload(saved.data), saved.rev);
             toast("success", "تم حذف سجل زيارات أولياء الأمور فقط");
@@ -2011,7 +2011,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const current = stateFromCloudPayload(latest.data);
           const result = mutate(current);
           if (!result.state) return { success: false, error: result.error };
-          const saved = await cloudSave({ rev: latest.rev + 1, data: result.state }, latest.rev);
+          const saved = await cloudSave({ rev: latest.rev + 1, data: result.state }, latest.rev, current);
           if (saved.applied) {
             receiveRemote(stateFromCloudPayload(saved.data), saved.rev);
             toast("success", "تم تفعيل الخاصية وظهرت في ملف الطالب");
@@ -2292,7 +2292,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const current = stateFromCloudPayload(latest.data);
           const next = mutate(current);
           if (!next) return { success: false, error: "لم يتم العثور على الأسبوع" };
-          const saved = await cloudSave({ rev: latest.rev + 1, data: next }, latest.rev);
+          const saved = await cloudSave({ rev: latest.rev + 1, data: next }, latest.rev, current);
           if (saved.applied) {
             receiveRemote(stateFromCloudPayload(saved.data), saved.rev);
             toast("success", "تم تحديث تاريخ الأسبوع في جميع الواجهات");

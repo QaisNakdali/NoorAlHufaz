@@ -21,3 +21,22 @@ test('delta includes pending edits and respects undefined JSON fields',()=>{
     {op:'set',path:['newField'],value:{nested:1}},
   ]);
 });
+
+test('normalized optional fields absent from JSON are not repeatedly removed',()=>{
+  const before={students:[{id:'s',createdAt:undefined,days:{sun:{date:undefined}},guardianPhone:'123'}]};
+  const after=structuredClone(before);after.students[0].guardianPhone='456';
+  assert.deepEqual(buildCloudPatch(before,after),[{op:'set',path:['students','0','guardianPhone'],value:'456'}]);
+  assert.deepEqual(buildCloudPatch(before,structuredClone(before)),[]);
+});
+
+test('clearing an existing optional field still removes it once',()=>{
+  const before={optional:'saved'};const after={optional:undefined};
+  assert.deepEqual(buildCloudPatch(before,after),[{op:'remove',path:['optional']}]);
+  assert.deepEqual(buildCloudPatch(after,{}),[]);
+});
+
+test('prepending an archive with cloned unchanged history only transmits the new week',()=>{
+  const before={weeksLog:[{week:6,records:[{id:'s',image:'old-image',optional:undefined}]}]};
+  const after={weeksLog:[{week:7,records:[]},...structuredClone(before.weeksLog)]};
+  assert.deepEqual(buildCloudPatch(before,after),[{op:'insert',path:['weeksLog','0'],value:{week:7,records:[]}}]);
+});
