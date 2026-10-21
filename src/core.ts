@@ -346,16 +346,13 @@ export function levelInfo(xp: number): { level: number; into: number; need: numb
 }
 
 /** ترتيب كثيف حسب النقاط الحالية: المتساوون في النقاط يأخذون المركز نفسه دون أرقام مفقودة. */
-export function denseXpRanking(students: Student[]): { student: Student; rank: number }[] {
-  const ordered = [...students].sort((a, b) => b.xp - a.xp || a.name.localeCompare(b.name, "ar"));
-  let rank = 0;
-  let previousXp: number | null = null;
-  return ordered.map((student) => {
-    if (previousXp === null || student.xp !== previousXp) rank += 1;
-    previousXp = student.xp;
-    return { student, rank };
-  });
+export type RankingMode = 'level-xp' | 'coins';
+export function denseStudentRanking(students:Student[],mode:RankingMode='level-xp'):{student:Student;rank:number}[]{
+  const keys=(s:Student)=>mode==='coins'?[s.coins]:[levelInfo(s.xp).level,s.xp];
+  const ordered=[...students].sort((a,b)=>{const x=keys(a),y=keys(b);for(let i=0;i<x.length;i++)if(x[i]!==y[i])return y[i]-x[i];return a.name.localeCompare(b.name,'ar');});
+  let rank=0,previous='';return ordered.map(student=>{const key=JSON.stringify(keys(student));if(key!==previous)rank++;previous=key;return {student,rank};});
 }
+export function denseXpRanking(students:Student[]):{student:Student;rank:number}[]{return denseStudentRanking(students);}
 
 export function denseWeekRanking(students: Student[]): { student: Student; rank: number }[] {
   const ordered = [...students].sort((a, b) => b.weekXp - a.weekXp || a.name.localeCompare(b.name, "ar"));
@@ -465,9 +462,9 @@ export type CeremonyPicks = {
   /** حقول قديمة محفوظة للتوافق مع الأسابيع التي سبقت نظام الحلقات. */
   improved?: string;
   behavior?: string;
-  /** فائز واحد من كل حلقة؛ المفتاح هو halaqaId والقيمة هي studentId. */
-  improvedByHalaqa?: Record<string, string>;
-  behaviorByHalaqa?: Record<string, string>;
+  /** حتى فائزين من كل حلقة؛ القيم المفردة القديمة تبقى مدعومة. */
+  improvedByHalaqa?: Record<string, string | string[]>;
+  behaviorByHalaqa?: Record<string, string | string[]>;
   /** استثناءات أبطال الأسبوع لهذا الحفل فقط، دون تغيير بيانات الطالب أو إنجازه. */
   championExcludedIds?: string[];
   champion1?: string;
@@ -483,17 +480,17 @@ export const AWARDS_META: {
   desc: string;
   icon: string;
 }[] = [
-  { key: "behavior", title: "جائزة أفضل سلوك", desc: "قدوة في أدب الحلقة — بلا قلوب مفقودة", icon: "heart" },
+  { key: "behavior", title: "جائزة أفضل سلوك", desc: "تقدير المعلم للأخلاق والانضباط والتعامل", icon: "heart" },
   {
     key: "improved",
     title: "جائزة الأكثر تطوّرًا",
-    desc: "اجتهد أكثر من ورده — الأكثر تسميعًا للحفظ والمراجعة",
+    desc: "تحسن الطالب مقارنة بالأسبوع الدراسي السابق — اختيار المعلم",
     icon: "trend",
   },
 ];
 
 /** عدد أيام الحضور هذا الأسبوع */
-export const attendedDays = (s: Student): number => DAYS.filter((d) => s.days[d.key].a).length;
+export const attendedDays = (s: Student): number => DAYS.filter((d) => s.days[d.key].a && !s.days[d.key].absent).length;
 /** عدد خانات التسميع (حفظ + مراجعة) هذا الأسبوع */
 export const recitations = (s: Student): number =>
   DAYS.reduce((n, d) => n + (s.days[d.key].h ? 1 : 0) + (s.days[d.key].r ? 1 : 0), 0);

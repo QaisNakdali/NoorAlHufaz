@@ -1,3 +1,4 @@
+import { recordMetrics, studentPeriodMetrics, uniqueHistory, statisticsMonths, emptyPeriodMetrics, addPeriodMetrics, type PeriodMetrics } from "../periodStatistics";
 import { isLearningCompleted } from "../learningCompletion";
 /* إحصائيات الطلاب فقط — قراءة مباشرة من الكشف الحالي وأرشيف الأسابيع مع فصل إحصائيات الحفظ عن المراجعة والترتيب التنازلي التلقائي حسب الصفحات */
 import { useMemo, useState, useEffect } from "react";
@@ -13,65 +14,11 @@ import { reviewLinesForWard } from "../learningMetrics";
 type Period = "daily" | "weekly" | "monthly" | "all";
 type StatsView = "both" | "memorization" | "review";
 
-type StudentMetrics = {
-  id: string;
-  name: string;
-  photo: string | null;
-  halaqaId?: string | null;
-  present: number;
-  absent: number;
-  memorizationSessions: number;
-  reviewSessions: number;
-  memorizationVerses: number;
-  reviewVerses: number;
-  memorizationLines: number;
-  reviewLines: number;
-  memorizationPages: number;
-  reviewPages: number;
-  notHeardMem: number;
-  notHeardRev: number;
-  notHeardBoth: number;
-  rank?: number;
-};
-
-const emptyMetrics = (student: Pick<Student, "id" | "name" | "photo" | "halaqaId">): StudentMetrics => ({
-  id: student.id,
-  name: student.name,
-  photo: student.photo,
-  halaqaId: student.halaqaId,
-  present: 0,
-  absent: 0,
-  memorizationSessions: 0,
-  reviewSessions: 0,
-  memorizationVerses: 0,
-  reviewVerses: 0,
-  memorizationLines: 0,
-  reviewLines: 0,
-  memorizationPages: 0,
-  reviewPages: 0,
-  notHeardMem: 0,
-  notHeardRev: 0,
-  notHeardBoth: 0,
-});
-
+type StudentMetrics = PeriodMetrics & {rank?:number};
+const emptyMetrics = emptyPeriodMetrics;
 const n = (value: number) => ar(precisePages(value));
 
-const add = (a: StudentMetrics, b: StudentMetrics): StudentMetrics => ({
-  ...a,
-  present: a.present + b.present,
-  absent: a.absent + b.absent,
-  memorizationSessions: a.memorizationSessions + b.memorizationSessions,
-  reviewSessions: a.reviewSessions + b.reviewSessions,
-  memorizationVerses: a.memorizationVerses + b.memorizationVerses,
-  reviewVerses: a.reviewVerses + b.reviewVerses,
-  memorizationLines: a.memorizationLines + b.memorizationLines,
-  reviewLines: a.reviewLines + b.reviewLines,
-  memorizationPages: a.memorizationPages + b.memorizationPages,
-  reviewPages: a.reviewPages + b.reviewPages,
-  notHeardMem: (a.notHeardMem ?? 0) + (b.notHeardMem ?? 0),
-  notHeardRev: (a.notHeardRev ?? 0) + (b.notHeardRev ?? 0),
-  notHeardBoth: (a.notHeardBoth ?? 0) + (b.notHeardBoth ?? 0),
-});
+const add = addPeriodMetrics;
 
 /**
  * فحص حالة اليوم الواحد للطالب بدقة وحيادية وفق السجلات الأصلية الفعلية:
@@ -200,22 +147,7 @@ function fillTemplate(
 /**
  * حساب مقاييس الطالب من سجله الفعلي اليومي
  */
-function fromRecord(record: WeekStudentRecord, day?: DayKey): StudentMetrics {
-  const result = emptyMetrics(record);
-  for (const d of DAYS.filter(d => !day || d.key === day)) {
-    const res = checkDayRecitation(record.days?.[d.key], record.ward?.[d.key], record.recitationRatings?.[d.key]);
-    if (res.isPresent) result.present++;
-    if (res.isAbsent) result.absent++;
-    if (res.notHeardMem) result.notHeardMem++;
-    if (res.notHeardRev) result.notHeardRev++;
-    if (res.notHeardBoth) result.notHeardBoth++;
-  }
-  const mem = measureStudentWork(record as Student, 'memorization', day ? [day] : undefined);
-  const rev = measureStudentWork(record as Student, 'review', day ? [day] : undefined);
-  return { ...result, memorizationSessions: mem.sessions, memorizationVerses: mem.verses,
-    memorizationLines: mem.lines, memorizationPages: mem.pages, reviewSessions: rev.sessions,
-    reviewVerses: rev.verses, reviewLines: rev.lines, reviewPages: rev.pages };
-}
+const fromRecord = recordMetrics;
 
 function fromStudent(student: Student, day?: DayKey): StudentMetrics {
   return fromRecord({
@@ -232,112 +164,6 @@ function fromStudent(student: Student, day?: DayKey): StudentMetrics {
     xp: student.xp,
     coins: student.coins,
   }, day);
-}
-
-function fromStudentHijriMonth(student: Student, monthKey: string, weekStartDateIso: string): StudentMetrics {
-  const result = emptyMetrics(student);
-  for (let i = 0; i < DAYS.length; i += 1) {
-    const dayDate = addCalendarDays(weekStartDateIso, i);
-    if (hijriMonthKey(dayDate) !== monthKey) continue;
-    const day = DAYS[i];
-    const single = fromStudent(student, day.key);
-    result.present += single.present;
-    result.absent += single.absent;
-    result.memorizationSessions += single.memorizationSessions;
-    result.reviewSessions += single.reviewSessions;
-    result.memorizationVerses += single.memorizationVerses;
-    result.reviewVerses += single.reviewVerses;
-    result.memorizationLines += single.memorizationLines;
-    result.reviewLines += single.reviewLines;
-    result.memorizationPages += single.memorizationPages;
-    result.reviewPages += single.reviewPages;
-    result.notHeardMem += single.notHeardMem;
-    result.notHeardRev += single.notHeardRev;
-    result.notHeardBoth += single.notHeardBoth;
-  }
-  return result;
-}
-
-function logDate(log: WeekLog): Date | null {
-  return log.weekStartDateIso ? dateFromLocalKey(log.weekStartDateIso) : log.savedAtIso ? new Date(log.savedAtIso) : null;
-}
-
-function fromEntry(entry: WeekLogEntry): StudentMetrics {
-  const memLines = entry.memorizationLines ?? 0;
-  const revLines = entry.reviewLines ?? 0;
-  const memPages = typeof entry.memorizationPages === "number" ? entry.memorizationPages : (memLines > 0 ? memLines / 15 : 0);
-  const revPages = typeof entry.reviewPages === "number" ? entry.reviewPages : (revLines > 0 ? revLines / 15 : 0);
-  const present = entry.attendanceDays ?? 0;
-  const absent = entry.absenceDays ?? 0;
-  const memSessions = entry.memorizationSessions ?? entry.memorizationDays ?? 0;
-  const revSessions = entry.reviewSessions ?? entry.reviewDays ?? 0;
-  const notHeardMem = Math.max(0, present - memSessions - (entry.memorizationExemptDays ?? 0));
-  const notHeardRev = Math.max(0, present - revSessions);
-
-  return {
-    id: entry.id,
-    name: entry.name,
-    photo: entry.photo ?? null,
-    present,
-    absent,
-    memorizationSessions: memSessions,
-    reviewSessions: revSessions,
-    memorizationVerses: entry.memorizationVerses ?? 0,
-    reviewVerses: entry.reviewVerses ?? 0,
-    memorizationLines: memLines,
-    reviewLines: revLines,
-    memorizationPages: memPages,
-    reviewPages: revPages,
-    notHeardMem,
-    notHeardRev,
-    notHeardBoth: Math.min(notHeardMem, notHeardRev),
-  };
-}
-
-function logMetrics(log: WeekLog, allStudents?: Student[]): StudentMetrics[] {
-  const map = new Map<string, StudentMetrics>();
-
-  // 1. قراءة السجلات التفصيلية اليومية أولاً إن وُجدت (المصدر الدقيق والأصلي)
-  if (Array.isArray(log.records) && log.records.length > 0) {
-    for (const record of log.records) {
-      if (!record || !record.name) continue;
-      const m = fromRecord(record);
-      map.set(record.id, m);
-    }
-  }
-
-  // 2. دمج إحصائيات الطلاب المحفوظة في الأسبوع لتكملة أي طالب قديم غير موجود في records
-  const studentEntries = [
-    ...(Array.isArray(log.students) ? log.students : []),
-    ...(Array.isArray(log.top) ? log.top : []),
-  ];
-
-  for (const entry of studentEntries) {
-    if (!entry || !entry.name) continue;
-    if (map.has(entry.id)) {
-      const existing = map.get(entry.id)!;
-      if (!existing.photo && entry.photo) existing.photo = entry.photo;
-      continue;
-    }
-    const existingByName = [...map.values()].find((m) => normalizeArabic(m.name) === normalizeArabic(entry.name));
-    if (existingByName) {
-      if (!existingByName.photo && entry.photo) existingByName.photo = entry.photo;
-      continue;
-    }
-    map.set(entry.id, fromEntry(entry));
-  }
-
-  const list = [...map.values()];
-  if (allStudents?.length) {
-    const photoMap = new Map(allStudents.map((s) => [s.id, s.photo]));
-    const namePhotoMap = new Map(allStudents.map((s) => [normalizeArabic(s.name), s.photo]));
-    for (const item of list) {
-      if (!item.photo) {
-        item.photo = photoMap.get(item.id) ?? namePhotoMap.get(normalizeArabic(item.name)) ?? null;
-      }
-    }
-  }
-  return list;
 }
 
 function MetricCard({
@@ -431,27 +257,11 @@ export default function StatisticsPage() {
   };
 
   // استبعاد أي تكرار محتمل في أرقام الأسابيع لحماية الحسابات من التكرار
-  const uniqueLogs = useMemo(() => {
-    const map = new Map<number, WeekLog>();
-    for (const log of weeksLog) {
-      if (log && log.week != null) {
-        map.set(Number(log.week), log);
-      }
-    }
-    return [...map.values()];
-  }, [weeksLog]);
+  const uniqueLogs = useMemo(() => uniqueHistory(weeksLog), [weeksLog]);
+  const monthOptions = useMemo(() => statisticsMonths(weekStartDateIso,uniqueLogs),[weekStartDateIso,uniqueLogs]);
 
-  const monthOptions = useMemo(() => {
-    const dates = [
-      dateFromLocalKey(weekStartDateIso) ?? new Date(),
-      ...uniqueLogs.map(logDate).filter((date): date is Date => !!date),
-    ];
-    const map = new Map<string, Date>();
-    dates.forEach((date) => map.set(hijriMonthKey(date), date));
-    return [...map.entries()].sort((a, b) => b[1].getTime() - a[1].getTime());
-  }, [uniqueLogs, weekStartDateIso]);
-
-  const [selectedMonth, setSelectedMonth] = useState(() => hijriMonthKey(dateFromLocalKey(weekStartDateIso) ?? new Date()));
+  const [monthChoice, setSelectedMonth] = useState("");
+  const selectedMonth=monthChoice||hijriMonthKey(dateFromLocalKey(weekStartDateIso)??new Date());
 
   // تصفية الطلاب حسب الحلقة المختارة بدقة
   const currentStudents = useMemo(() => {
@@ -469,88 +279,16 @@ export default function StatisticsPage() {
 
   // حساب المقاييس والإحصائيات استنادًا إلى الحلقة والفترة والطلاب الفعليين
   const rawMetrics = useMemo(() => {
-    let rows: StudentMetrics[] = [];
-    if (period === "daily") {
-      rows = currentStudents.map((student) => fromStudent(student, day));
+    const scope = period === 'daily' ? {kind:'day' as const,date:localDateKey(addCalendarDays(weekStartDateIso,DAYS.findIndex(d=>d.key===day)))}
+      : period === 'weekly' ? {kind:'week' as const,week:selectedWeek==='current'?week:Number(selectedWeek)}
+      : period === 'monthly' ? {kind:'month' as const,month:selectedMonth} : {kind:'all' as const};
+    const pool = new Map(currentStudents.map(s=>[s.id,s]));
+    // Keep archived students visible without assigning another student's identity by name.
+    if(halaqaId==='all'&&(period==='all'||period==='monthly'||(period==='weekly'&&selectedWeek!=='current'))){
+      for(const log of uniqueLogs)for(const record of log.records??[])if(!pool.has(record.id))pool.set(record.id,record as Student);
     }
-    if (period === "weekly") {
-      if (selectedWeek === "current") {
-        rows = currentStudents.map((student) => fromStudent(student));
-      } else {
-        const log = uniqueLogs.find((item) => item.week === Number(selectedWeek));
-        if (log) {
-          const logRows = logMetrics(log, students);
-          const nameToStudent = new Map(currentStudents.map((s) => [normalizeArabic(s.name), s]));
-          rows = logRows.map((r) => {
-            const matched = currentStudents.find((s) => s.id === r.id) || nameToStudent.get(normalizeArabic(r.name));
-            if (matched) {
-              return { ...r, id: matched.id, name: matched.name, halaqaId: matched.halaqaId, photo: matched.photo ?? r.photo };
-            }
-            return r;
-          });
-        } else {
-          rows = [];
-        }
-      }
-    }
-    if (period === "monthly" || period === "all") {
-      // استبعاد الأسبوع الحالي من الأرشيف حتى لا يُحسب مرتين مع الكشف النشط
-      const sourceLogs = (
-        period === "monthly"
-          ? uniqueLogs.filter((log) => {
-              const date = logDate(log);
-              return date && hijriMonthKey(date) === selectedMonth;
-            })
-          : uniqueLogs
-      ).filter((log) => Number(log.week) !== Number(week));
-
-      const map = new Map<string, StudentMetrics>();
-      for (const student of currentStudents) {
-        map.set(student.id, emptyMetrics(student));
-      }
-
-      const nameToStudentId = new Map<string, string>();
-      for (const student of currentStudents) {
-        nameToStudentId.set(normalizeArabic(student.name), student.id);
-      }
-
-      for (const log of sourceLogs) {
-        const rowsForLog = logMetrics(log, students);
-        for (const row of rowsForLog) {
-          const targetId = map.has(row.id) ? row.id : nameToStudentId.get(normalizeArabic(row.name));
-          if (targetId && map.has(targetId)) {
-            map.set(targetId, add(map.get(targetId)!, row));
-          } else if (halaqaId === "all" && !targetId) {
-            map.set(row.id, row);
-            nameToStudentId.set(normalizeArabic(row.name), row.id);
-          }
-        }
-      }
-
-      if (period === "all") {
-        for (const student of currentStudents) {
-          if (map.has(student.id)) {
-            map.set(student.id, add(map.get(student.id)!, fromStudent(student)));
-          }
-        }
-      } else if (selectedMonth === hijriMonthKey(dateFromLocalKey(weekStartDateIso) ?? new Date())) {
-        for (const student of currentStudents) {
-          if (map.has(student.id)) {
-            map.set(student.id, add(map.get(student.id)!, fromStudentHijriMonth(student, selectedMonth, weekStartDateIso)));
-          }
-        }
-      }
-      rows = [...map.values()];
-    }
-
-    // التأكد من حصر الطلاب ضمن طلاب الحلقة المختارة دائمًا
-    if (halaqaId !== "all") {
-      const allowed = new Set(currentStudents.map((student) => student.id));
-      rows = rows.filter((row) => allowed.has(row.id));
-    }
-
-    return rows;
-  }, [period, currentStudents, day, selectedWeek, selectedMonth, uniqueLogs, week, students, halaqaId, weekStartDateIso]);
+    return [...pool.values()].map(student=>studentPeriodMetrics(currentStudents.find(s=>s.id===student.id) ?? {...student,days:{},ward:{},recitationRatings:{}} as Student,uniqueLogs,week,weekStartDateIso,scope));
+  }, [period, currentStudents, day, selectedWeek, selectedMonth, uniqueLogs, week, halaqaId, weekStartDateIso]);
 
   // تصفية المقاييس العامة حسب الطالب المحدد أو نص البحث أولاً
   const metrics = useMemo(() => {
@@ -750,24 +488,7 @@ export default function StatisticsPage() {
   }, [parentContacts, studentId, searchQuery, halaqaId, currentStudents]);
 
   const total = useMemo(() => {
-    return metrics.reduce((sum, item) => add(sum, item), {
-      id: "total",
-      name: "الإجمالي",
-      photo: null,
-      present: 0,
-      absent: 0,
-      memorizationSessions: 0,
-      reviewSessions: 0,
-      memorizationVerses: 0,
-      reviewVerses: 0,
-      memorizationLines: 0,
-      reviewLines: 0,
-      memorizationPages: 0,
-      reviewPages: 0,
-      notHeardMem: 0,
-      notHeardRev: 0,
-      notHeardBoth: 0,
-    });
+    return metrics.reduce((sum,item)=>add(sum,item),emptyMetrics({id:"total",name:"الإجمالي",photo:null}));
   }, [metrics]);
 
   const selectedStudent = useMemo(() => {
@@ -1099,6 +820,13 @@ export default function StatisticsPage() {
         </div>
       </div>
 
+      <div className="mb-3 rounded-2xl bg-grape-50 p-3 text-xs font-bold text-grape-700" data-testid="teacher-period-summary">
+        <p>أم القرى · توقيت الرياض · أيام الدراسة الأحد إلى الأربعاء</p>
+        <p>الحضور: {ar(total.present)} · الغياب: {ar(total.absent)}</p>
+        <p>ممتاز حفظ: {ar(total.memorizationExcellent)} · جيد جدًا حفظ: {ar(total.memorizationVeryGood)} · ممتاز مراجعة: {ar(total.reviewExcellent)} · جيد جدًا مراجعة: {ar(total.reviewVeryGood)}</p>
+        <p>نقاط الحضور والتسميع: {ar(total.earnedLearningXp)} · عملاتها المكتسبة: {ar(total.earnedLearningCoins)} (قبل المشتريات)</p>
+        {total.incompleteHistory>0&&<p className="text-amber-800">سجلات قديمة تفتقد تفاصيل أو تواريخ كافية؛ لم تُضف قيم تخمينية.</p>}
+      </div>
       {/* بطاقات الإحصائيات الشاملة */}
       <section>
         <div className="mb-3 flex items-center gap-3">

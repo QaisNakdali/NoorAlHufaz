@@ -15,6 +15,10 @@ function earned(state: any, id: string): {xp:number;coins:number} {
 /** Numeric balances are derived, unlike manual adjustments and recorded spending. */
 export function mergeAccountingChanges(base:any,local:any,remote:any,path:string[]=[],conflicts:MergeConflict[]=[]):any {
   const merged=mergeLocalChanges(base,local,remote,path,conflicts) as any;
+  if(conflicts.some(c=>c.path.startsWith('ceremonyPicks.')))throw Error('تغيّر اختيار الجائزة لدى معلم آخر؛ حدّث الصفحة وراجع الاختيارات قبل الحفظ');
+  for(const key of ['improvedByHalaqa','behaviorByHalaqa'])for(const ids of Object.values(merged?.ceremonyPicks?.[key]??{})){
+    if(Array.isArray(ids)&&new Set(ids.filter(Boolean)).size>2)throw Error('تعارض اختيار الفائزين: الحد الأقصى طالبان لكل جائزة في الحلقة');
+  }
   if(merged===remote||merged===local)return merged;
   if(![base,local,remote,merged].every(s=>Array.isArray(s?.students)))return merged;
   return {...merged,students:merged.students.map((s:Student)=>{

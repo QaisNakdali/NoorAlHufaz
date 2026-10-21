@@ -1,3 +1,5 @@
+import { studentPeriodMetrics, recordMetrics, uniqueHistory, statisticsMonths } from "../periodStatistics";
+import { isLearningCompleted } from "../learningCompletion";
 /* بوابة خاصة بأولياء الأمور — متابعة حصرية لمستوى الطالب ومتجر متكامل للشراء بالعملات */
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../appState";
@@ -6,12 +8,12 @@ import { ar, bagQty, bagReceivedQty, DAYS, levelInfo, MAX_HEARTS, type Student }
 import Avatar from "./Avatar";
 import CosmeticThumb from "./CosmeticThumb";
 import { HeartsRow, Icon } from "./ui";
-import { formatHijriDate, addCalendarDays, formatTeachingWeek, hijriMonthKey, localDateKey } from "../hijriDate";
-import { roundUpToQuarter } from "../statisticsNumber";
+import { formatHijriMonth, formatHijriDate, addCalendarDays, formatTeachingWeek, hijriMonthKey, localDateKey } from "../hijriDate";
+
 import { HEART_ITEM_ID } from "../checkoutTransaction";
 import { profileCardClass, profileCardIsDark, profileCardTopClass } from "../profileAppearance";
 
-const n = (value: number) => ar(roundUpToQuarter(value));
+const n = (value: number) => ar(Math.round((value+Number.EPSILON)*100)/100);
 
 export default function ParentPortal({ token }: { token: string }) {
   const {
@@ -32,7 +34,8 @@ export default function ParentPortal({ token }: { token: string }) {
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<"progress" | "store" | "bag" | "purchases">("progress");
-  const [progressPeriod, setProgressPeriod] = useState<"day" | "week" | "month">("week");
+  const [progressPeriod, setProgressPeriod] = useState<"day" | "week" | "month" | "all">("week");
+  const [monthChoice,setMonthChoice]=useState("");
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [equippingId, setEquippingId] = useState<string | null>(null);
 
@@ -96,152 +99,25 @@ export default function ParentPortal({ token }: { token: string }) {
     ? "saturate-[.58] grayscale-[.18] opacity-90"
     : "saturate-[.35] grayscale-[.38] opacity-82";
 
-  // حسابات إحصائيات الأسبوع الحالي
-  const currPresent = DAYS.filter((d) => !!student.days?.[d.key]?.a && !student.days?.[d.key]?.absent).length;
-  const currAbsent = DAYS.filter((d) => student.days?.[d.key]?.absent === true).length;
-  const totalDaysEvaluated = currPresent + currAbsent;
-  const attendanceRate = totalDaysEvaluated > 0 ? Math.round((currPresent / totalDaysEvaluated) * 100) : 100;
-
-  const memSessions = DAYS.filter((d) => {
-    const st = student.days?.[d.key];
-    const rt = student.recitationRatings?.[d.key];
-    return !!st?.a && !st?.absent && (!!st?.h || rt?.h === "excellent" || rt?.h === "very-good");
-  }).length;
-
-  const revSessions = DAYS.filter((d) => {
-    const st = student.days?.[d.key];
-    const rt = student.recitationRatings?.[d.key];
-    return !!st?.a && !st?.absent && (!!st?.r || rt?.r === "excellent" || rt?.r === "very-good");
-  }).length;
-
-  let memPages = 0;
-  let revPages = 0;
-  for (const d of DAYS) {
-    const st = student.days?.[d.key];
-    const rt = student.recitationRatings?.[d.key];
-    if (st?.a && !st.absent && (st.h || rt?.h === "excellent" || rt?.h === "very-good")) {
-      memPages += pagesForWardDay(student, d.key, "memorization").pages;
-    }
-    if (st?.a && !st.absent && (st.r || rt?.r === "excellent" || rt?.r === "very-good")) {
-      revPages += pagesForWardDay(student, d.key, "review").pages;
-    }
-  }
-
-  const monthKey = hijriMonthKey(new Date());
-  let monthPresent = 0;
-  let monthAbsent = 0;
-  let monthMemPages = 0;
-  let monthRevPages = 0;
-  let monthMemSessions = 0;
-  let monthRevSessions = 0;
-  let monthNotHeardMem = 0;
-  let monthNotHeardRev = 0;
-  const collectMonthDay = (record: Student, dayIndex: number, date: Date) => {
-    if (hijriMonthKey(date) !== monthKey) return;
-    const day = DAYS[dayIndex];
-    const state = record.days?.[day.key];
-    const rating = record.recitationRatings?.[day.key];
-    if (state?.absent) monthAbsent += 1;
-    else if (state?.a) monthPresent += 1;
-    if (state?.a && !state.absent) {
-      const hasMem = !!state.h || rating?.h === "excellent" || rating?.h === "very-good";
-      const hasRev = !!state.r || rating?.r === "excellent" || rating?.r === "very-good";
-      if (hasMem) {
-        monthMemSessions += 1;
-        monthMemPages += pagesForWardDay(record, day.key, "memorization").pages;
-      } else if (state.testing !== true) monthNotHeardMem += 1;
-      if (hasRev) {
-        monthRevSessions += 1;
-        monthRevPages += pagesForWardDay(record, day.key, "review").pages;
-      } else monthNotHeardRev += 1;
-    }
-  };
-  DAYS.forEach((_, index) => collectMonthDay(student, index, addCalendarDays(weekStartDateIso, index)));
-  for (const log of weeksLog) {
-    if (!log.weekStartDateIso) continue;
-    const record = log.records?.find((item) => item.id === student.id);
-    if (!record) continue;
-    DAYS.forEach((_, index) => collectMonthDay(record as unknown as Student, index, addCalendarDays(log.weekStartDateIso!, index)));
-  }
-
-  const todayIndex = DAYS.findIndex((_, index) =>
-    localDateKey(addCalendarDays(weekStartDateIso, index)) === localDateKey(new Date())
-  );
-  const todayState = todayIndex >= 0 ? student.days?.[DAYS[todayIndex].key] : undefined;
-  const todayRating = todayIndex >= 0 ? student.recitationRatings?.[DAYS[todayIndex].key] : undefined;
-  const todayPresent = todayState?.a && !todayState.absent ? 1 : 0;
-  const todayAbsent = todayState?.absent ? 1 : 0;
-  const todayMem = todayPresent && (todayState?.h || todayRating?.h === "excellent" || todayRating?.h === "very-good") ? 1 : 0;
-  const todayRev = todayPresent && (todayState?.r || todayRating?.r === "excellent" || todayRating?.r === "very-good") ? 1 : 0;
-  const todayMemPages = todayMem && todayIndex >= 0 ? pagesForWardDay(student, DAYS[todayIndex].key, "memorization").pages : 0;
-  const todayRevPages = todayRev && todayIndex >= 0 ? pagesForWardDay(student, DAYS[todayIndex].key, "review").pages : 0;
-
-  const periodStats = progressPeriod === "day"
-    ? {
-        present: todayPresent, absent: todayAbsent, memSessions: todayMem, revSessions: todayRev,
-        memPages: todayMemPages, revPages: todayRevPages,
-        notHeardMem: todayPresent && !todayMem && todayState?.testing !== true ? 1 : 0,
-        notHeardRev: todayPresent && !todayRev ? 1 : 0,
-        label: "اليوم",
-      }
-    : progressPeriod === "month"
-    ? {
-        present: monthPresent, absent: monthAbsent, memSessions: monthMemSessions, revSessions: monthRevSessions,
-        memPages: monthMemPages, revPages: monthRevPages,
-        notHeardMem: monthNotHeardMem, notHeardRev: monthNotHeardRev,
-        label: "الشهر الهجري",
-      }
-    : {
-        present: currPresent, absent: currAbsent, memSessions, revSessions, memPages, revPages,
-        notHeardMem: DAYS.filter((d) => { const e = student.days?.[d.key]; const r = student.recitationRatings?.[d.key]; return e?.a && !e.absent && e.testing !== true && !e.h && r?.h !== "excellent" && r?.h !== "very-good"; }).length,
-        notHeardRev: Math.max(0, currPresent - revSessions),
-        label: "الأسبوع",
-      };
-  const periodEvaluated = periodStats.present + periodStats.absent;
-  const periodAttendanceRate = periodEvaluated > 0 ? Math.round((periodStats.present / periodEvaluated) * 100) : null;
-
-  // ملخص الأسابيع السابقة المحفوظة
-  const pastWeeksHistory = weeksLog
-    .map((log) => {
-      const record = log.records?.find((r) => r.id === student.id);
-      const studentEntries = [...(Array.isArray(log.students) ? log.students : []), ...(Array.isArray(log.top) ? log.top : [])];
-      const entry = studentEntries.find((e) => e.id === student.id);
-      if (!record && !entry) return null;
-
-      let pCount = entry?.attendanceDays ?? 0;
-      let aCount = entry?.absenceDays ?? 0;
-      let mPages = entry?.memorizationPages ?? 0;
-      let rPages = entry?.reviewPages ?? 0;
-
-      if (record) {
-        pCount = DAYS.filter((d) => !!record.days?.[d.key]?.a && !record.days?.[d.key]?.absent).length;
-        aCount = DAYS.filter((d) => record.days?.[d.key]?.absent === true).length;
-        mPages = 0;
-        rPages = 0;
-        for (const d of DAYS) {
-          const st = record.days?.[d.key];
-          const rt = record.recitationRatings?.[d.key];
-          if (st?.a && !st.absent && (st.h || rt?.h === "excellent" || rt?.h === "very-good")) {
-            mPages += pagesForWardDay(record as unknown as Student, d.key, "memorization").pages;
-          }
-          if (st?.a && !st.absent && (st.r || rt?.r === "excellent" || rt?.r === "very-good")) {
-            rPages += pagesForWardDay(record as unknown as Student, d.key, "review").pages;
-          }
-        }
-      }
-
-      return {
-        week: log.week,
-        weekName: log.weekStartDateIso ? formatTeachingWeek(log.weekStartDateIso) : (log.name || `أسبوع محفوظ رقم ${ar(log.week)}`),
-        savedAt: log.savedAt,
-        present: pCount,
-        absent: aCount,
-        memPages: mPages,
-        revPages: rPages,
-      };
-    })
-    .filter((w): w is NonNullable<typeof w> => !!w)
-    .sort((a, b) => b.week - a.week);
+  const curr = studentPeriodMetrics(student,weeksLog,week,weekStartDateIso,{kind:'week',week});
+  const currPresent=curr.present,currAbsent=curr.absent,memSessions=curr.memorizationSessions,revSessions=curr.reviewSessions;
+  const todayIndex=DAYS.findIndex((_,i)=>localDateKey(addCalendarDays(weekStartDateIso,i))===localDateKey(new Date()));
+  // Month defaults to the month of the displayed teaching week, exactly as the teacher page.
+  const selectedMonth=monthChoice||hijriMonthKey(addCalendarDays(weekStartDateIso,0));
+  const canonical=studentPeriodMetrics(student,weeksLog,week,weekStartDateIso,
+    progressPeriod==='day'?{kind:'day',date:localDateKey(new Date())}:
+    progressPeriod==='month'?{kind:'month',month:selectedMonth}:
+    progressPeriod==='all'?{kind:'all'}:{kind:'week',week});
+  const periodStats={...canonical,memSessions:canonical.memorizationSessions,revSessions:canonical.reviewSessions,
+    memPages:canonical.memorizationPages,revPages:canonical.reviewPages};
+  const periodEvaluated=periodStats.present+periodStats.absent;
+  const periodAttendanceRate=periodEvaluated?Math.round(periodStats.present/periodEvaluated*100):null;
+  const pastWeeksHistory=uniqueHistory(weeksLog).filter(log=>log.week!==week).flatMap(log=>{
+    const record=log.records?.find(r=>r.id===student.id);if(!record)return [];
+    const stats=recordMetrics(record);
+    return [{week:log.week,weekName:log.weekStartDateIso?formatTeachingWeek(log.weekStartDateIso):(log.name||'أسبوع محفوظ'),
+      savedAt:log.savedAt,present:stats.present,absent:stats.absent,memPages:stats.memorizationPages,revPages:stats.reviewPages}];
+  });
 
   const purchaseNow = async (itemId: string) => {
     if (purchasingId) return;
@@ -421,15 +297,18 @@ export default function ParentPortal({ token }: { token: string }) {
         {/* القسم الأول: الحفظ والإنجاز */}
         {activeTab === "progress" && (
           <div className="space-y-4">
-            <section className="rounded-3xl border-2 border-grape-200 bg-white p-3 shadow-sm sm:p-4">
-              <div className="mb-3 grid grid-cols-3 gap-1 rounded-2xl bg-grape-100/70 p-1" aria-label="اختيار فترة الإحصائيات">
-                {([['day', 'اليوم'], ['week', 'الأسبوع'], ['month', 'الشهر']] as const).map(([value, label]) => (
+            <section data-testid="parent-period-summary" className="rounded-3xl border-2 border-grape-200 bg-white p-3 shadow-sm sm:p-4">
+              <div className="mb-3 grid grid-cols-4 gap-1 rounded-2xl bg-grape-100/70 p-1" aria-label="اختيار فترة الإحصائيات">
+                {([['day', 'اليوم'], ['week', 'الأسبوع'], ['month', 'الشهر'], ['all', 'الإجمالي']] as const).map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setProgressPeriod(value)} className={`min-h-10 rounded-xl px-2 text-xs font-black transition ${progressPeriod === value ? 'bg-grape-600 text-white shadow-sm' : 'text-grape-700 hover:bg-white/70'}`}>{label}</button>
                 ))}
               </div>
+              {progressPeriod==='month'&&<label className="mb-2 block text-xs font-bold text-grape-600">الشهر الهجري<select aria-label="الشهر الهجري" value={selectedMonth} onChange={e=>setMonthChoice(e.target.value)} className="field-control mt-1 w-full">{statisticsMonths(weekStartDateIso,weeksLog).map(([key,date])=><option key={key} value={key}>{formatHijriMonth(date)}</option>)}</select></label>}
               {progressPeriod === "day" && todayIndex < 0 && (
                 <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-center text-xs font-bold text-amber-800">لا توجد جلسة حلقة مسجلة لهذا اليوم.</p>
               )}
+              <p className="mb-2 text-xs font-bold text-grape-500">{progressPeriod==='month'?'الشهر الهجري المحدد · أم القرى · توقيت الرياض':progressPeriod==='all'?'جميع الأيام المؤرخة المسجلة':'أيام الدراسة: الأحد إلى الأربعاء'}</p>
+              {canonical.incompleteHistory>0&&<p className="mb-2 text-xs text-amber-800">بعض السجلات القديمة لا تحتوي تفاصيل أو تواريخ كافية لهذه الفترة؛ لم تُخمّن قيمها.</p>}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[
                   ["الحضور", `${ar(periodStats.present)} يوم`, "text-mint-700 bg-mint-50"],
@@ -437,6 +316,14 @@ export default function ParentPortal({ token }: { token: string }) {
                   ["الحفظ", `${n(periodStats.memPages)} ص · ${ar(periodStats.memSessions)} جلسة`, "text-gold-800 bg-gold-50"],
                   ["المراجعة", `${n(periodStats.revPages)} ص · ${ar(periodStats.revSessions)} جلسة`, "text-grape-700 bg-grape-50"],
                 ].map(([label, value, color]) => <div key={label} className={`rounded-2xl p-3 text-center ${color}`}><p className="text-[11px] font-bold opacity-75">{label}</p><p className="mt-1 font-display text-sm font-black">{value}</p></div>)}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-bold text-grape-600">
+                <p>ممتاز حفظ: {ar(canonical.memorizationExcellent)} · جيد جدًا: {ar(canonical.memorizationVeryGood)}</p>
+                <p>ممتاز مراجعة: {ar(canonical.reviewExcellent)} · جيد جدًا: {ar(canonical.reviewVeryGood)}</p>
+                <p>حفظ منجز: {n(canonical.memorizationVerses)} آية · {n(canonical.memorizationLines)} سطر</p>
+                <p>مراجعة منجزة: {n(canonical.reviewVerses)} آية · {n(canonical.reviewLines)} سطر</p>
+                <p>نقاط الحضور والتسميع: {ar(canonical.earnedLearningXp)}</p>
+                <p>عملات الحضور والتسميع المكتسبة: {ar(canonical.earnedLearningCoins)} (قبل المشتريات)</p>
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[11px] font-bold text-grape-600">
                 <p className="rounded-xl bg-slate-50 p-2">الانضباط: {periodAttendanceRate === null ? "لا بيانات" : `${ar(periodAttendanceRate)}٪`}</p>
@@ -483,8 +370,8 @@ export default function ParentPortal({ token }: { token: string }) {
 
                   const isAbsent = state?.absent === true;
                   const isPresent = !!state?.a && !isAbsent;
-                  const hasMem = isPresent && (!!state?.h || rating?.h === "excellent" || rating?.h === "very-good");
-                  const hasRev = isPresent && (!!state?.r || rating?.r === "excellent" || rating?.r === "very-good");
+                  const hasMem = isLearningCompleted(student,day.key,'h');
+                  const hasRev = isLearningCompleted(student,day.key,'r');
 
                   return (
                     <div
@@ -526,7 +413,7 @@ export default function ParentPortal({ token }: { token: string }) {
                                 </span>
                               ) : (
                                 <span className="rounded bg-amber-100 px-1.5 py-0.2 text-[10px] font-black text-amber-800">
-                                  لم يُسمّع
+                                  {state?.testing===true?'معفى بسبب الاختبار':'لم يُسمّع'}
                                 </span>
                               )}
                             </div>

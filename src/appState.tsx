@@ -1,3 +1,4 @@
+import { ceremonyWinners, pickIds, updateCeremonyWinner } from "./ceremonySelection";
 import { applyArchiveAdjustment, archiveCloudPayload } from "./archiveAdjustment";
 /* الحالة المركزية للمنصة مع الحفظ في localStorage */
 import { buildCloudPatch } from "./cloudPatch";
@@ -213,7 +214,7 @@ type Ctx = State & {
 
   grantAward: (id: string, title: string, coins?: number, xp?: number, uniqueKey?: string) => void;
   setCeremonyPick: (key: keyof CeremonyPicks, id: string | null) => void;
-  setCeremonyHalaqaPick: (reward: PerHalaqaRewardKey, halaqaId: string, id: string | null) => void;
+  setCeremonyHalaqaPick: (reward: PerHalaqaRewardKey, halaqaId: string, id: string | null, slot?: number) => void;
   setRewardSetting: (key: keyof RewardSettings, value: Partial<RewardSettings[keyof RewardSettings]>) => void;
   removeWeekLog: (week: number) => void;
   updateWeekLog: (week: number, next: WeekLog, base: WeekLog) => Promise<{ success: boolean; error?: string }>;
@@ -1559,8 +1560,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         champion1: current.champion1 === id ? undefined : current.champion1,
         champion2: current.champion2 === id ? undefined : current.champion2,
         champion3: current.champion3 === id ? undefined : current.champion3,
-        improvedByHalaqa: Object.fromEntries(Object.entries(current.improvedByHalaqa ?? {}).filter(([, studentId]) => studentId !== id)),
-        behaviorByHalaqa: Object.fromEntries(Object.entries(current.behaviorByHalaqa ?? {}).filter(([, studentId]) => studentId !== id)),
+        improvedByHalaqa: Object.fromEntries(Object.entries(current.improvedByHalaqa ?? {}).map(([key,value]) => [key,pickIds(value).filter(studentId=>studentId!==id)])),
+        behaviorByHalaqa: Object.fromEntries(Object.entries(current.behaviorByHalaqa ?? {}).map(([key,value]) => [key,pickIds(value).filter(studentId=>studentId!==id)])),
         championExcludedIds: (current.championExcludedIds ?? []).filter((studentId) => studentId !== id),
       }));
       toast("error", `تم حذف ${st?.name ?? "الطالب"} من الكشف`);
@@ -2178,25 +2179,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCeremonyPicks((p) => ({ ...p, [key]: id ?? undefined }));
   }, []);
 
-  const setCeremonyHalaqaPick = useCallback((reward: PerHalaqaRewardKey, halaqaId: string, id: string | null) => {
-    const mapKey = reward === "improved" ? "improvedByHalaqa" : "behaviorByHalaqa";
-    setCeremonyPicks((current) => {
-      const previous = current[mapKey] ?? {};
-      const next = { ...previous };
-      if (id) next[halaqaId] = id;
-      else delete next[halaqaId];
-      return { ...current, [mapKey]: next };
-    });
-  }, []);
-
+  const setCeremonyHalaqaPick = useCallback((reward: PerHalaqaRewardKey, halaqaId: string, id: string | null, slot = 0) => {
+    setCeremonyPicks(current => updateCeremonyWinner(current,reward,halaqaId,id,slot,students));
+  }, [students]);
   const clearCeremonyReward = useCallback((reward: PerHalaqaRewardKey, halaqaId?: string) => {
-    const mapKey = reward === "improved" ? "improvedByHalaqa" : "behaviorByHalaqa";
-    setCeremonyPicks((current) => {
-      const nextMap = { ...(current[mapKey] ?? {}) };
-      if (halaqaId) delete nextMap[halaqaId];
-      else Object.keys(nextMap).forEach((key) => delete nextMap[key]);
-      return { ...current, [reward]: undefined, [mapKey]: nextMap };
-    });
+    const mapKey = reward === 'improved' ? 'improvedByHalaqa' : 'behaviorByHalaqa';
+    setCeremonyPicks(current => halaqaId
+      ? {...current,[mapKey]:{...current[mapKey],[halaqaId]:[]}}
+      : {...current,[reward]:undefined,[mapKey]:{}});
   }, []);
 
   const setChampionExcluded = useCallback((id: string, excluded: boolean) => {
@@ -2362,10 +2352,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     for (const reward of ["improved", "behavior"] as const) {
       if (!rewardSettings[reward].enabled) continue;
-      const picks = reward === "improved" ? ceremonyPicks.improvedByHalaqa : ceremonyPicks.behaviorByHalaqa;
-      for (const studentId of Object.values(picks ?? {})) {
-        const student = students.find((item) => item.id === studentId);
-        if (student) awards.push({ title: reward === "improved" ? "الأكثر تطورًا" : "أفضل سلوك", studentName: student.name, coins: rewardSettings[reward].coins, reward });
+      for (const halaqa of halaqas) for (const studentId of ceremonyWinners(ceremonyPicks,reward,halaqa.id,students)) {
+        const student=students.find(item=>item.id===studentId);
+        if(student)awards.push({title:reward==='improved'?'الأكثر تطورًا':'أفضل سلوك',studentName:student.name,coins:rewardSettings[reward].coins,reward});
       }
     }
     if (tripOn && rewardSettings.trip.enabled) students.filter((student) => tripAttendees.includes(student.id)).forEach((student) => awards.push({ title: "جائزة الرحلة", studentName: student.name, coins: rewardSettings.trip.coins, reward: "trip" }));
@@ -2455,7 +2444,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setShowCeremony(false);
     sfx.sparkle();
     toast("success", "بدأ أسبوع جديد — كشف نظيف للجميع، والقلوب كما هي");
-  }, [acquireActionLock, ceremonyPicks, ceremonyProductIds, rewardSettings, showNewProducts, students, toast, tripAttendees, tripDay, tripOn, week, weekName, weekStartDateIso]);
+  }, [halaqas, acquireActionLock, ceremonyPicks, ceremonyProductIds, rewardSettings, showNewProducts, students, toast, tripAttendees, tripDay, tripOn, week, weekName, weekStartDateIso]);
 
   const setWeekName = useCallback((name: string) => setWeekNameState(name), []);
   const setWeekStartDateIso = useCallback((value: string) => setWeekStartDateIsoState(value), []);

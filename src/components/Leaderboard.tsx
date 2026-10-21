@@ -1,7 +1,7 @@
 /* ترتيب جميع الطلاب من الأول إلى الأخير مع ترتيب كثيف للمتساوين */
 import { useMemo, useState } from "react";
 import { useApp } from "../appState";
-import { ar, denseXpRanking, levelInfo, type Student } from "../core";
+import { ar, denseStudentRanking, type RankingMode, levelInfo, type Student } from "../core";
 import Avatar from "./Avatar";
 import { CoinChip, heartFade, Icon, LevelBadge, SectionHead, XpBar } from "./ui";
 
@@ -47,6 +47,7 @@ const normalizeArabic = (text: string): string => {
 
 export default function Leaderboard() {
   const { students, halaqas } = useApp();
+  const [rankingMode,setRankingMode] = useState<RankingMode>("level-xp");
   const [selectedHalaqa, setSelectedHalaqa] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -58,7 +59,7 @@ export default function Leaderboard() {
   }, [students, selectedHalaqa]);
 
   // حساب الترتيب الكثيف مع الحفاظ على التعادل في النقاط
-  const ranking = useMemo(() => denseXpRanking(filteredByHalaqa), [filteredByHalaqa]);
+  const ranking = useMemo(() => denseStudentRanking(filteredByHalaqa,rankingMode), [filteredByHalaqa,rankingMode]);
 
   // البحث عن طالب بالاسم الجزئي دون المساس بالمركز المحسوب
   const displayedRanking = useMemo(() => {
@@ -72,10 +73,15 @@ export default function Leaderboard() {
       <SectionHead
         icon="trophy"
         title="ترتيب الطلاب"
-        desc="جميع الطلاب من الأول إلى الأخير حسب نظام النقاط الحالي — المتساوون يحصلون على المركز نفسه"
+        desc="المستوى والنقاط أو رصيد العملات المتاح — المتساوون يحصلون على المركز نفسه"
         color="bg-gold-400/30 text-gold-600"
       />
 
+      <label className="mb-3 block text-xs font-extrabold text-grape-600">طريقة الترتيب
+        <select aria-label="طريقة الترتيب" value={rankingMode} onChange={e=>setRankingMode(e.target.value as RankingMode)} className="field-control mt-1 w-full sm:max-w-sm">
+          <option value="level-xp">المستوى والنقاط</option><option value="coins">رصيد العملات الحالي</option>
+        </select>
+      </label>
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
         <label className="text-xs font-extrabold text-grape-600">
           تصفية الترتيب حسب الحلقة
