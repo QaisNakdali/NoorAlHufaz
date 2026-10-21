@@ -94,36 +94,9 @@ async function readCloud(): Promise<CloudPayload | null> {
   return rememberSnapshot({ rev: Number(data.rev) || 0, data: data.data });
 }
 
-/** يحفظ الحالة ويعيدها بعد نقل الصور إلى Storage إن وجدت. */
-export async function cloudSave(payload: CloudPayload, expectedRev: number): Promise<CloudSaveResult> {
-  const prepared = await preparePayload(payload);
-  const row = {
-    id: STATE_ID,
-    rev: prepared.rev,
-    data: prepared.data,
-    updated_at: new Date().toISOString(),
-  };
-
-  // مقارنة وتبديل ذرية: لا يُسمح بالحفظ إلا إذا بُني التعديل على النسخة الحالية نفسها.
-  // هذا يمنع جهازًا يحمل حالة قديمة من استبدال بيانات أحدث لمجرد أن ساعته أعطت رقمًا أكبر.
-  const { data: updated, error: updateError } = await supabase
-    .from(STATE_TABLE)
-    .update(row)
-    .eq("id", STATE_ID)
-    .eq("rev", expectedRev)
-    .select("rev")
-    .maybeSingle();
-  if (updateError) throw updateError;
-  if (updated) return { ...rememberSnapshot(prepared), applied: true, networkRequests: 1 };
-
-  // إذا لم يوجد الصف بعد، نحاول إنشاءه. تعارض الإنشاء يعني أن جهازًا آخر سبقنا.
-  const { error: insertError } = await supabase.from(STATE_TABLE).insert(row);
-  if (!insertError) return { ...rememberSnapshot(prepared), applied: true, networkRequests: 2 };
-  if (insertError.code !== "23505") throw insertError;
-
-  // حدث تعديل متزامن؛ نعيد النسخة الفائزة كي يدمج المتصل تغييره فوقها ثم يعيد المحاولة.
-  const latest = await cloudLoad();
-  return latest ? { ...latest, applied: false, networkRequests: 3 } : { ...prepared, applied: false, networkRequests: 3 };
+/** الحفظ العادي يستخدم فرقًا مبنيًا على نسخة المراجعة نفسها، مثل الشراء. */
+export async function cloudSave(payload: CloudPayload, expectedRev: number, before?: unknown): Promise<CloudSaveResult> {
+  return cloudSaveCompact(payload, expectedRev, before);
 }
 
 /**
@@ -136,7 +109,7 @@ export async function cloudSaveCompact(payload: CloudPayload, expectedRev: numbe
   const prepared = await preparePayload(payload);
   if (patchAvailable && before) {
     const patch = buildCloudPatch(before, prepared.data);
-    if (patch.length > 0 && patch.length <= 2000) {
+    if (patch.length <= 2000) {
       const { data, error } = await supabase.rpc("noor_apply_patch", {
         p_state_id: STATE_ID, p_expected_rev: expectedRev, p_next_rev: expectedRev + 1, p_patch: patch,
       });
