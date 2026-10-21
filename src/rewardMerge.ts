@@ -1,5 +1,5 @@
 import { weekXpOf, weekCoinsOf, levelInfo, LEVEL_COIN_REWARD, type Student, type WeekLog } from "./core.ts";
-import { mergeLocalChanges, type MergeConflict } from "./syncMerge.ts";
+import { mergeLocalChanges, sameValue, type MergeConflict } from "./syncMerge.ts";
 
 function earned(state: any, id: string): {xp:number;coins:number} {
   const s=state.students.find((s:Student)=>s.id===id);
@@ -9,11 +9,30 @@ function earned(state: any, id: string): {xp:number;coins:number} {
     const r=w.records?.find(r=>r.id===id);
     if(r){xp+=weekXpOf(r.days);coins+=weekCoinsOf(r.days);}
   }
+  const seenAwards = new Set<string>();
+  for(const award of s?.awards ?? []) {
+    if(!award.id || seenAwards.has(award.id)) continue;
+    seenAwards.add(award.id);
+    xp += Math.max(0, award.xp ?? 0);
+    coins += Math.max(0, award.coins ?? 0);
+  }
   return {xp,coins};
+}
+
+function hasWeekEdits(base:any,next:any):boolean {
+  if(!sameValue(base?.ceremonyPicks,next?.ceremonyPicks))return true;
+  return (base?.students??[]).some((before:Student)=>{
+    const after=next?.students?.find((s:Student)=>s.id===before.id);
+    return after && ['days','ward','recitationRatings'].some(key=>!sameValue((before as any)[key],after[key]));
+  });
 }
 
 /** Numeric balances are derived, unlike manual adjustments and recorded spending. */
 export function mergeAccountingChanges(base:any,local:any,remote:any,path:string[]=[],conflicts:MergeConflict[]=[]):any {
+  if(base?.week!==undefined && local?.week!==remote?.week &&
+    ((local?.week!==base.week && hasWeekEdits(base,remote)) || (remote?.week!==base.week && hasWeekEdits(base,local)))) {
+    throw Error('تغيّر الأسبوع أثناء تعديل الكشف؛ احتُفظ بالتعديل المحلي للمراجعة، ولا يمكن نقله تلقائيًا إلى الأسبوع الجديد');
+  }
   const merged=mergeLocalChanges(base,local,remote,path,conflicts) as any;
   if(conflicts.some(c=>c.path.startsWith('ceremonyPicks.')))throw Error('تغيّر اختيار الجائزة لدى معلم آخر؛ حدّث الصفحة وراجع الاختيارات قبل الحفظ');
   for(const key of ['improvedByHalaqa','behaviorByHalaqa'])for(const ids of Object.values(merged?.ceremonyPicks?.[key]??{})){
