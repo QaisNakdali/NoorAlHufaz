@@ -1,3 +1,4 @@
+import { uniqueHistory } from "./weekHistory.ts";
 import { DAYS, estimatedLinesFromVerses, levelInfo, weekXpOf, type DayKey, type ParentContactRecord, type RecitationPart, type Student, type WeekLog, type WeekLogEntry } from "./core.ts";
 import { reviewLinesForWard, safeNonNegativeDecimal } from "./learningMetrics.ts";
 import { pagesForAyahRange, parseQuranRange } from "./quranPages.ts";
@@ -145,7 +146,7 @@ export function analyzeStudent(student: Student, weeksLog: WeekLog[]): StudentAn
     .trim()
     .toLowerCase();
 
-  const history = weeksLog
+  const history = uniqueHistory(weeksLog)
     .map((w) => {
       const record = w.records?.find((r) => r.id === student.id);
       const entry = (w.students ?? w.top).find((e) => e.id === student.id);
@@ -343,7 +344,7 @@ export function analyzeAttendance(student: Student, weeksLog: WeekLog[]): Attend
   const absentDays = DAYS.filter((day) => student.days[day.key].absent === true).length;
   const evaluatedDays = presentDays + absentDays;
   const attendanceRate = evaluatedDays > 0 ? round((presentDays / evaluatedDays) * 100, 1) : null;
-  const historicRates = [...weeksLog]
+  const historicRates = uniqueHistory(weeksLog)
     .sort((a, b) => a.week - b.week)
     .map((log) => historicalEntry(log, student.id))
     .filter((entry): entry is WeekLogEntry => !!entry && entry.absenceDays !== undefined)
@@ -378,7 +379,7 @@ export function analyzeAttendance(student: Student, weeksLog: WeekLog[]): Attend
 export function analyzeLearningTrack(student: Student, weeksLog: WeekLog[], kind: LearningTrack): TrackAnalysis {
   const noun = kind === "memorization" ? "الحفظ" : "المراجعة";
   const current = buildTrackSnapshot(student, kind);
-  const historyEntries = [...weeksLog]
+  const historyEntries = uniqueHistory(weeksLog)
     .sort((a, b) => a.week - b.week)
     .map((log) => historicalEntry(log, student.id))
     .filter((entry): entry is NonNullable<typeof entry> => !!entry);
@@ -534,7 +535,7 @@ export function analyzeStudentTrend(
   }
 
   // 2. تحليل السجلات عبر الأسابيع التاريخية
-  const chronologicalWeeks = [...weeksLog]
+  const chronologicalWeeks = uniqueHistory(weeksLog)
     .filter((w) => w && w.week != null)
     .sort((a, b) => Number(a.week) - Number(b.week));
 
@@ -652,7 +653,7 @@ export function generateParentAIGuidance(
   for (const d of DAYS) {
     const st = student.days?.[d.key];
     const rt = student.recitationRatings?.[d.key];
-    if (st?.a && !st.absent) {
+    if (!st?.absent) {
       if (isLearningCompleted(student, d.key, "h")) {
         currMemSessions += 1;
         if (rt?.h === "excellent") currExcellent += 1;
@@ -667,7 +668,7 @@ export function generateParentAIGuidance(
   }
 
   // 2. تحليل الأسابيع السابقة المتراكمة
-  const pastRecords = weeksLog
+  const pastRecords = uniqueHistory(weeksLog)
     .map((log) => {
       const rec = log.records?.find((r) => r.id === student.id);
       if (rec) return rec;

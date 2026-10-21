@@ -1,6 +1,7 @@
+export const STATISTICS_TIME_ZONE = "Asia/Riyadh";
 const CALENDAR = "ar-SA-u-ca-islamic-umalqura";
 
-const parts = (date: Date) => new Intl.DateTimeFormat(CALENDAR, {
+const parts = (date: Date) => new Intl.DateTimeFormat(CALENDAR, { timeZone: STATISTICS_TIME_ZONE,
   day: "numeric",
   month: "numeric",
   year: "numeric",
@@ -15,7 +16,7 @@ export const hijriMonthKey = (date: Date): string => `${part(date, "year")}-${pa
 export const formatHijriDate = (value: Date | string | number, options: Intl.DateTimeFormatOptions = {}): string => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "تاريخ غير متاح";
-  return new Intl.DateTimeFormat(CALENDAR, {
+  return new Intl.DateTimeFormat(CALENDAR, { timeZone: STATISTICS_TIME_ZONE,
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -24,31 +25,24 @@ export const formatHijriDate = (value: Date | string | number, options: Intl.Dat
 };
 
 export const formatHijriMonth = (date: Date): string =>
-  new Intl.DateTimeFormat(CALENDAR, { month: "long", year: "numeric" }).format(date);
+  new Intl.DateTimeFormat(CALENDAR, { timeZone: STATISTICS_TIME_ZONE, month: "long", year: "numeric" }).format(date);
 
 export const isSameHijriMonth = (a: Date, b: Date): boolean => hijriMonthKey(a) === hijriMonthKey(b);
 
 /** حدود الشهر الهجري الحالي للحسابات التي تحتاج مدى زمنيًا. */
 export function currentHijriMonthBounds(now = new Date()): { start: Date; end: Date } {
-  const key = hijriMonthKey(now);
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  while (hijriMonthKey(new Date(start.getTime() - 86_400_000)) === key) start.setDate(start.getDate() - 1);
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-  while (hijriMonthKey(new Date(end.getTime() + 1)) === key) end.setDate(end.getDate() + 1);
-  return { start, end };
+  const key=hijriMonthKey(now);
+  let first=dateFromLocalKey(localDateKey(now))!,last=first;
+  while(hijriMonthKey(addCalendarDays(first,-1))===key)first=addCalendarDays(first,-1);
+  while(hijriMonthKey(addCalendarDays(last,1))===key)last=addCalendarDays(last,1);
+  return {start:new Date(localDateKey(first)+'T00:00:00+03:00'),end:new Date(new Date(localDateKey(addCalendarDays(last,1))+'T00:00:00+03:00').getTime()-1)};
 }
-
 export function dateForCurrentWeekDay(dayIndex: number, now = new Date()): Date {
-  const start = new Date(now);
-  start.setHours(12, 0, 0, 0);
-  start.setDate(start.getDate() - start.getDay() + dayIndex);
-  return start;
+  return addCalendarDays(teachingWeekStart(now),dayIndex);
 }
 
 const latinParts = (date: Date) => new Intl.DateTimeFormat("en-SA-u-ca-islamic-umalqura", {
-  day: "numeric", month: "numeric", year: "numeric",
+  day: "numeric", month: "numeric", year: "numeric", timeZone: STATISTICS_TIME_ZONE,
 }).formatToParts(date);
 
 const latinPart = (date: Date, type: Intl.DateTimeFormatPartTypes): number =>
@@ -56,37 +50,29 @@ const latinPart = (date: Date, type: Intl.DateTimeFormatPartTypes): number =>
 
 /** مفتاح تاريخ محلي آمن؛ يبقى التخزين تقنيًا بينما يكون العرض هجريًا. */
 export function localDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const p=new Intl.DateTimeFormat('en-CA',{timeZone:STATISTICS_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
+  return ['year','month','day'].map(k=>p.find(v=>v.type===k)?.value).join('-');
 }
-
 export function dateFromLocalKey(value: string): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return null;
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
-  return Number.isNaN(date.getTime()) || localDateKey(date) !== value ? null : date;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return null;
+  const date=new Date(value+'T12:00:00+03:00');
+  return Number.isNaN(date.getTime())||localDateKey(date)!==value?null:date;
 }
-
-/** يتحقق من أن مفتاح التاريخ صالح ويمثل يوم الأحد، بداية أسبوع الحلقة. */
 export function isTeachingWeekStart(value: string): boolean {
   const date = dateFromLocalKey(value);
-  return !!date && date.getDay() === 0;
+  return !!date && date.getUTCDay() === 0;
 }
 
 /** الأحد الذي يبدأ أسبوع الكشف الحالي. */
 export function teachingWeekStart(now = new Date()): Date {
-  const start = new Date(now);
-  start.setHours(12, 0, 0, 0);
-  start.setDate(start.getDate() - start.getDay());
-  return start;
+  const date=dateFromLocalKey(localDateKey(now))!;
+  return addCalendarDays(date,-date.getUTCDay());
 }
-
 export function addCalendarDays(value: Date | string, amount: number): Date {
-  const date = value instanceof Date ? new Date(value) : (dateFromLocalKey(value) ?? new Date(value));
-  date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() + amount);
+  const original=value instanceof Date?value:(dateFromLocalKey(value)??new Date(value));
+  const date=dateFromLocalKey(localDateKey(original));
+  if(!date)return new Date(NaN);
+  date.setUTCDate(date.getUTCDate()+amount);
   return date;
 }
 
