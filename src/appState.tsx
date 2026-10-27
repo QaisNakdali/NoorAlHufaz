@@ -222,7 +222,7 @@ type Ctx = State & {
   /* الرحلة الأسبوعية */
   setTrip: (on: boolean, day?: TripDay | null) => void;
   toggleTripAttendee: (id: string) => void;
-  startWeek: () => void;
+  startWeek: () => Promise<void>;
   showCeremony: boolean;
   startCeremony: () => void;
   closeCeremony: () => void;
@@ -754,6 +754,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const revRef = useRef(0); // آخر رقم نسخة سحابية بُنيت عليه الحالة المحلية
   const syncedBaseRef = useRef<State | null>(null); // آخر حالة مؤكدة من السحابة للمقارنة والدمج
   const dirtyRef = useRef(false); // توجد فروق محلية لم تُحفظ بعد
+  const [weekClosing, setWeekClosing] = useState(false);
   const cloudDataRef = useRef<State | null>(null); // مرآة البيانات لأغراض الرفع
   const pushTimer = useRef<number | null>(null);
   const firstSave = useRef(true);
@@ -1295,7 +1296,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         setCloud(c => ({ ...c, status: 'error', lastError: errMsg(error) }));
       }
-    });
+    }, message => setCloud(c => ({...c, status: "error", lastError: message})));
   }, [cloudEnabled, pullCloud, receiveRemote]);
 
   /** مزامنة فورية يدوية (سحب ثم رفع) */
@@ -2346,9 +2347,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const closeCeremony = useCallback(() => setShowCeremony(false), []);
 
   /** بدء أسبوع جديد: يؤرشف نتائج الأسبوع الحالي — القلوب تستمر كما هي */
-  const startWeek = useCallback(() => {
-    if (!acquireActionLock(`start-week:${week}`, 5000)) return;
-    // أرشفة الأسبوع المنتهي
+  const startWeek = useCallback(async () => {
+    const lock = 'week-close';
+    if (checkoutLocksRef.current.has(lock)) return;
+    checkoutLocksRef.current.add(lock);
+    setWeekClosing(true);
+    if (pushTimer.current) window.clearTimeout(pushTimer.current);
+    let targetWeek = week;
+    const intentKey = `${KEY}:pending-week-close:${CLOUD_STATE_SCOPE}`;
+    const buildNext = (current: State): State => {
+      const { students, halaqas, ceremonyPicks, rewardSettings, tripOn, tripDay, tripAttendees, week, weekName, weekStartDateIso, showNewProducts, ceremonyProductIds, products } = current;
     const championExcluded = new Set(ceremonyPicks.championExcludedIds ?? []);
     const champs = championTop(students, tripOn, tripAttendees, rewardSettings.champions.ratingMode).filter((student) => !championExcluded.has(student.id));
     const awards: { title: string; studentName: string; coins?: number; reward?: RewardKey }[] = [];
@@ -2417,21 +2425,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
           : null,
     };
-    setWeeksLog((logs) => [log, ...logs.filter((l) => l.week !== week)]);
-    // لا يُوسم المنتج بأنه عُرض إلا بعد إكمال الحفل. المنتجات المعروضة تُستبعد من الحفلات القادمة.
-    if (showNewProducts) {
-      const selected = new Set(ceremonyProductIds);
-      const toMark = ceremonyProductIds.length > 0 ? selected : new Set(products.filter((p) => p.showInCeremony !== false && p.shownInCeremonyWeek == null && !p.shownInCeremony).map((p) => p.id));
-      if (toMark.size > 0) {
-        setProducts((items) => items.map((item) => toMark.has(item.id) ? { ...item, shownInCeremonyWeek: week, shownInCeremony: true, ceremonyPending: false } : item));
-      }
-    }
-    // أسبوع جديد: كشف نظيف — والقلوب تبقى كما هي (تُستعاد بالشراء أو بمنحة المعلم فقط)
-    setWeek((w) => w + 1);
-    setWeekNameState("");
-    setWeekStartDateIsoState(hijriLocalDateKey(addCalendarDays(weekStartDateIso, 7)));
-    setStudents((ss) => ss.map((s) => ({
-      ...s,
+
+      const selected = new Set(ceremonyProductIds.length ? ceremonyProductIds : products.filter(p => p.showInCeremony !== false && p.shownInCeremonyWeek == null && !p.shownInCeremony).map(p => p.id));
+      return { ...current, week: week + 1, weekName: '', weekStartDateIso: hijriLocalDateKey(addCalendarDays(weekStartDateIso, 7)),
+        weeksLog: [log, ...current.weeksLog.filter(l => l.week !== week)],
+        products: showNewProducts ? products.map(p => selected.has(p.id) ? {...p, shownInCeremonyWeek: week, shownInCeremony: true, ceremonyPending: false} : p) : products,
+        students: students.map(s => ({...s,
       days: emptyWeekDays(),
       recitationRatings: emptyRecitationRatings(),
       ward: emptyWeeklyWard(),
@@ -2440,16 +2439,69 @@ export function AppProvider({ children }: { children: ReactNode }) {
       heartsLostWeek: 0,
       dailyRecitedDate: null,
       dailyAbsentDate: null,
-    })));
-    setCeremonyPicks({});
-    setCeremonyProductIds([]);
-    setTripOn(false);
-    setTripDay(null);
-    setTripAttendees([]);
-    setShowCeremony(false);
-    sfx.sparkle();
-    toast("success", "بدأ أسبوع جديد — كشف نظيف للجميع، والقلوب كما هي");
-  }, [halaqas, acquireActionLock, ceremonyPicks, ceremonyProductIds, rewardSettings, showNewProducts, students, toast, tripAttendees, tripDay, tripOn, week, weekName, weekStartDateIso]);
+
+        })), ceremonyPicks: {}, ceremonyProductIds: [], tripOn: false, tripDay: null, tripAttendees: [] };
+    };
+
+    await writeQueueRef.current.run(async () => {
+      try {
+        const pending = JSON.parse(localStorage.getItem(intentKey) ?? "null");
+        if (Number.isInteger(pending?.week) && pending.week > 0 && pending.week <= week) targetWeek = pending.week;
+        localStorage.setItem(intentKey, JSON.stringify({week: targetWeek}));
+        let latest = await cloudLoad();
+        for (let attempt = 0; attempt < 6; attempt++) {
+          if (!latest) throw new Error('تعذر قراءة الأسبوع المشترك؛ لم يبدأ أسبوع جديد');
+          const remote = stateFromCloudPayload(latest.data);
+          const submitted = cloudDataRef.current ?? remote;
+          if (remote.week > targetWeek && remote.weeksLog.some(log => log.week === targetWeek)) {
+            const conflicts: MergeConflict[] = [];
+            const rebased = dirtyRef.current ? stateFromPartial(mergeLocalChanges(syncedBaseRef.current ?? submitted, submitted, remote, [], conflicts) as Partial<State>) : remote;
+            if (conflicts.length) throw new Error('توجد تعديلات معلقة متعارضة؛ احتُفظ بها للمراجعة');
+            if (!sameValue(rebased, remote)) {
+              const payload = archiveCloudPayload(latest.data, remote, rebased);
+              const saved = await cloudSaveCompact({rev: latest.rev + 1, data: payload}, latest.rev, latest.data);
+              if (!saved.applied) { latest = {rev: saved.rev, data: saved.data}; continue; }
+              acceptCheckoutCommit(submitted, stateFromCloudPayload(saved.data), saved.rev);
+            } else acceptCheckoutCommit(submitted, remote, latest.rev);
+            localStorage.removeItem(intentKey);
+            setCloud(c => ({...c, status: 'ok', lastSyncAt: Date.now(), lastError: null}));
+            setShowCeremony(false);
+            toast('success', 'الأسبوع الجديد محفوظ مركزيًا وتعديلات الأسبوع السابق محفوظة في أرشيفه');
+            return;
+          }
+          if (remote.week !== targetWeek || submitted.week !== targetWeek) throw new Error('تغيّر الأسبوع؛ راجع حالة المزامنة قبل إنهائه');
+          const conflicts: MergeConflict[] = [];
+          const current = dirtyRef.current ? stateFromPartial(mergeLocalChanges(syncedBaseRef.current ?? submitted, submitted, remote, [], conflicts) as Partial<State>) : remote;
+          if (conflicts.length) throw new Error('توجد تعديلات متعارضة؛ راجعها قبل إنهاء الأسبوع');
+          const next = buildNext(current);
+          setCloud(c => ({...c, status: 'syncing'}));
+          const payload = archiveCloudPayload(latest.data, remote, next) as State;
+          // Reset the raw weekly fields too: legacy cached totals may differ from normalization.
+          payload.students = payload.students.map(student => ({...student, days: emptyWeekDays(), recitationRatings: emptyRecitationRatings(), ward: emptyWeeklyWard(), weekXp: 0, weekCoins: 0, heartsLostWeek: 0, dailyRecitedDate: null, dailyAbsentDate: null}));
+          const saved = await cloudSaveCompact({rev: latest.rev + 1, data: payload}, latest.rev, latest.data);
+          if (saved.applied) {
+            acceptCheckoutCommit(submitted, stateFromCloudPayload(saved.data), saved.rev);
+            setCloud(c => ({...c, status: 'ok', lastSyncAt: Date.now(), lastError: null}));
+            setShowCeremony(false);
+            localStorage.removeItem(intentKey);
+            sfx.sparkle();
+            toast('success', 'تم حفظ الأرشيف وبدء الأسبوع الجديد في السحابة');
+            return;
+          }
+          latest = {rev: saved.rev, data: saved.data};
+        }
+        throw new Error('تعديلات متزامنة كثيرة؛ أعد محاولة إنهاء الأسبوع');
+      } catch (error) {
+        const message = errMsg(error);
+        setCloud(c => ({...c, status: 'error', lastError: message}));
+        toast('error', message);
+      } finally {
+        checkoutLocksRef.current.delete(lock);
+        setWeekClosing(false);
+        drainRemoteRef.current();
+      }
+    });
+  }, [week, acceptCheckoutCommit, toast]);
 
   const setWeekName = useCallback((name: string) => setWeekNameState(name), []);
   const setWeekStartDateIso = useCallback((value: string) => setWeekStartDateIsoState(value), []);
@@ -2562,5 +2614,5 @@ export function AppProvider({ children }: { children: ReactNode }) {
     checkoutParentCart,
   };
 
-  return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
+  return <AppCtx.Provider value={value}>{children}{weekClosing && <div role="status" aria-live="polite" className="fixed inset-0 z-[1000] grid place-items-center bg-black/40 p-4"><div className="rounded-2xl bg-white p-6 text-center font-bold text-grape-700">جارٍ حفظ الأرشيف وتأكيد الأسبوع الجديد… يرجى الانتظار</div></div>}</AppCtx.Provider>;
 }

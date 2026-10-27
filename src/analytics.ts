@@ -212,7 +212,8 @@ export function buildTrackSnapshot(student: Student, kind: LearningTrack): Track
   const expectedPagesValue = plannedDays.reduce((sum, day) => sum + pagesForWardDay(student, day.key, kind).pages, 0);
   let excellent = 0;
   let veryGood = 0;
-  for (const day of plannedDays) {
+  // A confirmed rating counts even when the teacher did not enter a quantity.
+  for (const day of evaluableDays) {
     if (!isLearningCompleted(student, day.key, part)) continue;
     const rating = student.recitationRatings?.[day.key]?.[part];
     if (rating === "excellent") excellent += 1;

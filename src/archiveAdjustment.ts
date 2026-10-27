@@ -1,5 +1,5 @@
 import { DAYS, LEVEL_COIN_REWARD, MAX_HEARTS, emptyWeekDays, emptyWeeklyWard, levelInfo, weekCoinsOf, weekXpOf, isChampionEligible, type Student, type WeekLog, type WeekStudentRecord } from "./core.ts";
-import { measureStudentWork } from "./analytics.ts";
+import { buildTrackSnapshot, measureStudentWork } from "./analytics.ts";
 import { sameValue } from "./syncMerge.ts";
 import { buildCloudPatch } from "./cloudPatch.ts";
 
@@ -100,17 +100,30 @@ export function applyArchiveAdjustment<T extends {students:Student[];weeksLog:We
     if(!Number.isFinite(xp) || !Number.isFinite(coins) || xp<0 || coins<0)throw Error(`لا يكفي رصيد ${s.name} لعكس المكافأة القديمة؛ المشتريات محفوظة والتعديل لم يُطبّق`);
     students[index]={...s,xp,coins,highestRewardedLevel:highest};
   }
+  const next = rebuildArchiveSummary({...merged, records}, old);
+  return {...state,students,weeksLog:state.weeksLog.map(w=>w.week===targetWeek?next:w)};
+}
+
+/** Rebuild cached archive statistics without changing any wallet or historical award. */
+export function rebuildArchiveSummary(merged: WeekLog, old: WeekLog = merged): WeekLog {
+  const records = merged.records ?? [];
   const entries=records.map(r=>{
     const previous=old.students?.find(e=>e.id===r.id)??old.top.find(e=>e.id===r.id);
     const mem=measureStudentWork(r as Student,"memorization"),rev=measureStudentWork(r as Student,"review");
+    const memorizationSnapshot=buildTrackSnapshot(r as Student,"memorization"),reviewSnapshot=buildTrackSnapshot(r as Student,"review");
     const tripIds=merged.tripAttendeeIds??[];
-    return {...previous,id:r.id,name:r.name,photo:r.photo,xp:r.xp,coins:r.coins,level:levelInfo(r.xp).level,weekXp:weekXpOf(r.days),weekCoins:weekCoinsOf(r.days),hearts:r.hearts,
+    return {...previous,frame:previous?.frame??null,crown:previous?.crown??null,id:r.id,name:r.name,photo:r.photo,xp:r.xp,coins:r.coins,level:levelInfo(r.xp).level,weekXp:weekXpOf(r.days),weekCoins:weekCoinsOf(r.days),hearts:r.hearts,
       attendanceDays:DAYS.filter(d=>r.days[d.key]?.a&&!r.days[d.key]?.absent).length,absenceDays:DAYS.filter(d=>r.days[d.key]?.absent).length,
+      evaluatedDays:DAYS.filter(d=>r.days[d.key]?.a||r.days[d.key]?.absent).length,
+      memorizationExcellent:memorizationSnapshot.excellent,memorizationVeryGood:memorizationSnapshot.veryGood,
+      reviewExcellent:reviewSnapshot.excellent,reviewVeryGood:reviewSnapshot.veryGood,
+      memorizationExpectedDays:memorizationSnapshot.expectedDays??undefined,reviewExpectedDays:reviewSnapshot.expectedDays??undefined,
+      memorizationExpectedPages:memorizationSnapshot.expectedPages??undefined,reviewExpectedPages:reviewSnapshot.expectedPages??undefined,
       memorizationLines:mem.lines,memorizationPages:mem.pages,memorizationVerses:mem.verses,memorizationDays:mem.sessions,memorizationSessions:mem.sessions,
       reviewLines:rev.lines,reviewPages:rev.pages,reviewVerses:rev.verses,reviewDays:rev.sessions,reviewSessions:rev.sessions,
       memorizationExemptDays:DAYS.filter(d=>r.days[d.key]?.testing===true&&!r.days[d.key]?.h).length,
       championEligible:isChampionEligible(r as Student,!!merged.trip,tripIds,merged.rewardSettings?.champions.ratingMode??"mixed"),isTesting:r.isTesting,halaqaId:r.halaqaId};
   });
   const next={...merged,records,students:entries,top:[...entries].sort((a,b)=>b.weekXp-a.weekXp||b.xp-a.xp).slice(0,10)};
-  return {...state,students,weeksLog:state.weeksLog.map(w=>w.week===targetWeek?next:w)};
+  return next;
 }

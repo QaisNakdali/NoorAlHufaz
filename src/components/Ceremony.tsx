@@ -1,5 +1,4 @@
 import { ceremonyWinners } from "../ceremonySelection";
-import { improvementCandidates } from "../improvementCandidates";
 /* الحفل الأسبوعي — يجهّز المعلم الجوائز والرحلة ثم يضغط زرًا واحدًا للعرض */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../appState";
@@ -85,7 +84,6 @@ export default function CeremonyPanel() {
   const [armWeek, setArmWeek] = useState(false);
   const [openLog, setOpenLog] = useState<number | null>(null);
   const [championSettingsOpen, setChampionSettingsOpen] = useState(false);
-  const candidates = useMemo(() => improvementCandidates(students,weeksLog,week),[students,weeksLog,week]);
   const championExcluded = new Set(ceremonyPicks.championExcludedIds ?? []);
   const championRatingMode = rewardSettings.champions.ratingMode === "excellent" ? "excellent" : "mixed";
   const eligibleChampions = students.filter((student) => isChampionEligible(student, tripOn, tripAttendees, championRatingMode));
@@ -275,23 +273,7 @@ export default function CeremonyPanel() {
           })}
         </div>}
       </div>
-      <section className="mb-4 rounded-3xl border-2 border-grape-200 bg-white p-4">
-        <h3 className="font-display text-lg font-extrabold text-ink">الطلاب المقترحون لجائزة الأكثر تطورًا</h3>
-        <p className="mt-1 text-xs font-bold text-grape-600">مقارنة بالأسبوع السابق مباشرة. الأولوية لتحسن نسبة ممتاز إلى فرص التسميع، ثم زيادة عدد ممتاز. الترشيح لا يختار فائزًا؛ يمكنك اختيار أي طالب.</p>
-        <div className="mt-3 space-y-2">
-          {candidates.filter(c=>c.eligible).map(c=><div key={c.student.id} className="rounded-2xl bg-grape-50 p-3 text-xs font-bold text-grape-700">
-            <p className="font-extrabold">{c.student.name} · {halaqas.find(h=>h.id===c.student.halaqaId)?.name??'بلا حلقة'}</p>
-            <p>ممتاز حفظ: {ar(c.past?.h??0)} ← {ar(c.current.h)} · ممتاز مراجعة: {ar(c.past?.r??0)} ← {ar(c.current.r)}</p>
-            <p>إجمالي ممتاز: {ar(c.past?.total??0)} ← {ar(c.current.total)} · التحسن: +{ar(c.delta??0)}</p>
-            <p>فرص التسميع: {ar(c.past?.opportunities??0)} ← {ar(c.current.opportunities)} · تحسن النسبة: {ar(Math.round((c.rateDelta??0)*100))} نقطة مئوية</p>
-            <p>{c.reason}{c.preliminary?' · تحليل مبدئي: الأسبوع غير مكتمل':''}</p>
-          </div>)}
-          {!candidates.some(c=>c.eligible)&&<p className="text-xs font-bold text-grape-500">لا توجد بيانات تثبت تحسنًا كافيًا حاليًا. يظل الاختيار اليدوي متاحًا للجميع.</p>}
-          {candidates.some(c=>!c.past)&&<p className="text-xs font-bold text-amber-700">الطلاب دون سجل تفصيلي للأسبوع السابق لا يُصنفون تلقائيًا كمتحسنين من الصفر.</p>}
-        </div>
-      </section>
-
-      {/* ===== الأكثر تطورًا وأفضل سلوك — فائز واحد من كل حلقة ===== */}
+      {/* ===== الأكثر تطورًا وأفضل سلوك — حتى فائزين من كل حلقة ===== */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         {AWARDS_META.map((m, i) => {
           const reward = m.key as PerHalaqaRewardKey;

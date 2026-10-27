@@ -1,7 +1,7 @@
 import { studentPeriodMetrics, recordMetrics, uniqueHistory, statisticsMonths } from "../periodStatistics";
 import { isLearningCompleted } from "../learningCompletion";
 /* بوابة خاصة بأولياء الأمور — متابعة حصرية لمستوى الطالب ومتجر متكامل للشراء بالعملات */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../appState";
 import { analyzeStudentTrend, pagesForWardDay } from "../analytics";
 import { ar, bagQty, bagReceivedQty, DAYS, levelInfo, MAX_HEARTS, type Student } from "../core";
@@ -37,6 +37,8 @@ export default function ParentPortal({ token }: { token: string }) {
   const [progressPeriod, setProgressPeriod] = useState<"day" | "week" | "month" | "all">("week");
   const [monthChoice,setMonthChoice]=useState("");
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
+  const purchasingRef = useRef(false);
+  const [purchaseNotice, setPurchaseNotice] = useState("");
   const [equippingId, setEquippingId] = useState<string | null>(null);
 
   // البحث الدائم عن الطالب المطابق لرمز الوصول المشفر
@@ -120,16 +122,20 @@ export default function ParentPortal({ token }: { token: string }) {
   });
 
   const purchaseNow = async (itemId: string) => {
-    if (purchasingId) return;
+    if (purchasingRef.current) return;
+    purchasingRef.current = true;
+    setPurchaseNotice("جارٍ تأكيد الشراء وحفظه…");
     setPurchasingId(itemId);
     try {
       const res = await checkoutParentCart(student.id, [{ itemId, qty: 1 }]);
       if (res.success) {
-        const product = products.find((item) => item.id === itemId);
-        setActiveTab(product?.kind === "cosmetic" ? "bag" : "purchases");
+        setPurchaseNotice("تم الشراء وحفظ العملية بنجاح");
       }
-      else toast("error", res.error || "تعذر إتمام عملية الشراء");
+      else setPurchaseNotice(res.error || "تعذر تأكيد الشراء؛ أعد المحاولة بأمان");
+    } catch {
+      setPurchaseNotice("تعذر تأكيد الشراء؛ تحقق من الاتصال وأعد المحاولة بأمان");
     } finally {
+      purchasingRef.current = false;
       setPurchasingId(null);
     }
   };
@@ -487,6 +493,7 @@ export default function ParentPortal({ token }: { token: string }) {
           </div>
         )}
 
+        {purchaseNotice && <div role="status" aria-live="polite" className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-lg rounded-2xl border border-grape-200 bg-white p-3 text-center text-sm font-bold text-grape-700 shadow-lg"><span>{purchaseNotice}</span><button type="button" className="mr-3 underline" onClick={() => setPurchaseNotice("")}>إغلاق</button></div>}
         {/* القسم الثاني: متجر الطالب */}
         {activeTab === "store" && (
           <div className="space-y-4">
