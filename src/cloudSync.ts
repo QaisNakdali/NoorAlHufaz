@@ -149,11 +149,11 @@ export async function cloudSaveCompact(payload: CloudPayload, expectedRev: numbe
 }
 
 /** Server deltas preserve instant updates without transferring the full archive. */
-export function subscribeCloud(onPayload: (payload: CloudPayload) => void): () => void {
+export function subscribeCloud(onPayload: (payload: CloudPayload) => void, onError?: (message: string) => void): () => void {
   let disposed = false;
   let chain = Promise.resolve();
   const enqueue = (task: () => Promise<void>) => {
-    chain = chain.then(async () => { if (!disposed) await task(); }).catch(() => {});
+    chain = chain.then(async () => { if (!disposed) await task(); }).catch(error => { if (!disposed) onError?.(errMsg(error)); });
   };
   const recover = async () => {
     const snapshot = await cloudLoad();
@@ -164,6 +164,12 @@ export function subscribeCloud(onPayload: (payload: CloudPayload) => void): () =
     const { data, error } = await supabase.from(STATE_TABLE).select("rev").eq("id", STATE_ID).maybeSingle();
     if (error) throw error;
     if (data && (!serverSnapshot || Number(data.rev) !== serverSnapshot.rev)) await recover();
+  };
+  let revisionCheckQueued = false;
+  const scheduleRevisionCheck = () => {
+    if (disposed || revisionCheckQueued) return;
+    revisionCheckQueued = true;
+    enqueue(async () => { try { await checkRevision(); } finally { revisionCheckQueued = false; } });
   };
   let channel: RealtimeChannel | null = supabase
     .channel(`noor-delta:${STATE_ID}`, { config: { private: false } })
@@ -179,11 +185,15 @@ export function subscribeCloud(onPayload: (payload: CloudPayload) => void): () =
     })
     .subscribe((status) => {
       // Join/rejoin before reconciliation: recover any event missed during connection.
-      if (status === "SUBSCRIBED") enqueue(checkRevision);
+      if (status === "SUBSCRIBED") scheduleRevisionCheck();
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        onError?.("انقطع التحديث اللحظي؛ ستتم محاولة الاتصال تلقائيًا والتحقق من الإصدار المشترك");
+        scheduleRevisionCheck();
+      }
     });
-  const onVisible = () => { if (document.visibilityState !== "hidden") enqueue(checkRevision); };
-  const onOnline = () => enqueue(checkRevision);
-  const timer = window.setInterval(() => enqueue(checkRevision), 60000);
+  const onVisible = () => { if (document.visibilityState !== "hidden") scheduleRevisionCheck(); };
+  const onOnline = () => scheduleRevisionCheck();
+  const timer = window.setInterval(() => scheduleRevisionCheck(), 60000);
   document.addEventListener("visibilitychange", onVisible);
   window.addEventListener("online", onOnline);
   return () => {
