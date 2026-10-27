@@ -273,7 +273,7 @@ export default function CeremonyPanel() {
           })}
         </div>}
       </div>
-      {/* ===== الأكثر تطورًا وأفضل سلوك — فائز واحد من كل حلقة ===== */}
+      {/* ===== الأكثر تطورًا وأفضل سلوك — حتى فائزين من كل حلقة ===== */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         {AWARDS_META.map((m, i) => {
           const reward = m.key as PerHalaqaRewardKey;

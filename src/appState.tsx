@@ -2454,10 +2454,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const remote = stateFromCloudPayload(latest.data);
           const submitted = cloudDataRef.current ?? remote;
           if (remote.week > targetWeek && remote.weeksLog.some(log => log.week === targetWeek)) {
-            if (dirtyRef.current && !sameValue(submitted, syncedBaseRef.current)) throw new Error('أنهى معلم آخر الأسبوع؛ احتُفظ بتعديلاتك المحلية للمراجعة قبل المزامنة');
-            acceptCheckoutCommit(submitted, remote, latest.rev);
+            const conflicts: MergeConflict[] = [];
+            const rebased = dirtyRef.current ? stateFromPartial(mergeLocalChanges(syncedBaseRef.current ?? submitted, submitted, remote, [], conflicts) as Partial<State>) : remote;
+            if (conflicts.length) throw new Error('توجد تعديلات معلقة متعارضة؛ احتُفظ بها للمراجعة');
+            if (!sameValue(rebased, remote)) {
+              const payload = archiveCloudPayload(latest.data, remote, rebased);
+              const saved = await cloudSaveCompact({rev: latest.rev + 1, data: payload}, latest.rev, latest.data);
+              if (!saved.applied) { latest = {rev: saved.rev, data: saved.data}; continue; }
+              acceptCheckoutCommit(submitted, stateFromCloudPayload(saved.data), saved.rev);
+            } else acceptCheckoutCommit(submitted, remote, latest.rev);
             localStorage.removeItem(intentKey);
+            setCloud(c => ({...c, status: 'ok', lastSyncAt: Date.now(), lastError: null}));
             setShowCeremony(false);
+            toast('success', 'الأسبوع الجديد محفوظ مركزيًا وتعديلات الأسبوع السابق محفوظة في أرشيفه');
             return;
           }
           if (remote.week !== targetWeek || submitted.week !== targetWeek) throw new Error('تغيّر الأسبوع؛ راجع حالة المزامنة قبل إنهائه');
