@@ -676,7 +676,7 @@ function RegisterRow({
                   {DAY_PARTS.map((p) => {
                     const on = s.days[d.key][p.key];
                     if (p.key === "a") return <button disabled={absent} key={p.key} type="button" onClick={() => markDay(s.id, d.key, p.key)} className={`flex h-9 items-center justify-center gap-1 rounded-lg border text-xs font-extrabold transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400 hover:border-grape-400 hover:text-grape-600"}`}><Icon name={on ? "check" : p.icon} className="h-3.5 w-3.5" strokeWidth={2.7} />{p.label}</button>;
-                    const rating = on ? (s.recitationRatings?.[d.key]?.[p.key] ?? "excellent") : "";
+                    const rating = on ? (s.recitationRatings?.[d.key]?.[p.key] ?? "excellent") : s.days[d.key].evaluated?.[p.key] ? "" : "pending";
                     const emptyLabel = p.key === "h" ? "لم يحفظ" : "لم يراجع";
                     return (
                       <select
@@ -686,10 +686,11 @@ function RegisterRow({
                         value={rating}
                         onChange={(event) => {
                           const value = event.target.value as RecitationRating | "";
-                          markDay(s.id, d.key, p.key, value || undefined);
+                          markDay(s.id, d.key, p.key, value || undefined, value === "" ? "not-completed" : undefined);
                         }}
                         className={`h-9 rounded-lg border px-1 text-center text-xs font-extrabold outline-none transition disabled:cursor-not-allowed disabled:opacity-40 ${on ? PART_ON[p.key] : "border-grape-200 bg-white text-grape-400"}`}
                       >
+                        <option value="pending" disabled>لم يُسجّل تقييم</option>
                         <option value="">{emptyLabel}</option>
                         <option value="excellent">ممتاز</option>
                         <option value="very-good">جيد جدًا</option>

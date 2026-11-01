@@ -173,7 +173,7 @@ type Ctx = State & {
   setNextLesson: (id: string) => void;
   updateLesson: (id: string, title: string, teacher: string) => void;
   removeLesson: (id: string) => void;
-  markDay: (id: string, day: DayKey, part: DayPart, rating?: RecitationRating) => void;
+  markDay: (id: string, day: DayKey, part: DayPart, rating?: RecitationRating, outcome?: "not-completed") => void;
   markAbsent: (id: string, day: DayKey) => void;
   updateWard: (id: string, day: DayKey, ward: DailyWard) => void;
   toggleDailyRecitation: (id: string, dateKey?: string) => void;
@@ -243,7 +243,7 @@ function normStudent(s: Student): Student {
     if (typeof v === "boolean") out[d.key] = { a: v, h: v, r: false };
     else if (v && typeof v === "object") {
       const e = v as Record<string, unknown>;
-      out[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined, ...(typeof e.testing === "boolean" ? { testing: e.testing } : {}) };
+      out[d.key] = { ...(e.evaluated && typeof e.evaluated === "object" ? { evaluated: { ...((e.evaluated as any).h === true ? { h: true } : {}), ...((e.evaluated as any).r === true ? { r: true } : {}) } } : {}), a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined, ...(typeof e.testing === "boolean" ? { testing: e.testing } : {}) };
     }
   }
   return {
@@ -322,7 +322,7 @@ function normWeekRecord(r: any): WeekStudentRecord {
     if (typeof v === "boolean") days[d.key] = { a: v, h: v, r: false };
     else if (v && typeof v === "object") {
       const e = v as Record<string, unknown>;
-      days[d.key] = { a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined, ...(typeof e.testing === "boolean" ? { testing: e.testing } : {}) };
+      days[d.key] = { ...(e.evaluated && typeof e.evaluated === "object" ? { evaluated: { ...((e.evaluated as any).h === true ? { h: true } : {}), ...((e.evaluated as any).r === true ? { r: true } : {}) } } : {}), a: !!e.a, h: !!e.h, r: !!e.r, absent: e.absent === true, date: typeof e.date === "string" ? e.date : undefined, ...(typeof e.testing === "boolean" ? { testing: e.testing } : {}) };
     }
   }
   const ward = emptyWeeklyWard();
@@ -1579,7 +1579,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ===== الكشف: حضور / حفظ / مراجعة ===== */
   const markDay = useCallback(
-    (id: string, day: DayKey, part: DayPart, rating?: RecitationRating) => {
+    (id: string, day: DayKey, part: DayPart, rating?: RecitationRating, outcome?: "not-completed") => {
       let msgKind: "xp" | "coin" | null = null;
       let msgText = "";
       let leveledName = "";
@@ -1615,7 +1615,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         // تحديد ما إذا كان الإجراء تشغيلًا أم إيقافًا:
-        const turningOn = rating ? true : !currentlyOn;
+        const turningOn = outcome === "not-completed" ? false : rating ? true : !currentlyOn;
         const proposedDays = { ...target.days, [day]: { ...target.days[day], [part]: turningOn } };
         if (target.coins + weekCoinsOf(proposedDays) - weekCoinsOf(target.days) < 0 || target.xp + weekXpOf(proposedDays) - weekXpOf(target.days) < 0) {
           toast("error", "لا تكفي النقاط أو العملات لعكس المكافأة؛ المشتريات محفوظة ولم يُطبّق التعديل");
@@ -1631,8 +1631,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (s.id !== id) return s;
           const dayIndex = DAYS.findIndex((d) => d.key === day);
           const isToday = localDateKey(addCalendarDays(weekStartDateIso, dayIndex)) === localDateKey(new Date());
-          const policy = turningOn && isToday ? captureExamDay(s.days[day], s.isTesting === true) : s.days[day];
-          const days: WeekDays = { ...s.days, [day]: { ...policy, [part]: turningOn } };
+          const policy = (turningOn || outcome === "not-completed") && isToday ? captureExamDay(s.days[day], s.isTesting === true) : s.days[day];
+          const days: WeekDays = { ...s.days, [day]: { ...policy, [part]: turningOn, ...((part === "h" || part === "r") ? { evaluated: { ...s.days[day].evaluated, [part]: true } } : {}) } };
           const recitationRatings = part === "h" || part === "r" ? {
             ...(s.recitationRatings ?? emptyRecitationRatings()),
             [day]: {

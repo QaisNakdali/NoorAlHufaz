@@ -1,0 +1,5 @@
+import type { Halaqa, PurchaseOrder, ShopItem, Student, WeekLog } from "../core";
+export type Versions = { overview:string; archive:string; catalog:string; purchases:string };
+export type ParentOverview = { latest?:Partial<Record<"h"|"r",{date:string;text:string;rating:"excellent"|"very-good"|"not-completed"}>>; student:Student; halaqa:Halaqa|null; week:number; weekName:string; weekStartDateIso:string; heartPrice:number; parentStoreOpen:boolean };
+export type ParentResponse = { delta?:{base:string;changes:import("../cloudPatch").CloudPatch[]}; rev:number; versions:Versions; topic:string; overview?:ParentOverview; products?:ShopItem[]; retiredItems?:{itemId:string;qty:number;receivedQty:number;kind:string;name?:string|null;image?:string|null}[]; logs?:WeekLog[]; orders?:PurchaseOrder[]; dates?:{week:number;date:string|null}[]; more?:boolean; nextOffset?:number; success?:boolean; error?:string; requestId?:string; changedProducts?:(Partial<ShopItem>&{id:string})[]; baseCatalog?:string; totalCost?:number };
+export type ParentSection = "overview"|"delta"|"status"|"catalog"|"archive"|"statistics"|"calendar"|"purchases";

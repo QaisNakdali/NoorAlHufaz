@@ -107,7 +107,7 @@ export type DayPart = "a" | "h" | "r"; // حضور | تسميع حفظ | تسم�
 export type RecitationPart = "h" | "r";
 export type RecitationRating = "excellent" | "very-good";
 /** absent حالة مستقلة اختيارية؛ غيابها في البيانات القديمة يعني أن اليوم غير محدد، لا أنه غياب. */
-export type DayEntry = Record<DayPart, boolean> & { absent?: boolean; date?: string; testing?: boolean };
+export type DayEntry = Record<DayPart, boolean> & { absent?: boolean; date?: string; testing?: boolean; evaluated?: Partial<Record<RecitationPart, boolean>> };
 export type WeekDays = Record<DayKey, DayEntry>;
 export type RecitationRatings = Record<DayKey, Partial<Record<RecitationPart, RecitationRating>>>;
 
